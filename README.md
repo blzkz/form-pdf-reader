@@ -252,16 +252,32 @@ scripts/android/build-rust.sh
 ```
 
 The script downloads PDFium for Android arm64 (checking its SHA-256),
-generates the Kotlin bindings and cross-compiles the bridge. Then build the
-APK:
+generates the Kotlin bindings, cross-compiles the bridge and writes the
+licences shown in the app. Then build the APK and the App Bundle (the format
+Google Play takes):
 
 ```bash
-gradle -p android assembleRelease
+gradle -p android assembleRelease bundleRelease
 ```
 
-The `Android` workflow does the same on GitHub and attaches the APK to each
-release. The APK is signed with the debug key so it can be installed
-directly; publishing it in a store needs a real signing key.
+The `Android` workflow does the same on GitHub and attaches the APK and the
+App Bundle to each release.
+
+### Signing
+
+Releases are signed with the Google Play upload key, kept as repository
+secrets. Create it once, and keep a backup of `~/.config/form-pdf-reader`:
+
+```bash
+scripts/android/crear-clave-de-subida.sh
+```
+
+The script creates the key with openssl and saves it with `gh secret set`
+(`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`).
+Gradle signs with it when `ANDROID_KEYSTORE` points to the key file; without
+it, local builds and pull requests from forks use the debug key. Tags fail
+without the upload key, so every published APK has the same signature and
+updates install over the previous version.
 
 ## Tests
 
@@ -322,5 +338,15 @@ packaging/ scripts/   packages, PDFium download, install scripts
 
 ## Licences
 
-Application code: MIT. PDFium: BSD-3-Clause, with third-party licences (V8,
-FreeType, ICU…) in `vendor/pdfium/licenses` after downloading it.
+Form PDF Reader is distributed under the [MIT License](LICENSE).
+
+It includes third-party software under its own licences: PDFium and its
+components (BSD-3-Clause, Apache-2.0 and others), the Rust crates it is built
+from (mostly MIT or Apache-2.0; uniffi is MPL-2.0) and, in the Android app,
+AndroidX, Material Components, the Kotlin standard library and JNA
+(Apache-2.0). `scripts/third_party_notices.py` writes their notices from the
+dependency tree:
+
+- Linux packages: `/usr/share/licenses/form-pdf-reader/` (`LICENSE` and
+  `THIRD-PARTY-NOTICES.txt`); in the `.tar.gz`, next to the program.
+- Android app: Settings > Open source licences.

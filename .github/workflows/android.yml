@@ -1,6 +1,10 @@
 # Builds the Android app: the Rust core (crates/ffi) for arm64 with cargo-ndk,
-# its Kotlin bindings with uniffi, and the APK with Gradle. On a version tag
-# the APK is attached to the GitHub release.
+# its Kotlin bindings with uniffi, and the APK and App Bundle (for Google
+# Play) with Gradle. On a version tag both are attached to the GitHub release.
+#
+# Release builds are signed with the upload key in the repository secrets
+# (scripts/android/crear-clave-de-subida.sh); without them, as in pull
+# requests from forks, with the debug key. Tags require the upload key.
 name: Android
 
 on:
@@ -42,20 +46,40 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.11.1"
-      - name: APK
-        run: gradle -p android assembleRelease --no-daemon
-      - name: Name the APK
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [[ -n "$KEYSTORE_BASE64" ]]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload-key.p12"
+            echo "ANDROID_KEYSTORE=$RUNNER_TEMP/upload-key.p12" >> "$GITHUB_ENV"
+            echo "Signing with the upload key"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::No upload key (secret ANDROID_KEYSTORE_BASE64): run scripts/android/crear-clave-de-subida.sh"
+            exit 1
+          else
+            echo "::notice::No upload key: signed with the debug key"
+          fi
+      - name: APK and App Bundle
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: gradle -p android assembleRelease bundleRelease --no-daemon
+      - name: Name the APK and the App Bundle
         run: |
           if [[ "$GITHUB_REF_NAME" == v* ]]; then V="${GITHUB_REF_NAME#v}"; else V="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"; fi
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk "dist/form-pdf-reader-$V-android-arm64.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "dist/form-pdf-reader-$V-android.aab"
+          # Certificate the APK is signed with.
+          "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner" verify --print-certs dist/*.apk | grep -E "SHA-256|DN"
           ls -l dist
       - uses: actions/upload-artifact@v7
         with:
           name: apk
-          path: dist/*.apk
+          path: dist/*
       - name: GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/*.apk
+          files: dist/*

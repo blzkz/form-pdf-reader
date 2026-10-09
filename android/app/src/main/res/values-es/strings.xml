@@ -25,7 +25,7 @@
     <string name="submit_unsupported">El formulario intentó enviarse a «%1$s». El envío no está soportado: guarda el PDF y preséntalo por el cauce indicado.</string>
     <string name="no_app">No hay ninguna app para abrir este fichero.</string>
     <string name="xfa_info">Formulario XFA dinámico: se muestra como una sola página continua. Al guardar solo se añaden los datos rellenados; el PDF original no se modifica.</string>
-    <string name="about_text">Form PDF Reader %1$s\n\nLector de PDF que rellena y guarda formularios AcroForm y XFA dinámicos sin Adobe Reader.\n\nMotor: PDFium (Chromium) con V8 y XFA.</string>
+    <string name="about_text">Form PDF Reader %1$s\n\nLector de PDF que rellena y guarda formularios AcroForm y XFA dinámicos sin Adobe Reader.\n\nMotor: PDFium (Chromium) con V8 y XFA.\n\nSoftware libre con licencia MIT.</string>
     <string name="nav_home">Inicio</string>
     <string name="nav_settings">Ajustes</string>
     <string name="back">Atrás</string>
@@ -66,4 +66,6 @@
     <string name="previous_result">Resultado anterior</string>
     <string name="next_result">Resultado siguiente</string>
     <string name="close_search">Cerrar la búsqueda</string>
+    <string name="open_source_licenses">Licencias de código abierto</string>
+    <string name="licenses_missing">Esta compilación no incluye los textos de las licencias (ejecuta scripts/android/build-rust.sh).</string>
 </resources>

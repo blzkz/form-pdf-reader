@@ -25,7 +25,7 @@
     <string name="submit_unsupported">The form tried to submit itself to “%1$s”. Submitting is not supported: save the PDF and send it through the indicated channel.</string>
     <string name="no_app">There is no app to open this file.</string>
     <string name="xfa_info">Dynamic XFA form: shown as one continuous page. Saving only adds the data you filled in; the original PDF is not modified.</string>
-    <string name="about_text">Form PDF Reader %1$s\n\nPDF reader that fills in and saves AcroForm and dynamic XFA forms without Adobe Reader.\n\nEngine: PDFium (Chromium) with V8 and XFA.</string>
+    <string name="about_text">Form PDF Reader %1$s\n\nPDF reader that fills in and saves AcroForm and dynamic XFA forms without Adobe Reader.\n\nEngine: PDFium (Chromium) with V8 and XFA.\n\nFree software under the MIT License.</string>
     <string name="nav_home">Home</string>
     <string name="nav_settings">Settings</string>
     <string name="back">Back</string>
@@ -66,4 +66,6 @@
     <string name="previous_result">Previous result</string>
     <string name="next_result">Next result</string>
     <string name="close_search">Close search</string>
+    <string name="open_source_licenses">Open source licences</string>
+    <string name="licenses_missing">The licence texts were not included in this build (run scripts/android/build-rust.sh).</string>
 </resources>

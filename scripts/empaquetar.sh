@@ -5,12 +5,20 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 VER=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
 NAME="form-pdf-reader-$VER-x86_64"
-# SKIP_BUILD=1 reutiliza target/release (lo usa la integración continua).
-[[ -n "${SKIP_BUILD:-}" ]] || cargo build --release
+# SKIP_BUILD=1 reutiliza target/release y los avisos de terceros ya
+# generados (lo usa la integración continua).
+NOTICES=target/THIRD-PARTY-NOTICES.txt
+if [[ -z "${SKIP_BUILD:-}" ]]; then
+  cargo build --release
+  python3 scripts/third_party_notices.py --package form-pdf-reader --target x86_64-unknown-linux-gnu \
+    --pdfium vendor/pdfium --out "$NOTICES"
+fi
 rm -rf "dist/$NAME" && mkdir -p "dist/$NAME/lib" "dist/$NAME/licenses"
 cp target/release/form-pdf-reader "dist/$NAME/"
 cp vendor/pdfium/lib/libpdfium.so "dist/$NAME/lib/"
-cp -r vendor/pdfium/LICENSE vendor/pdfium/licenses/. "dist/$NAME/licenses/" 2>/dev/null || true
+# Licencia del programa y avisos del software de terceros que incluye.
+cp LICENSE "$NOTICES" "dist/$NAME/"
+cp -r vendor/pdfium/licenses/. "dist/$NAME/licenses/"
 cp assets/form-pdf-reader.desktop assets/form-pdf-reader.svg README.md "dist/$NAME/"
 cp -r assets/icons "dist/$NAME/"
 cat > "dist/$NAME/instalar.sh" <<'INNER'
@@ -22,6 +30,7 @@ D="$PREFIX/lib/form-pdf-reader"
 install -Dm755 form-pdf-reader "$D/form-pdf-reader"
 install -Dm644 lib/libpdfium.so "$D/lib/libpdfium.so"
 mkdir -p "$D/licenses" && cp -r licenses/. "$D/licenses/"
+cp LICENSE THIRD-PARTY-NOTICES.txt "$D/"
 mkdir -p "$PREFIX/bin" && ln -sf "$D/form-pdf-reader" "$PREFIX/bin/form-pdf-reader"
 install -Dm644 form-pdf-reader.desktop "$PREFIX/share/applications/form-pdf-reader.desktop"
 install -Dm644 form-pdf-reader.svg "$PREFIX/share/icons/hicolor/scalable/apps/form-pdf-reader.svg"

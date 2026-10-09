@@ -40,6 +40,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Licences of the app and of the software it includes. -->
+        <activity
+            android:name=".LicensesActivity"
+            android:exported="false"
+            android:label="@string/open_source_licenses" />
+
         <!-- Shares attachments extracted to the cache with other apps. -->
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -18,7 +18,7 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates curl git build-essential pkg-config fontconfig fonts-liberation
+            ca-certificates curl git build-essential pkg-config fontconfig fonts-liberation python3
       - uses: actions/checkout@v7
       - name: Rust
         run: |
@@ -37,3 +37,6 @@ jobs:
         run: cargo build --release --locked
       - name: Test
         run: cargo test --release --locked
+      # Fails if a new dependency has no licence text to ship.
+      - name: Third-party notices
+        run: python3 scripts/third_party_notices.py --package form-pdf-reader --target x86_64-unknown-linux-gnu --pdfium vendor/pdfium --out target/THIRD-PARTY-NOTICES.txt

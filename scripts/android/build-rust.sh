@@ -3,7 +3,8 @@
 #   1. downloads PDFium (V8 + XFA) for Android arm64 into vendor/pdfium-android,
 #   2. generates the Kotlin bindings (uniffi) into android/app/src/generated/kotlin,
 #   3. cross-compiles crates/ffi for arm64-v8a with cargo-ndk,
-#   4. copies libform_pdf_reader_ffi.so and libpdfium.so into jniLibs.
+#   4. copies libform_pdf_reader_ffi.so and libpdfium.so into jniLibs,
+#   5. writes the licences shown in the app (Settings > Open source licences).
 #
 # Needs: rustup target aarch64-linux-android, cargo-ndk, and the Android NDK
 # (ANDROID_NDK_HOME, or the NDK found by cargo-ndk). Then build the app with
@@ -51,4 +52,8 @@ PDFIUM_LIB_DIR="$PWD/$PDFIUM/lib" cargo ndk -t "$ABI" --platform "$API" build --
 # 4. Native libraries of the app.
 mkdir -p "$APP/jniLibs/$ABI"
 cp "target/$TARGET/release/libform_pdf_reader_ffi.so" "$PDFIUM/lib/libpdfium.so" "$APP/jniLibs/$ABI/"
+# 5. Licences of the app and of everything it includes.
+python3 scripts/third_party_notices.py --package form-pdf-reader-ffi --target "$TARGET" \
+  --pdfium "$PDFIUM" --android --out android/app/src/generated/assets/licenses.txt
+
 echo "Rust part ready: $APP/jniLibs/$ABI and $GEN"
