@@ -14,8 +14,8 @@ android {
         minSdk = 26
         // Google Play requires API 36 for new apps and updates (August 2026).
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.3.1"
         // The Rust core and PDFium are built for arm64 (scripts/android/build-rust.sh).
         ndk { abiFilters += listOf("arm64-v8a") }
     }
