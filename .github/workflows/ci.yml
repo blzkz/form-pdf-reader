@@ -11,7 +11,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     # Old glibc (2.35) so the binary also runs on Ubuntu 22.04 and Debian 12.
-    container: ubuntu:22.04
+    # Canonical image on ECR Public: Docker Hub rate-limits anonymous pulls.
+    container: public.ecr.aws/ubuntu/ubuntu:22.04
     steps:
       - name: System packages
         run: |

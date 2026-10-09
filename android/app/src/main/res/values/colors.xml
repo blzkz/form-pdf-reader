@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_primary">#9A2A2A</color>
+    <color name="brand_on_primary">#FFFFFF</color>
+    <color name="brand_primary_container">#FFDAD5</color>
+    <color name="brand_on_primary_container">#410002</color>
+    <color name="brand_secondary_container">#FFDAD5</color>
+    <color name="brand_on_secondary_container">#2C1512</color>
+    <color name="thumb_background">#FFFFFF</color>
+    <bool name="light_bars">true</bool>
+</resources>

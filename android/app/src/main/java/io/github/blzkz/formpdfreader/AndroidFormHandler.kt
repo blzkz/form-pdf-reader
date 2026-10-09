@@ -1,9 +1,10 @@
 package io.github.blzkz.formpdfreader
 
-import android.app.AlertDialog
 import android.os.Handler
 import android.os.Looper
 import android.widget.EditText
+import android.widget.FrameLayout
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
 import uniffi.form_pdf_reader_ffi.AlertAnswer
@@ -44,7 +45,7 @@ class AndroidFormHandler(private val activity: MainActivity) : FormHandler {
 
     override fun alert(title: String, message: String, buttons: AlertButtons): AlertAnswer =
         waitForUi(AlertAnswer.OK) { done ->
-            val b = AlertDialog.Builder(activity)
+            val b = MaterialAlertDialogBuilder(activity)
                 .setTitle(if (title.isBlank() || title == "Alert") activity.getString(R.string.form) else title)
                 .setMessage(message)
                 .setCancelable(false)
@@ -74,10 +75,15 @@ class AndroidFormHandler(private val activity: MainActivity) : FormHandler {
     override fun ask(question: String, title: String, defaultValue: String): String? =
         waitForUi<String?>(null) { done ->
             val input = EditText(activity).apply { setText(defaultValue) }
-            AlertDialog.Builder(activity)
+            val pad = (20 * activity.resources.displayMetrics.density).toInt()
+            val box = FrameLayout(activity).apply {
+                setPadding(pad, 0, pad, 0)
+                addView(input)
+            }
+            MaterialAlertDialogBuilder(activity)
                 .setTitle(title.ifBlank { activity.getString(R.string.form) })
                 .setMessage(question)
-                .setView(input)
+                .setView(box)
                 .setCancelable(false)
                 .setPositiveButton(R.string.ok) { _, _ -> done(input.text.toString()) }
                 .setNegativeButton(R.string.cancel) { _, _ -> done(null) }

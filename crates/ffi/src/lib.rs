@@ -104,6 +104,30 @@ pub struct InputResult {
     pub submit: Option<String>,
 }
 
+/// A rectangle in pixels on a page drawn at a given size.
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct PageRect {
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+}
+
+/// A search result: where it is on its page, in pixels of the page drawn at
+/// its size in points (multiply by the zoom).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct SearchHit {
+    pub page: u32,
+    pub rects: Vec<PageRect>,
+}
+
+/// Characters [start, start + count) of a page's text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct TextRange {
+    pub start: i32,
+    pub count: i32,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct AttachmentInfo {
     pub name: String,
@@ -383,6 +407,71 @@ impl PdfDocument {
         self.lock().attachments().into_iter().find(|a| a.name == name).map(|a| a.data)
     }
 
+    // Text selection. Character indices refer to the page's text layer;
+    // positions and rectangles are pixels on the page drawn at
+    // `page_w` × `page_h`, as in `tap`.
+
+    /// Number of characters in the text layer of a page.
+    pub fn text_char_count(&self, page: u32) -> i32 {
+        self.lock().text_char_count(usize_page(page))
+    }
+
+    /// Character at (`x`, `y`) (or near it), or -1.
+    pub fn text_char_at(&self, page: u32, page_w: f64, page_h: f64, x: f64, y: f64) -> i32 {
+        let doc = self.lock();
+        let p = usize_page(page);
+        let (px, py) = Self::to_page(&doc, p, page_w, page_h, x, y);
+        doc.text_char_at(p, px, py).unwrap_or(-1)
+    }
+
+    /// The word containing character `index`.
+    pub fn text_word_at(&self, page: u32, index: i32) -> TextRange {
+        let (start, count) = self.lock().text_word(usize_page(page), index);
+        TextRange { start, count }
+    }
+
+    /// Rectangles covering characters [start, start + count), one per line.
+    #[allow(clippy::too_many_arguments)]
+    pub fn text_rects(&self, page: u32, page_w: f64, page_h: f64, start: i32, count: i32) -> Vec<PageRect> {
+        let doc = self.lock();
+        let p = usize_page(page);
+        doc.text_rects(p, start, count)
+            .into_iter()
+            .map(|[l, t, r, b]| {
+                let (x1, y1) = doc.page_to_device(p, page_w, page_h, l, t);
+                let (x2, y2) = doc.page_to_device(p, page_w, page_h, r, b);
+                PageRect { left: x1.min(x2) as f32, top: y1.min(y2) as f32, right: x1.max(x2) as f32, bottom: y1.max(y2) as f32 }
+            })
+            .collect()
+    }
+
+    /// Text of characters [start, start + count).
+    pub fn text_range(&self, page: u32, start: i32, count: i32) -> String {
+        self.lock().text_range(usize_page(page), start, count)
+    }
+
+    /// Every occurrence of `query` (ignoring case), in page order. The text
+    /// of dynamic XFA forms is not in the text layer and is not searched.
+    pub fn search(&self, query: String) -> Vec<SearchHit> {
+        let doc = self.lock();
+        doc.search(&query)
+            .into_iter()
+            .map(|h| {
+                let (w, h_pt) = doc.page_size(h.page);
+                let rects = h
+                    .rects
+                    .into_iter()
+                    .map(|[l, t, r, b]| {
+                        let (x1, y1) = doc.page_to_device(h.page, w as f64, h_pt as f64, l, t);
+                        let (x2, y2) = doc.page_to_device(h.page, w as f64, h_pt as f64, r, b);
+                        PageRect { left: x1.min(x2) as f32, top: y1.min(y2) as f32, right: x1.max(x2) as f32, bottom: y1.max(y2) as f32 }
+                    })
+                    .collect();
+                SearchHit { page: h.page as u32, rects }
+            })
+            .collect()
+    }
+
     /// Plain text of a page (for copying).
     pub fn page_text(&self, page: u32) -> String {
         let doc = self.lock();
@@ -431,6 +520,25 @@ mod tests {
         assert_eq!(px.len(), 600 * 100 * 4);
         assert!(px.chunks(4).any(|p| p[0] < 128), "debería haber texto negro");
         assert!(d.page_text(0).contains("ZANAHORIA"));
+
+        // Text selection: the word under a position, its rectangles.
+        let n = d.text_char_count(0);
+        let i = (0..n).find(|&i| d.text_range(0, i, 9) == "ZANAHORIA").expect("ZANAHORIA en la capa de texto");
+        assert_eq!(d.text_word_at(0, i + 3), TextRange { start: i, count: 9 });
+        let rects = d.text_rects(0, 600.0, 800.0, i, 9);
+        assert!(!rects.is_empty());
+        let r = rects[0];
+        assert!(r.left < r.right && r.top < r.bottom && r.right <= 600.0 && r.bottom <= 800.0, "{r:?}");
+        let c = d.text_char_at(0, 600.0, 800.0, ((r.left + r.right) / 2.0) as f64, ((r.top + r.bottom) / 2.0) as f64);
+        assert!((i..i + 9).contains(&c), "carácter {c} fuera de la palabra");
+        assert_eq!(d.text_char_at(0, 600.0, 800.0, 599.0, 799.0), -1);
+
+        // Search: one hit per page, inside the page.
+        let hits = d.search("zanahoria".into());
+        assert_eq!(hits.iter().map(|h| h.page).collect::<Vec<_>>(), vec![0, 1, 2]);
+        let r = hits[0].rects[0];
+        assert!(r.left < r.right && r.top < r.bottom && r.right <= s.width && r.bottom <= s.height, "{r:?}");
+        assert!(d.search("no aparece".into()).is_empty());
 
         // AcroForm: tap a text field, type, save, reopen.
         let f = PdfDocument::open(fixture("acroform.pdf"), true).unwrap();

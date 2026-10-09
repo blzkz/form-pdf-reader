@@ -219,11 +219,25 @@ Other ways to install it:
 bridge between Kotlin and Rust is generated with
 [UniFFI](https://mozilla.github.io/uniffi-rs/) from `crates/ffi`. The app can:
 
+- show a start screen with the recently opened documents;
 - open PDFs from the system file picker or from other apps;
 - scroll, and zoom with two fingers;
 - fill in forms, including dynamic XFA, by tapping fields and typing on the
   on-screen keyboard;
-- save, save as, view attachments and copy the text.
+- keep several documents open as tabs (PDF attachments open in a new tab);
+- show pages continuously, one at a time or two side by side, with zoom and
+  page controls in the toolbar on tablets;
+- select text with a long press (and the handles) or by dragging with a
+  mouse, and copy it;
+- search the document's text (Ctrl+F), with every result highlighted;
+- use a hardware keyboard and mouse: Ctrl+S, Ctrl+O, Ctrl+F, Ctrl+W, Ctrl+Tab,
+  Ctrl+plus/minus, Page Up/Down, the wheel to scroll and Ctrl+wheel to zoom;
+- save, save as, view attachments and copy the text;
+- follow the device's light or dark theme (or a fixed one, in Settings).
+
+The app asks for no permissions: documents come from the system file picker
+or from other apps, and the app keeps access only to the ones the user
+opens.
 
 PDFium and its V8 engine only work from the thread that initialised them, so
 the app makes every call to the core from one dedicated thread

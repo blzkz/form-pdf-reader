@@ -2,22 +2,33 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
+        android:name=".FormPdfApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.FormPdfReader">
 
+        <!-- Start screen: recent documents and settings. -->
         <activity
-            android:name=".MainActivity"
+            android:name=".HomeActivity"
             android:exported="true"
-            android:documentLaunchMode="intoExisting"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|smallestScreenSize"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+
+        <!-- Viewer: the open documents as tabs. Only one: PDFs opened from
+             other apps are added as tabs. Keeps the tabs when the device
+             rotates, changes theme or attaches a keyboard. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|smallestScreenSize|uiMode|navigation|density"
+            android:windowSoftInputMode="adjustResize">
             <!-- Open PDFs from other apps (file managers, downloads, mail). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
