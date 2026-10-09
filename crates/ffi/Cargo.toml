@@ -1,0 +1,28 @@
+[package]
+name = "form-pdf-reader-ffi"
+description = "UniFFI bindings of the Form PDF Reader core, used by the Android app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "form_pdf_reader_ffi"
+# cdylib: la librería que carga la app de Android; lib: para las pruebas.
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+# Generador de los bindings de Kotlin:
+#   cargo run -p form-pdf-reader-ffi --features bindgen --bin uniffi-bindgen -- \
+#     generate --library target/release/libform_pdf_reader_ffi.so --language kotlin --out-dir OUT
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+form-pdf-reader-core = { path = "../core" }
+log.workspace = true
+uniffi = "0.32"

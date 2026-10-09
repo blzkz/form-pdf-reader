@@ -1,0 +1,61 @@
+# Builds the Android app: the Rust core (crates/ffi) for arm64 with cargo-ndk,
+# its Kotlin bindings with uniffi, and the APK with Gradle. On a version tag
+# the APK is attached to the GitHub release.
+name: Android
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Rust for Android
+        run: |
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --locked
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: android-cargo-${{ hashFiles('Cargo.lock') }}
+      - name: Rust core, bindings and native libraries
+        run: |
+          # NDK preinstalled on the runner.
+          export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}"
+          echo "NDK: $ANDROID_NDK_HOME"
+          scripts/android/build-rust.sh
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.11.1"
+      - name: APK
+        run: gradle -p android assembleRelease --no-daemon
+      - name: Name the APK
+        run: |
+          if [[ "$GITHUB_REF_NAME" == v* ]]; then V="${GITHUB_REF_NAME#v}"; else V="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"; fi
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/form-pdf-reader-$V-android-arm64.apk"
+          ls -l dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: apk
+          path: dist/*.apk
+      - name: GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*.apk

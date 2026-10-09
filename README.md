@@ -20,8 +20,8 @@ free Linux viewer could handle.
 The interface is available in English and Spanish. It follows the system
 language (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG`) and falls back to
 English. Set `FORM_PDF_READER_LANG=en` or `es` to force one. Translations
-live in `locales/<code>.txt`; adding a language means adding a file there and
-registering it in `src/i18n.rs`. Texts that belong to a form itself (its
+live in `crates/core/locales/<code>.txt`; adding a language means adding a
+file there and registering it in `crates/core/src/i18n.rs`. Texts that belong to a form itself (its
 labels, messages and validations) stay in the form's own language.
 
 ## Features
@@ -172,6 +172,7 @@ Each [GitHub release](../../releases) has ready-made packages for x86_64:
 | Fedora | `form-pdf-reader-*.x86_64.rpm` | `sudo dnf install ./form-pdf-reader-*.x86_64.rpm` |
 | Arch Linux, CachyOS | `form-pdf-reader-*-x86_64.pkg.tar.zst` | `sudo pacman -U form-pdf-reader-*-x86_64.pkg.tar.zst` |
 | Any distribution | `form-pdf-reader-*-x86_64.tar.gz` | extract it and run `./instalar.sh` |
+| Android 8+ (arm64) | `form-pdf-reader-*-android-arm64.apk` | open it on the phone and allow installing it |
 
 The binary is built on Ubuntu 22.04 (glibc 2.35), so it also runs on newer
 distributions.
@@ -212,6 +213,42 @@ Other ways to install it:
 - `scripts/empaquetar.sh` creates a self-contained tar.gz in `dist/`.
 - `scripts/appimage.sh` creates an AppImage if `appimagetool` is installed.
 
+## Android app
+
+`android/` contains a native Kotlin app that uses the same Rust core. The
+bridge between Kotlin and Rust is generated with
+[UniFFI](https://mozilla.github.io/uniffi-rs/) from `crates/ffi`. The app can:
+
+- open PDFs from the system file picker or from other apps;
+- scroll, and zoom with two fingers;
+- fill in forms, including dynamic XFA, by tapping fields and typing on the
+  on-screen keyboard;
+- save, save as, view attachments and copy the text.
+
+PDFium and its V8 engine only work from the thread that initialised them, so
+the app makes every call to the core from one dedicated thread
+(`PdfEngine.kt`). The form's dialogs block that thread, not the interface,
+while the user answers.
+
+To build it you need the Android SDK and NDK, JDK 17, Gradle, `cargo-ndk`
+and the Rust target `aarch64-linux-android`.
+
+```bash
+scripts/android/build-rust.sh
+```
+
+The script downloads PDFium for Android arm64 (checking its SHA-256),
+generates the Kotlin bindings and cross-compiles the bridge. Then build the
+APK:
+
+```bash
+gradle -p android assembleRelease
+```
+
+The `Android` workflow does the same on GitHub and attaches the APK to each
+release. The APK is signed with the debug key so it can be installed
+directly; publishing it in a store needs a real signing key.
+
 ## Tests
 
 ```bash
@@ -233,11 +270,11 @@ test also checks that opening it changes no data and that the form's
 `PDFRE_SCRIPT_DEBUG=1`, together with `RUST_LOG=form_pdf_reader=debug`,
 logs the exceptions raised by each form event.
 
-`examples/probe.rs` drives a form without a window (clicks, typing,
+`crates/core/examples/probe.rs` drives a form without a window (clicks, typing,
 JavaScript evaluation, screenshots of a region):
 
 ```bash
-cargo run --release --example probe -- file.pdf "click:561,1560;shot:1500,200,/tmp/a.png;datos"
+cargo run --release -p form-pdf-reader-core --example probe -- file.pdf "click:561,1560;shot:1500,200,/tmp/a.png;datos"
 ```
 
 A UI driver can run the real interface unattended. `PDFRE_AUTOTEST_FILE`
@@ -249,16 +286,24 @@ PDFRE_AUTOTEST="wait:30;click:300,500;type:Hello;key:Tab;shot:/tmp/a.png;quit" f
 
 ## Layout
 
+The repository is a Cargo workspace. The core library is independent of the
+user interface: the desktop app and the Android app both use it.
+
 ```
-src/pdfium/       PDFium layer: bindings (bindgen), callbacks, document, fonts
-src/xfa/          XFA compatibility fixes, incremental PDF editing, form state
-src/viewer.rs     view: tiles, mouse and keyboard to PDFium, tools, layouts
-src/app.rs        application: tabs, menus, dialogs, saving, printing
-src/i18n.rs       interface translations (catalogs in locales/)
-src/autotest.rs   UI test driver
-tests/            integration test and sample PDFs
-examples/         diagnostic tools (probe, packet dump)
-packaging/ scripts/ assets/   packaging
+crates/core/      form-pdf-reader-core: the library (imported as form_pdf_reader)
+  src/pdfium/       PDFium layer: bindings (bindgen), callbacks, document, fonts
+  src/xfa/          XFA compatibility fixes, incremental PDF editing, form state
+  src/i18n.rs       translations (catalogs in locales/)
+  tests/            integration test and sample PDFs
+  examples/         diagnostic tools (probe, packet dump)
+crates/ffi/       form-pdf-reader-ffi: UniFFI bridge used by the Android app
+crates/desktop/   form-pdf-reader: the Linux desktop application (egui)
+  src/viewer.rs     view: tiles, mouse and keyboard to PDFium, tools, layouts
+  src/app.rs        application: tabs, menus, dialogs, saving, printing
+  src/autotest.rs   UI test driver
+android/          Android app (Kotlin) on top of the Rust core
+assets/           icons and .desktop file
+packaging/ scripts/   packages, PDFium download, install scripts
 ```
 
 ## Licences

@@ -39,8 +39,22 @@ fn parse(src: &'static str) -> HashMap<&'static str, String> {
     m
 }
 
+static FORCED: OnceLock<String> = OnceLock::new();
+
+/// Fija el idioma desde la aplicación (por ejemplo, Android, que no usa las
+/// variables de entorno). Debe llamarse antes del primer texto traducido;
+/// después no tiene efecto. Devuelve false si llegó tarde.
+pub fn set_language(code: &str) -> bool {
+    FORCED.set(code.to_ascii_lowercase()).is_ok() && T.get().is_none()
+}
+
+static T: OnceLock<Tables> = OnceLock::new();
+
 /// Código de idioma pedido por el entorno (p. ej. "es" de "es_ES.UTF-8").
 fn requested() -> String {
+    if let Some(f) = FORCED.get() {
+        return f.split(['_', '.', '@', '-']).next().unwrap_or("").to_string();
+    }
     // Mismo orden que gettext: LANGUAGE (lista "es:en"), LC_ALL,
     // LC_MESSAGES, LANG. FORM_PDF_READER_LANG manda sobre todos.
     let raw = ["FORM_PDF_READER_LANG", "LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
@@ -53,7 +67,6 @@ fn requested() -> String {
 }
 
 fn tables() -> &'static Tables {
-    static T: OnceLock<Tables> = OnceLock::new();
     T.get_or_init(|| {
         let want = requested();
         let (lang, src) = CATALOGS.iter().find(|(c, _)| *c == want).copied().unwrap_or(CATALOGS[0]);

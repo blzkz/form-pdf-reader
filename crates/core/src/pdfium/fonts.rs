@@ -44,8 +44,11 @@ const ALIASES: &[(&str, Kind)] = &[
     ("Courier New", Kind::Mono),
 ];
 
+#[cfg_attr(target_os = "android", allow(dead_code))]
 const SANS: &[&str] = &["Liberation Sans", "Arimo", "Nimbus Sans", "DejaVu Sans"];
+#[cfg_attr(target_os = "android", allow(dead_code))]
 const SERIF: &[&str] = &["Liberation Serif", "Tinos", "Nimbus Roman", "DejaVu Serif"];
+#[cfg_attr(target_os = "android", allow(dead_code))]
 const MONO: &[&str] = &["Liberation Mono", "Cousine", "Nimbus Mono PS", "DejaVu Sans Mono"];
 
 fn classify(face: &str) -> Option<Kind> {
@@ -79,6 +82,18 @@ pub fn substitute(face: &str) -> Option<&'static str> {
     if pick.eq_ignore_ascii_case(face) { None } else { Some(pick) }
 }
 
+/// Android no tiene fontconfig: sus fuentes de sistema (/system/fonts) son
+/// siempre Roboto, Noto Serif y Droid Sans Mono.
+#[cfg(target_os = "android")]
+fn installed(k: Kind) -> Option<&'static str> {
+    Some(match k {
+        Kind::Sans => "Roboto",
+        Kind::Serif => "Noto Serif",
+        Kind::Mono => "Droid Sans Mono",
+    })
+}
+
+#[cfg(not(target_os = "android"))]
 fn installed(k: Kind) -> Option<&'static str> {
     use std::sync::OnceLock;
     static FAMILIES: OnceLock<Vec<String>> = OnceLock::new();
