@@ -229,7 +229,8 @@ bridge between Kotlin and Rust is generated with
   page controls in the toolbar on tablets;
 - select text with a long press (and the handles) or by dragging with a
   mouse, and copy it;
-- use a hardware keyboard and mouse: Ctrl+S, Ctrl+O, Ctrl+W, Ctrl+Tab,
+- search the document's text (Ctrl+F), with every result highlighted;
+- use a hardware keyboard and mouse: Ctrl+S, Ctrl+O, Ctrl+F, Ctrl+W, Ctrl+Tab,
   Ctrl+plus/minus, Page Up/Down, the wheel to scroll and Ctrl+wheel to zoom;
 - save, save as, view attachments and copy the text;
 - follow the device's light or dark theme (or a fixed one, in Settings).
