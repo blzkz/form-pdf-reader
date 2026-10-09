@@ -20,7 +20,8 @@ description: |
   forms, running their scripts with PDFium (V8 + XFA).
 vendor: Form PDF Reader
 homepage: ${HOMEPAGE}
-license: MIT and BSD-3-Clause
+# The program; the licences of what it includes are in THIRD-PARTY-NOTICES.txt.
+license: MIT
 
 provides:
   - pdf-reader-editor
@@ -60,8 +61,12 @@ contents:
     dst: /usr/share/icons/hicolor/128x128/apps/form-pdf-reader.png
   - src: ./assets/icons/256/form-pdf-reader.png
     dst: /usr/share/icons/hicolor/256x256/apps/form-pdf-reader.png
-  - src: ./vendor/pdfium/LICENSE
-    dst: /usr/share/licenses/form-pdf-reader/PDFium-LICENSE
+  # Licence of the program, and of the third-party software it includes
+  # (Rust crates, PDFium and its components): scripts/third_party_notices.py.
+  - src: ./LICENSE
+    dst: /usr/share/licenses/form-pdf-reader/LICENSE
+  - src: ./target/THIRD-PARTY-NOTICES.txt
+    dst: /usr/share/licenses/form-pdf-reader/THIRD-PARTY-NOTICES.txt
   - src: ./vendor/pdfium/licenses
     dst: /usr/share/licenses/form-pdf-reader/pdfium-third-party
     type: tree

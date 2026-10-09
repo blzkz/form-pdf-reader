@@ -1,5 +1,6 @@
 package io.github.blzkz.formpdfreader
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.RadioGroup
@@ -177,6 +178,9 @@ class HomeActivity : AppCompatActivity() {
         continuous.setOnCheckedChangeListener { _, checked -> Prefs.setContinuousXfa(this, checked) }
 
         findViewById<TextView>(R.id.about_text).text = getString(R.string.about_text, appVersion())
+        findViewById<View>(R.id.open_licenses).setOnClickListener {
+            startActivity(Intent(this, LicensesActivity::class.java))
+        }
     }
 
     private fun appVersion(): String =
