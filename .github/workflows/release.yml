@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Old glibc (2.35): one binary for Ubuntu 22.04+, Debian 12+, Fedora, Arch.
     container: ubuntu:22.04
     steps:
@@ -25,7 +25,7 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             ca-certificates curl git build-essential pkg-config fontconfig fonts-liberation
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust
         run: |
           curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
@@ -36,17 +36,17 @@ jobs:
         run: cargo build --release --locked
       - name: Test
         run: cargo test --release --locked
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binary
           path: target/release/form-pdf-reader
 
   package:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: binary
           path: target/release
@@ -54,7 +54,7 @@ jobs:
         run: |
           chmod +x target/release/form-pdf-reader
           scripts/descargar-pdfium.sh
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - name: nfpm
@@ -73,13 +73,13 @@ jobs:
           SKIP_BUILD=1 scripts/empaquetar.sh
           rm -rf dist/*-x86_64/
           ls -l dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: packages
           path: dist/*
       - name: GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true
