@@ -162,6 +162,37 @@ form-pdf-reader --export-flat input.pdf output.pdf 150
 `--export-flat` exports a flat image PDF at the given DPI. The older Spanish
 names `--datos` and `--exportar-plano` still work.
 
+## Installing a release
+
+Each [GitHub release](../../releases) has ready-made packages for x86_64:
+
+| Distribution | File | Install |
+|---|---|---|
+| Debian 12+, Ubuntu 22.04+ | `form-pdf-reader_*_amd64.deb` | `sudo apt install ./form-pdf-reader_*_amd64.deb` |
+| Fedora | `form-pdf-reader-*.x86_64.rpm` | `sudo dnf install ./form-pdf-reader-*.x86_64.rpm` |
+| Arch Linux, CachyOS | `form-pdf-reader-*-x86_64.pkg.tar.zst` | `sudo pacman -U form-pdf-reader-*-x86_64.pkg.tar.zst` |
+| Any distribution | `form-pdf-reader-*-x86_64.tar.gz` | extract it and run `./instalar.sh` |
+
+The binary is built on Ubuntu 22.04 (glibc 2.35), so it also runs on newer
+distributions.
+
+### Publishing a release
+
+The `Release` workflow builds the packages when a version tag is pushed and
+attaches them to a new GitHub release:
+
+```bash
+git tag v0.1.0
+```
+
+```bash
+git push origin v0.1.0
+```
+
+Packages are produced with [nfpm](https://nfpm.goreleaser.com) from
+`packaging/nfpm.yaml`. The `CI` workflow builds and tests every push to
+`master` and every pull request.
+
 ## Building and installing
 
 You need stable Rust, `curl` and the usual desktop libraries: Wayland or X11,
