@@ -1,4 +1,4 @@
-//! Diagnóstico: cargo run --example probe -- FICHERO "click:x,y;shot:y0,h,ruta;type:txt;key:down;datos"
+//! Diagnóstico: cargo run --release -p form-pdf-reader-core --example probe -- FICHERO "click:x,y;shot:y0,h,ruta;type:txt;key:down;datos"
 use form_pdf_reader::pdfium::{self, Document, keys};
 use form_pdf_reader::xfa;
 use std::path::Path;

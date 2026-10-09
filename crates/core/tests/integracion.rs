@@ -7,6 +7,13 @@ use form_pdf_reader::pdfium::{Document, FormKind, keys};
 use form_pdf_reader::xfa;
 use std::path::{Path, PathBuf};
 
+/// Fichero de `diagnostico/`, en la raíz del repositorio (las pruebas se
+/// ejecutan desde la carpeta del crate). No está en el repositorio: las
+/// partes que lo usan se omiten si no existe.
+fn diag(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../diagnostico").join(name)
+}
+
 fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("pdfre-test-{}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap();
@@ -24,7 +31,7 @@ fn click(doc: &mut Document, x: f64, y: f64) {
 }
 
 fn xfa_dinamico() {
-    let src = Path::new("diagnostico/TINTERNET_original.pdf");
+    let src = &diag("TINTERNET_original.pdf");
     if !src.exists() {
         eprintln!("(sin {}: se omite la prueba XFA)", src.display());
         return;
@@ -152,7 +159,7 @@ fn click_mm(doc: &mut Document, x: f64, y: f64) {
 
 /// Abrir un desplegable y cerrarlo pulsando fuera no debe dejar restos.
 fn desplegable_cierre() {
-    let src = Path::new("diagnostico/TINTERNET_original.pdf");
+    let src = &diag("TINTERNET_original.pdf");
     if !src.exists() {
         return;
     }
@@ -176,7 +183,7 @@ fn desplegable_cierre() {
 
 /// Componente de adjuntos del formulario: añadir, ver, eliminar, guardar.
 fn adjuntos() {
-    let src = Path::new("diagnostico/TINTERNET_original.pdf");
+    let src = &diag("TINTERNET_original.pdf");
     if !src.exists() {
         return;
     }
@@ -233,7 +240,7 @@ fn adjuntos() {
 /// PDF real rellenado con Adobe. Tiene datos personales, así que no está en
 /// el repositorio: si no existe, la prueba se omite.
 fn pdf_real() {
-    let src = Path::new("diagnostico/formulario_real.pdf");
+    let src = &diag("formulario_real.pdf");
     if !src.exists() {
         eprintln!("(sin {}: se omite la prueba con el PDF real)", src.display());
         return;
@@ -291,7 +298,7 @@ fn titulaciones(doc: &mut Document) -> String {
 /// Fechas (tecleadas y con calendario) y desplegables en cascada de la
 /// sección de titulaciones.
 fn fechas_y_cascada() {
-    let src = Path::new("diagnostico/TINTERNET_original.pdf");
+    let src = &diag("TINTERNET_original.pdf");
     if !src.exists() {
         return;
     }

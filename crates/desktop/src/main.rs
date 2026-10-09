@@ -38,7 +38,7 @@ fn main() -> eframe::Result<()> {
             .with_app_id("form-pdf-reader")
             // Icono propio de la ventana (X11; en Wayland el panel lo toma
             // del .desktop a partir del app_id).
-            .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icons/256/form-pdf-reader.png")).unwrap_or_default())
+            .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icons/256/form-pdf-reader.png")).unwrap_or_default())
             .with_inner_size([1100.0, 900.0])
             .with_min_inner_size([480.0, 360.0])
             .with_drag_and_drop(true),

@@ -1,36 +1,22 @@
-[package]
-name = "form_pdf_reader"
+[workspace]
+members = ["crates/core", "crates/desktop"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
-description = "Visor y editor de formularios PDF (incluido XFA dinámico) para Linux, basado en PDFium"
 license = "MIT"
+repository = "https://github.com/blzkz/form-pdf-reader"
 
-[lib]
-name = "form_pdf_reader"
-path = "src/lib.rs"
-
-[[bin]]
-name = "form-pdf-reader"
-path = "src/main.rs"
-
-[dependencies]
+[workspace.dependencies]
 anyhow = "1"
 log = "0.4"
 env_logger = "0.11"
-libc = "0.2"
 png = "0.18"
-rfd = "0.17"
-eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 lopdf = { version = "0.45", default-features = false }
-flate2 = "1"
-regex = "1"
 
 [profile.release]
 opt-level = 3
 lto = "thin"
 strip = true
 codegen-units = 4
-
-[features]
-# Solo para pruebas: EFRAME_SCREENSHOT_TO=/ruta.png guarda una captura y sale.
-screenshot = ["eframe/__screenshot"]

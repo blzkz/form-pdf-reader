@@ -1,0 +1,25 @@
+[package]
+name = "form-pdf-reader-core"
+description = "PDFium (V8 + XFA) integration and dynamic XFA form support used by Form PDF Reader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+build = "build.rs"
+
+[lib]
+# Se mantiene el nombre de la librería: el código la usa como form_pdf_reader.
+name = "form_pdf_reader"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+log.workspace = true
+lopdf.workspace = true
+libc = "0.2"
+flate2 = "1"
+regex = "1"
+
+[dev-dependencies]
+env_logger.workspace = true
+png.workspace = true

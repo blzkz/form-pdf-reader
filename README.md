@@ -20,8 +20,8 @@ free Linux viewer could handle.
 The interface is available in English and Spanish. It follows the system
 language (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG`) and falls back to
 English. Set `FORM_PDF_READER_LANG=en` or `es` to force one. Translations
-live in `locales/<code>.txt`; adding a language means adding a file there and
-registering it in `src/i18n.rs`. Texts that belong to a form itself (its
+live in `crates/core/locales/<code>.txt`; adding a language means adding a
+file there and registering it in `crates/core/src/i18n.rs`. Texts that belong to a form itself (its
 labels, messages and validations) stay in the form's own language.
 
 ## Features
@@ -250,11 +250,11 @@ test also checks that opening it changes no data and that the form's
 `PDFRE_SCRIPT_DEBUG=1`, together with `RUST_LOG=form_pdf_reader=debug`,
 logs the exceptions raised by each form event.
 
-`examples/probe.rs` drives a form without a window (clicks, typing,
+`crates/core/examples/probe.rs` drives a form without a window (clicks, typing,
 JavaScript evaluation, screenshots of a region):
 
 ```bash
-cargo run --release --example probe -- file.pdf "click:561,1560;shot:1500,200,/tmp/a.png;datos"
+cargo run --release -p form-pdf-reader-core --example probe -- file.pdf "click:561,1560;shot:1500,200,/tmp/a.png;datos"
 ```
 
 A UI driver can run the real interface unattended. `PDFRE_AUTOTEST_FILE`
@@ -266,16 +266,22 @@ PDFRE_AUTOTEST="wait:30;click:300,500;type:Hello;key:Tab;shot:/tmp/a.png;quit" f
 
 ## Layout
 
+The repository is a Cargo workspace. The core library is independent of the
+user interface, so other front ends (for example an Android app) can reuse it.
+
 ```
-src/pdfium/       PDFium layer: bindings (bindgen), callbacks, document, fonts
-src/xfa/          XFA compatibility fixes, incremental PDF editing, form state
-src/viewer.rs     view: tiles, mouse and keyboard to PDFium, tools, layouts
-src/app.rs        application: tabs, menus, dialogs, saving, printing
-src/i18n.rs       interface translations (catalogs in locales/)
-src/autotest.rs   UI test driver
-tests/            integration test and sample PDFs
-examples/         diagnostic tools (probe, packet dump)
-packaging/ scripts/ assets/   packaging
+crates/core/      form-pdf-reader-core: the library (imported as form_pdf_reader)
+  src/pdfium/       PDFium layer: bindings (bindgen), callbacks, document, fonts
+  src/xfa/          XFA compatibility fixes, incremental PDF editing, form state
+  src/i18n.rs       translations (catalogs in locales/)
+  tests/            integration test and sample PDFs
+  examples/         diagnostic tools (probe, packet dump)
+crates/desktop/   form-pdf-reader: the Linux desktop application (egui)
+  src/viewer.rs     view: tiles, mouse and keyboard to PDFium, tools, layouts
+  src/app.rs        application: tabs, menus, dialogs, saving, printing
+  src/autotest.rs   UI test driver
+assets/           icons and .desktop file
+packaging/ scripts/   packages, PDFium download, install scripts
 ```
 
 ## Licences
