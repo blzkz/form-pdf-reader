@@ -614,6 +614,13 @@ class MainActivity : AppCompatActivity() {
 
     /** Desktop shortcuts with a hardware keyboard. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Enter in the search field: the next result (Shift+Enter: the
+        // previous one). Handled here so the field never moves the focus.
+        val enter = event.keyCode == KeyEvent.KEYCODE_ENTER || event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+        if (enter && searchInput.hasFocus()) {
+            if (event.action == KeyEvent.ACTION_DOWN) searchEnter(back = event.isShiftPressed)
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN && event.isCtrlPressed && handleShortcut(event)) return true
         return super.dispatchKeyEvent(event)
     }
@@ -657,17 +664,11 @@ class MainActivity : AppCompatActivity() {
             main.removeCallbacks(runSearch)
             main.postDelayed(runSearch, 350)
         }
-        searchInput.setOnEditorActionListener { _, actionId, event ->
-            val enterKey = event?.keyCode == KeyEvent.KEYCODE_ENTER
-            if (actionId == EditorInfo.IME_ACTION_SEARCH || enterKey && event?.action == KeyEvent.ACTION_DOWN) {
-                main.removeCallbacks(runSearch)
-                val q = searchInput.text.toString()
-                // Enter: the next result (Shift+Enter: the previous one).
-                if (q == searchedQuery) stepHit(if (event?.isShiftPressed == true) -1 else 1) else search(q)
-            }
-            // Enter would move the focus to the document: keep typing here.
-            searchInput.post { searchInput.requestFocus() }
-            actionId == EditorInfo.IME_ACTION_SEARCH || enterKey
+        // The search key of the on-screen keyboard (a hardware Enter is
+        // handled in dispatchKeyEvent).
+        searchInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) searchEnter(back = false)
+            actionId == EditorInfo.IME_ACTION_SEARCH
         }
         searchInput.setOnKeyListener { _, keyCode, event ->
             if (keyCode == KeyEvent.KEYCODE_ESCAPE && event.action == KeyEvent.ACTION_DOWN) {
@@ -680,6 +681,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.search_prev).setOnClickListener { stepHit(-1) }
         findViewById<View>(R.id.search_next).setOnClickListener { stepHit(1) }
         findViewById<View>(R.id.search_close).setOnClickListener { closeSearch() }
+    }
+
+    /** Enter in the search field: search, or go to the next (previous) result. */
+    private fun searchEnter(back: Boolean) {
+        main.removeCallbacks(runSearch)
+        val q = searchInput.text.toString()
+        if (q == searchedQuery) stepHit(if (back) -1 else 1) else search(q)
     }
 
     private fun openSearch() {
