@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <path d="M28 8h52l24 24v84a6 6 0 0 1-6 6H28a6 6 0 0 1-6-6V14a6 6 0 0 1 6-6z" fill="#f5f5f2" stroke="#9a2a2a" stroke-width="4"/>
+  <path d="M80 8v24h24" fill="#e8d6d6" stroke="#9a2a2a" stroke-width="4" stroke-linejoin="round"/>
+  <rect x="34" y="44" width="58" height="10" rx="2" fill="#fdeaea" stroke="#b33" stroke-width="2"/>
+  <rect x="34" y="62" width="58" height="10" rx="2" fill="#fdeaea" stroke="#b33" stroke-width="2"/>
+  <rect x="34" y="80" width="12" height="12" rx="2" fill="#fff" stroke="#333" stroke-width="2.5"/>
+  <path d="M36.5 86l3.5 3.5 6-7" fill="none" stroke="#2a7a2a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="52" y="82" width="40" height="8" rx="2" fill="#ddd"/>
+  <text x="64" y="112" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#9a2a2a">PDF</text>
+</svg>

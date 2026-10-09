@@ -1,0 +1,40 @@
+# Paquete para Arch Linux / CachyOS construido desde este repositorio local.
+# Uso:  cd packaging && makepkg -si
+pkgname=form-pdf-reader
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="PDF reader that fills and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)"
+# Nombres anteriores del proyecto.
+provides=('pdf-reader-editor' 'simple-pdf-reader')
+conflicts=('pdf-reader-editor' 'simple-pdf-reader')
+replaces=('pdf-reader-editor' 'simple-pdf-reader')
+arch=('x86_64')
+license=('MIT' 'BSD-3-Clause')
+depends=('gcc-libs' 'glibc' 'libxkbcommon' 'wayland' 'libx11' 'mesa' 'fontconfig' 'ttf-liberation')
+optdepends=('zenity: diálogos de alertas de los formularios' 'xdg-desktop-portal: diálogos de abrir y guardar')
+makedepends=('cargo' 'curl')
+options=('!lto' '!debug')
+source=()
+
+_root="$(realpath "$startdir/..")"
+
+build() {
+  cd "$_root"
+  scripts/descargar-pdfium.sh
+  CARGO_TARGET_DIR="$srcdir/target" cargo build --release --locked
+}
+
+package() {
+  cd "$_root"
+  install -Dm755 "$srcdir/target/release/form-pdf-reader" "$pkgdir/usr/lib/form-pdf-reader/form-pdf-reader"
+  install -Dm644 vendor/pdfium/lib/libpdfium.so "$pkgdir/usr/lib/form-pdf-reader/libpdfium.so"
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s /usr/lib/form-pdf-reader/form-pdf-reader "$pkgdir/usr/bin/form-pdf-reader"
+  install -Dm644 assets/form-pdf-reader.desktop "$pkgdir/usr/share/applications/form-pdf-reader.desktop"
+  install -Dm644 assets/form-pdf-reader.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/form-pdf-reader.svg"
+  for s in 16 24 32 48 64 128 256; do
+    install -Dm644 "assets/icons/$s/form-pdf-reader.png" "$pkgdir/usr/share/icons/hicolor/${s}x${s}/apps/form-pdf-reader.png"
+  done
+  install -Dm644 vendor/pdfium/LICENSE "$pkgdir/usr/share/licenses/$pkgname/PDFium-LICENSE"
+  cp -r vendor/pdfium/licenses "$pkgdir/usr/share/licenses/$pkgname/pdfium-third-party"
+}

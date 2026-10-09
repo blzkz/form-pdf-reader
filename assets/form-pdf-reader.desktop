@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Form PDF Reader
+GenericName=PDF reader and form filler
+GenericName[es]=Lector de PDF y formularios
+Comment=Read PDFs and fill in AcroForm and dynamic XFA forms without Adobe Reader
+Comment[es]=Lee PDF y rellena formularios AcroForm y XFA dinámicos sin Adobe Reader
+Exec=form-pdf-reader %f
+Icon=form-pdf-reader
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/pdf;
+StartupWMClass=form-pdf-reader
+Keywords=pdf;form;xfa;acroform;fill;
+Keywords[es]=pdf;formulario;xfa;acroform;rellenar;

@@ -1,0 +1,14 @@
+/target
+/dist
+/packaging/*.pkg.tar.*
+/packaging/src
+/packaging/pkg
+# Material de diagnóstico local: PDF con datos personales, muestras, la
+# descarga de PDFium y los programas de prueba en C. Las pruebas que usan
+# estos PDF se omiten si no existen.
+/diagnostico/
+# PDFium (binario de 44 MB): lo descarga scripts/descargar-pdfium.sh
+/vendor/
+# Notas internas del desarrollo (en español)
+/docs/
+/PLAN.md
