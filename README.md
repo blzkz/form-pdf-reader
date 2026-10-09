@@ -172,6 +172,7 @@ Each [GitHub release](../../releases) has ready-made packages for x86_64:
 | Fedora | `form-pdf-reader-*.x86_64.rpm` | `sudo dnf install ./form-pdf-reader-*.x86_64.rpm` |
 | Arch Linux, CachyOS | `form-pdf-reader-*-x86_64.pkg.tar.zst` | `sudo pacman -U form-pdf-reader-*-x86_64.pkg.tar.zst` |
 | Any distribution | `form-pdf-reader-*-x86_64.tar.gz` | extract it and run `./instalar.sh` |
+| Android 8+ (arm64) | `form-pdf-reader-*-android-arm64.apk` | open it on the phone and allow installing it |
 
 The binary is built on Ubuntu 22.04 (glibc 2.35), so it also runs on newer
 distributions.
@@ -229,6 +230,42 @@ Other ways to install it:
 - `scripts/empaquetar.sh` creates a self-contained tar.gz in `dist/`.
 - `scripts/appimage.sh` creates an AppImage if `appimagetool` is installed.
 
+## Android app
+
+`android/` contains a native Kotlin app that uses the same Rust core. The
+bridge between Kotlin and Rust is generated with
+[UniFFI](https://mozilla.github.io/uniffi-rs/) from `crates/ffi`. The app can:
+
+- open PDFs from the system file picker or from other apps;
+- scroll, and zoom with two fingers;
+- fill in forms, including dynamic XFA, by tapping fields and typing on the
+  on-screen keyboard;
+- save, save as, view attachments and copy the text.
+
+PDFium and its V8 engine only work from the thread that initialised them, so
+the app makes every call to the core from one dedicated thread
+(`PdfEngine.kt`). The form's dialogs block that thread, not the interface,
+while the user answers.
+
+To build it you need the Android SDK and NDK, JDK 17, Gradle, `cargo-ndk`
+and the Rust target `aarch64-linux-android`.
+
+```bash
+scripts/android/build-rust.sh
+```
+
+The script downloads PDFium for Android arm64 (checking its SHA-256),
+generates the Kotlin bindings and cross-compiles the bridge. Then build the
+APK:
+
+```bash
+gradle -p android assembleRelease
+```
+
+The `Android` workflow does the same on GitHub and attaches the APK to each
+release. The APK is signed with the debug key so it can be installed
+directly; publishing it in a store needs a real signing key.
+
 ## Tests
 
 ```bash
@@ -267,7 +304,7 @@ PDFRE_AUTOTEST="wait:30;click:300,500;type:Hello;key:Tab;shot:/tmp/a.png;quit" f
 ## Layout
 
 The repository is a Cargo workspace. The core library is independent of the
-user interface, so other front ends (for example an Android app) can reuse it.
+user interface: the desktop app and the Android app both use it.
 
 ```
 crates/core/      form-pdf-reader-core: the library (imported as form_pdf_reader)
@@ -276,10 +313,12 @@ crates/core/      form-pdf-reader-core: the library (imported as form_pdf_reader
   src/i18n.rs       translations (catalogs in locales/)
   tests/            integration test and sample PDFs
   examples/         diagnostic tools (probe, packet dump)
+crates/ffi/       form-pdf-reader-ffi: UniFFI bridge used by the Android app
 crates/desktop/   form-pdf-reader: the Linux desktop application (egui)
   src/viewer.rs     view: tiles, mouse and keyboard to PDFium, tools, layouts
   src/app.rs        application: tabs, menus, dialogs, saving, printing
   src/autotest.rs   UI test driver
+android/          Android app (Kotlin) on top of the Rust core
 assets/           icons and .desktop file
 packaging/ scripts/   packages, PDFium download, install scripts
 ```
