@@ -1,5 +1,8 @@
 [workspace]
-members = ["crates/core", "crates/desktop"]
+members = ["crates/core", "crates/desktop", "crates/ffi"]
+# `cargo build` en la raíz compila la app de escritorio; el puente de Android
+# (crates/ffi) se compila aparte con -p form-pdf-reader-ffi.
+default-members = ["crates/core", "crates/desktop"]
 resolver = "3"
 
 [workspace.package]

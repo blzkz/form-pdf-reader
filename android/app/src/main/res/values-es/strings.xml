@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Form PDF Reader</string>
+    <string name="open">Abrir</string>
+    <string name="save">Guardar</string>
+    <string name="save_as">Guardar como…</string>
+    <string name="attachments">Adjuntos del PDF</string>
+    <string name="copy_page_text">Copiar el texto de la página</string>
+    <string name="about">Acerca de</string>
+    <string name="empty_hint">Abre un PDF para leerlo o rellenar su formulario.\n\nLos formularios XFA dinámicos (Adobe LiveCycle) funcionan sin Adobe Reader.</string>
+    <string name="opening">Abriendo %1$s…</string>
+    <string name="open_error">No se pudo abrir el PDF:\n%1$s</string>
+    <string name="saved">Guardado</string>
+    <string name="save_error">No se pudo guardar:\n%1$s</string>
+    <string name="save_needs_location">Este fichero no se puede sobrescribir. Elige dónde guardarlo.</string>
+    <string name="unsaved_title">Cambios sin guardar</string>
+    <string name="unsaved_message">El documento tiene cambios que no se han guardado.</string>
+    <string name="discard">Descartar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="ok">Aceptar</string>
+    <string name="yes">Sí</string>
+    <string name="no">No</string>
+    <string name="form">Formulario</string>
+    <string name="no_attachments">Este PDF no tiene ficheros adjuntos.</string>
+    <string name="copied">Texto copiado</string>
+    <string name="no_text">Esta página no tiene texto seleccionable.</string>
+    <string name="submit_unsupported">El formulario intentó enviarse a «%1$s». El envío no está soportado: guarda el PDF y preséntalo por el cauce indicado.</string>
+    <string name="no_app">No hay ninguna app para abrir este fichero.</string>
+    <string name="xfa_info">Formulario XFA dinámico: se muestra como una sola página continua. Al guardar solo se añaden los datos rellenados; el PDF original no se modifica.</string>
+    <string name="about_text">Form PDF Reader %1$s\n\nLector de PDF que rellena y guarda formularios AcroForm y XFA dinámicos sin Adobe Reader.\n\nMotor: PDFium (Chromium) con V8 y XFA.</string>
+</resources>

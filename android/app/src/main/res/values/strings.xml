@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Form PDF Reader</string>
+    <string name="open">Open</string>
+    <string name="save">Save</string>
+    <string name="save_as">Save as…</string>
+    <string name="attachments">PDF attachments</string>
+    <string name="copy_page_text">Copy page text</string>
+    <string name="about">About</string>
+    <string name="empty_hint">Open a PDF to read it or fill in its form.\n\nDynamic XFA forms (Adobe LiveCycle) work without Adobe Reader.</string>
+    <string name="opening">Opening %1$s…</string>
+    <string name="open_error">Could not open the PDF:\n%1$s</string>
+    <string name="saved">Saved</string>
+    <string name="save_error">Could not save:\n%1$s</string>
+    <string name="save_needs_location">This file cannot be overwritten. Choose where to save it.</string>
+    <string name="unsaved_title">Unsaved changes</string>
+    <string name="unsaved_message">The document has changes that have not been saved.</string>
+    <string name="discard">Discard</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="form">Form</string>
+    <string name="no_attachments">This PDF has no attached files.</string>
+    <string name="copied">Text copied</string>
+    <string name="no_text">This page has no selectable text.</string>
+    <string name="submit_unsupported">The form tried to submit itself to “%1$s”. Submitting is not supported: save the PDF and send it through the indicated channel.</string>
+    <string name="no_app">There is no app to open this file.</string>
+    <string name="xfa_info">Dynamic XFA form: shown as one continuous page. Saving only adds the data you filled in; the original PDF is not modified.</string>
+    <string name="about_text">Form PDF Reader %1$s\n\nPDF reader that fills in and saves AcroForm and dynamic XFA forms without Adobe Reader.\n\nEngine: PDFium (Chromium) with V8 and XFA.</string>
+</resources>
