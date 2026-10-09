@@ -665,7 +665,8 @@ class MainActivity : AppCompatActivity() {
                 // Enter: the next result (Shift+Enter: the previous one).
                 if (q == searchedQuery) stepHit(if (event?.isShiftPressed == true) -1 else 1) else search(q)
             }
-            // The key release too: otherwise the focus would leave the field.
+            // Enter would move the focus to the document: keep typing here.
+            searchInput.post { searchInput.requestFocus() }
             actionId == EditorInfo.IME_ACTION_SEARCH || enterKey
         }
         searchInput.setOnKeyListener { _, keyCode, event ->
