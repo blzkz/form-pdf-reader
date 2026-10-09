@@ -1,0 +1,115 @@
+# Packages for Debian/Ubuntu (.deb), Fedora (.rpm) and Arch/CachyOS
+# (.pkg.tar.zst), built with nfpm (https://nfpm.goreleaser.com) from the
+# release binary. Used by .github/workflows/release.yml:
+#
+#   VERSION=0.1.0 MAINTAINER="Name <mail>" HOMEPAGE=https://… nfpm package -f packaging/nfpm.yaml -p deb -t dist/
+#
+# Paths are relative to the repository root.
+name: form-pdf-reader
+arch: amd64
+platform: linux
+version: ${VERSION}
+release: 1
+section: graphics
+priority: optional
+# MAINTAINER and HOMEPAGE come from the GitHub repository (see release.yml).
+maintainer: ${MAINTAINER}
+description: |
+  PDF reader that fills in and saves dynamic XFA forms without Adobe Reader.
+  Reads normal PDFs and fills in AcroForm and dynamic XFA (Adobe LiveCycle)
+  forms, running their scripts with PDFium (V8 + XFA).
+vendor: Form PDF Reader
+homepage: ${HOMEPAGE}
+license: MIT and BSD-3-Clause
+
+provides:
+  - pdf-reader-editor
+  - simple-pdf-reader
+replaces:
+  - pdf-reader-editor
+  - simple-pdf-reader
+conflicts:
+  - pdf-reader-editor
+  - simple-pdf-reader
+
+contents:
+  - src: ./target/release/form-pdf-reader
+    dst: /usr/lib/form-pdf-reader/form-pdf-reader
+    file_info: { mode: 0755 }
+  - src: ./vendor/pdfium/lib/libpdfium.so
+    dst: /usr/lib/form-pdf-reader/libpdfium.so
+    file_info: { mode: 0644 }
+  - src: /usr/lib/form-pdf-reader/form-pdf-reader
+    dst: /usr/bin/form-pdf-reader
+    type: symlink
+  - src: ./assets/form-pdf-reader.desktop
+    dst: /usr/share/applications/form-pdf-reader.desktop
+  - src: ./assets/form-pdf-reader.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/form-pdf-reader.svg
+  - src: ./assets/icons/16/form-pdf-reader.png
+    dst: /usr/share/icons/hicolor/16x16/apps/form-pdf-reader.png
+  - src: ./assets/icons/24/form-pdf-reader.png
+    dst: /usr/share/icons/hicolor/24x24/apps/form-pdf-reader.png
+  - src: ./assets/icons/32/form-pdf-reader.png
+    dst: /usr/share/icons/hicolor/32x32/apps/form-pdf-reader.png
+  - src: ./assets/icons/48/form-pdf-reader.png
+    dst: /usr/share/icons/hicolor/48x48/apps/form-pdf-reader.png
+  - src: ./assets/icons/64/form-pdf-reader.png
+    dst: /usr/share/icons/hicolor/64x64/apps/form-pdf-reader.png
+  - src: ./assets/icons/128/form-pdf-reader.png
+    dst: /usr/share/icons/hicolor/128x128/apps/form-pdf-reader.png
+  - src: ./assets/icons/256/form-pdf-reader.png
+    dst: /usr/share/icons/hicolor/256x256/apps/form-pdf-reader.png
+  - src: ./vendor/pdfium/LICENSE
+    dst: /usr/share/licenses/form-pdf-reader/PDFium-LICENSE
+  - src: ./vendor/pdfium/licenses
+    dst: /usr/share/licenses/form-pdf-reader/pdfium-third-party
+    type: tree
+
+# The binary links only glibc and PDFium; X11/Wayland/OpenGL are loaded at
+# run time, so they are listed as dependencies here.
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.35)
+      - libgcc-s1
+      - libgl1
+      - libxkbcommon0
+      - libwayland-client0
+      - libx11-6
+      - fontconfig
+      - fonts-liberation
+    recommends:
+      - zenity
+      - xdg-desktop-portal
+  rpm:
+    depends:
+      - glibc >= 2.35
+      - libgcc
+      - mesa-libGL
+      - libxkbcommon
+      - libwayland-client
+      - libX11
+      - fontconfig
+      - liberation-sans-fonts
+      - liberation-serif-fonts
+      - liberation-mono-fonts
+    recommends:
+      - zenity
+      - xdg-desktop-portal
+  archlinux:
+    depends:
+      - glibc
+      - gcc-libs
+      - mesa
+      - libxkbcommon
+      - wayland
+      - libx11
+      - fontconfig
+      - ttf-liberation
+
+rpm:
+  summary: PDF reader that fills in and saves dynamic XFA forms
+  group: Applications/Productivity
+archlinux:
+  packager: ${MAINTAINER}

@@ -5,7 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 VER=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
 NAME="form-pdf-reader-$VER-x86_64"
-cargo build --release
+# SKIP_BUILD=1 reutiliza target/release (lo usa la integración continua).
+[[ -n "${SKIP_BUILD:-}" ]] || cargo build --release
 rm -rf "dist/$NAME" && mkdir -p "dist/$NAME/lib" "dist/$NAME/licenses"
 cp target/release/form-pdf-reader "dist/$NAME/"
 cp vendor/pdfium/lib/libpdfium.so "dist/$NAME/lib/"
