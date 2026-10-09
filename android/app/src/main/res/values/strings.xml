@@ -58,4 +58,12 @@
     <string name="next_page">Next page</string>
     <string name="close_tab">Close tab</string>
     <string name="unsaved_named">“%1$s” has changes that have not been saved.</string>
+    <string name="search">Search</string>
+    <string name="search_hint">Search in the document</string>
+    <string name="search_count">%1$d of %2$d</string>
+    <string name="search_none">No results</string>
+    <string name="search_none_xfa">No results. The text of dynamic XFA forms cannot be searched.</string>
+    <string name="previous_result">Previous result</string>
+    <string name="next_result">Next result</string>
+    <string name="close_search">Close search</string>
 </resources>

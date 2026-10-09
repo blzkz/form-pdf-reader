@@ -45,6 +45,7 @@ import kotlin.math.roundToInt
 import uniffi.form_pdf_reader_ffi.InputResult
 import uniffi.form_pdf_reader_ffi.Key
 import uniffi.form_pdf_reader_ffi.PdfDocument
+import uniffi.form_pdf_reader_ffi.SearchHit
 
 /**
  * Shows the pages of a [PdfDocument] and sends taps and typing to the form.
@@ -163,6 +164,8 @@ class PdfPageView(context: Context) : View(context) {
     /** Shows [document]. Page sizes are read on the PDFium thread. */
     fun setDocument(document: PdfDocument?) {
         clearSelection()
+        hits = emptyList()
+        hitIndex = -1
         doc = document
         tiles.evictAll()
         pending.clear()
@@ -454,6 +457,7 @@ class PdfPageView(context: Context) : View(context) {
             canvas.drawRect(r.left + 2 * density, r.top + 3 * density, r.right + 2 * density, r.bottom + 3 * density, shadowPaint)
             canvas.drawRect(r, pagePaint)
             drawTiles(canvas, d, slot.page, r, s)
+            drawHits(canvas, slot.page, r, s)
         }
         drawSelection(canvas)
     }
@@ -513,6 +517,64 @@ class PdfPageView(context: Context) : View(context) {
                 tiles.put(key, Tile(bmp, s, gen))
             }
             invalidate()
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Search results
+    // -----------------------------------------------------------------------
+
+    /** Search results; rectangles in points of the page. */
+    private var hits: List<SearchHit> = emptyList()
+    private var hitIndex = -1
+    private val hitPaint = Paint().apply { color = Color.argb(0x60, 0xFF, 0xD5, 0x00) }
+    private val currentHitPaint = Paint().apply { color = Color.argb(0xA0, 0xFF, 0x8A, 0x00) }
+
+    fun setSearchHits(list: List<SearchHit>) {
+        hits = list
+        hitIndex = -1
+        invalidate()
+    }
+
+    fun clearSearch() = setSearchHits(emptyList())
+
+    /** The first result on the current page or after it. */
+    fun firstHitFromCurrentPage(): Int {
+        val page = currentPage
+        return hits.indexOfFirst { it.page.toInt() >= page }.takeIf { it >= 0 } ?: 0
+    }
+
+    /** Scrolls to result [i] and highlights it as the current one. */
+    fun showHit(i: Int) {
+        val hit = hits.getOrNull(i) ?: return
+        hitIndex = i
+        val page = hit.page.toInt()
+        if (layoutMode == Layout.SINGLE && page != single) {
+            clearSelection()
+            single = page
+            relayout(null)
+        }
+        val slot = slotOf(page) ?: return
+        val r = hit.rects.firstOrNull() ?: return
+        val top = slot.y + r.top * scale
+        val bottom = slot.y + r.bottom * scale
+        val left = slot.x + r.left * scale
+        val right = slot.x + r.right * scale
+        if (top < offsetY || bottom > offsetY + height) offsetY = top - height / 3f
+        if (left < offsetX || right > offsetX + width) offsetX = left - width / 4f
+        scroller.forceFinished(true)
+        clampOffsets()
+        invalidate()
+        notifyState()
+    }
+
+    private fun drawHits(canvas: Canvas, page: Int, r: RectF, s: Float) {
+        for ((i, hit) in hits.withIndex()) {
+            if (hit.page.toInt() != page) continue
+            val paint = if (i == hitIndex) currentHitPaint else hitPaint
+            for (rc in hit.rects) {
+                canvas.drawRect(r.left + rc.left * s, r.top + rc.top * s, r.left + rc.right * s, r.top + rc.bottom * s, paint)
+            }
         }
     }
 

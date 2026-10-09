@@ -58,4 +58,12 @@
     <string name="next_page">Página siguiente</string>
     <string name="close_tab">Cerrar pestaña</string>
     <string name="unsaved_named">«%1$s» tiene cambios que no se han guardado.</string>
+    <string name="search">Buscar</string>
+    <string name="search_hint">Buscar en el documento</string>
+    <string name="search_count">%1$d de %2$d</string>
+    <string name="search_none">Sin resultados</string>
+    <string name="search_none_xfa">Sin resultados. El texto de los formularios XFA dinámicos no se puede buscar.</string>
+    <string name="previous_result">Resultado anterior</string>
+    <string name="next_result">Resultado siguiente</string>
+    <string name="close_search">Cerrar la búsqueda</string>
 </resources>

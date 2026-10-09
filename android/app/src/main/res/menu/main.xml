@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/action_search" android:icon="@drawable/ic_search" android:title="@string/search" android:alphabeticShortcut="f" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_open" android:icon="@drawable/ic_add" android:title="@string/open" android:alphabeticShortcut="o" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_save" android:icon="@drawable/ic_save" android:title="@string/save" android:alphabeticShortcut="s" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_attachments" android:icon="@drawable/ic_attach" android:title="@string/attachments" app:showAsAction="ifRoom" />

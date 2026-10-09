@@ -113,6 +113,14 @@ pub struct PageRect {
     pub bottom: f32,
 }
 
+/// A search result: where it is on its page, in pixels of the page drawn at
+/// its size in points (multiply by the zoom).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct SearchHit {
+    pub page: u32,
+    pub rects: Vec<PageRect>,
+}
+
 /// Characters [start, start + count) of a page's text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
 pub struct TextRange {
@@ -442,6 +450,28 @@ impl PdfDocument {
         self.lock().text_range(usize_page(page), start, count)
     }
 
+    /// Every occurrence of `query` (ignoring case), in page order. The text
+    /// of dynamic XFA forms is not in the text layer and is not searched.
+    pub fn search(&self, query: String) -> Vec<SearchHit> {
+        let doc = self.lock();
+        doc.search(&query)
+            .into_iter()
+            .map(|h| {
+                let (w, h_pt) = doc.page_size(h.page);
+                let rects = h
+                    .rects
+                    .into_iter()
+                    .map(|[l, t, r, b]| {
+                        let (x1, y1) = doc.page_to_device(h.page, w as f64, h_pt as f64, l, t);
+                        let (x2, y2) = doc.page_to_device(h.page, w as f64, h_pt as f64, r, b);
+                        PageRect { left: x1.min(x2) as f32, top: y1.min(y2) as f32, right: x1.max(x2) as f32, bottom: y1.max(y2) as f32 }
+                    })
+                    .collect();
+                SearchHit { page: h.page as u32, rects }
+            })
+            .collect()
+    }
+
     /// Plain text of a page (for copying).
     pub fn page_text(&self, page: u32) -> String {
         let doc = self.lock();
@@ -502,6 +532,13 @@ mod tests {
         let c = d.text_char_at(0, 600.0, 800.0, ((r.left + r.right) / 2.0) as f64, ((r.top + r.bottom) / 2.0) as f64);
         assert!((i..i + 9).contains(&c), "carácter {c} fuera de la palabra");
         assert_eq!(d.text_char_at(0, 600.0, 800.0, 599.0, 799.0), -1);
+
+        // Search: one hit per page, inside the page.
+        let hits = d.search("zanahoria".into());
+        assert_eq!(hits.iter().map(|h| h.page).collect::<Vec<_>>(), vec![0, 1, 2]);
+        let r = hits[0].rects[0];
+        assert!(r.left < r.right && r.top < r.bottom && r.right <= s.width && r.bottom <= s.height, "{r:?}");
+        assert!(d.search("no aparece".into()).is_empty());
 
         // AcroForm: tap a text field, type, save, reopen.
         let f = PdfDocument::open(fixture("acroform.pdf"), true).unwrap();

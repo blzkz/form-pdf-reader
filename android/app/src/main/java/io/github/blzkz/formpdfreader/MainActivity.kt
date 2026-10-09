@@ -16,6 +16,8 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.webkit.MimeTypeMap
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -28,6 +30,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.isVisible
+import androidx.core.widget.doAfterTextChanged
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
@@ -58,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         var file: File? = null
         var modified = false
         var loading = true
+        var kind: DocKind? = null
     }
 
     private lateinit var toolbar: MaterialToolbar
@@ -71,6 +75,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pageLabel: MaterialButton
     private lateinit var pagePrev: View
     private lateinit var pageNext: View
+    private lateinit var searchBar: View
+    private lateinit var searchInput: EditText
+    private lateinit var searchCount: TextView
 
     private val docs = mutableListOf<DocTab>()
     private var current: DocTab? = null
@@ -120,6 +127,9 @@ class MainActivity : AppCompatActivity() {
         pageLabel = findViewById(R.id.page_label)
         pagePrev = findViewById(R.id.page_prev)
         pageNext = findViewById(R.id.page_next)
+        searchBar = findViewById(R.id.search_bar)
+        searchInput = findViewById(R.id.search_input)
+        searchCount = findViewById(R.id.search_count)
 
         setSupportActionBar(toolbar)
         toolbar.setNavigationOnClickListener { onBackPressedDispatcher.onBackPressed() }
@@ -134,6 +144,7 @@ class MainActivity : AppCompatActivity() {
             root.addView(tabs, 0)
         }
         setupTools()
+        setupSearch()
 
         tabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) {
@@ -147,7 +158,7 @@ class MainActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                confirmAll { finish() }
+                if (searchBar.isVisible) closeSearch() else confirmAll { finish() }
             }
         })
 
@@ -199,6 +210,7 @@ class MainActivity : AppCompatActivity() {
         if (old != null && old !== t) {
             old.view.visibility = View.GONE
             old.view.clearSelection()
+            old.view.clearSearch()
             old.view.trimMemory()
         }
         current = t
@@ -208,6 +220,8 @@ class MainActivity : AppCompatActivity() {
         updateTitle()
         updateTools()
         invalidateOptionsMenu()
+        // The search goes on in the tab now shown.
+        if (searchBar.isVisible && old !== t) search(searchInput.text.toString())
     }
 
     private fun selectTab(t: DocTab) {
@@ -307,11 +321,10 @@ class MainActivity : AppCompatActivity() {
                         updateTitle()
                         invalidateOptionsMenu()
                     }
-                    if (continuous) {
-                        PdfEngine.run({ d.kind() }) { k ->
-                            if (k.getOrNull() == DocKind.XFA_DYNAMIC) {
-                                Toast.makeText(this, R.string.xfa_info, Toast.LENGTH_LONG).show()
-                            }
+                    PdfEngine.run({ d.kind() }) { k ->
+                        t.kind = k.getOrNull()
+                        if (continuous && t.kind == DocKind.XFA_DYNAMIC) {
+                            Toast.makeText(this, R.string.xfa_info, Toast.LENGTH_LONG).show()
                         }
                     }
                 }.onFailure { e ->
@@ -465,7 +478,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         val has = current?.doc != null
-        for (id in intArrayOf(R.id.action_save, R.id.action_save_as, R.id.action_attachments, R.id.action_copy_text, R.id.action_go_to_page, R.id.action_view)) {
+        for (id in intArrayOf(R.id.action_search, R.id.action_save, R.id.action_save_as, R.id.action_attachments, R.id.action_copy_text, R.id.action_go_to_page, R.id.action_view)) {
             menu.findItem(id)?.isEnabled = has
         }
         // Tablets have these in the toolbar.
@@ -482,6 +495,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.action_search -> openSearch()
             R.id.action_open -> openDocument.launch(arrayOf("application/pdf"))
             R.id.action_save -> save()
             R.id.action_save_as -> saveAs()
@@ -620,10 +634,109 @@ class MainActivity : AppCompatActivity() {
             ch == 'o' -> openDocument.launch(arrayOf("application/pdf"))
             ch == 'w' -> current?.let { closeTab(it) }
             ch == 'g' -> askPage()
+            ch == 'f' -> openSearch()
             ch == 'c' -> return v?.copySelection() == true
             else -> return false
         }
         return true
+    }
+
+    // -----------------------------------------------------------------------
+    // Search
+    // -----------------------------------------------------------------------
+
+    private val runSearch = Runnable { search(searchInput.text.toString()) }
+    private var searchToken = 0
+    private var searchedQuery = ""
+    private var hitCount = 0
+    private var hitIndex = 0
+
+    private fun setupSearch() {
+        // Searches while typing, after a short pause.
+        searchInput.doAfterTextChanged {
+            main.removeCallbacks(runSearch)
+            main.postDelayed(runSearch, 350)
+        }
+        searchInput.setOnEditorActionListener { _, actionId, event ->
+            val enter = actionId == EditorInfo.IME_ACTION_SEARCH ||
+                (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
+            if (enter) {
+                main.removeCallbacks(runSearch)
+                val q = searchInput.text.toString()
+                // Enter: the next result (Shift+Enter: the previous one).
+                if (q == searchedQuery) stepHit(if (event?.isShiftPressed == true) -1 else 1) else search(q)
+            }
+            enter
+        }
+        searchInput.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_ESCAPE && event.action == KeyEvent.ACTION_DOWN) {
+                closeSearch()
+                true
+            } else {
+                false
+            }
+        }
+        findViewById<View>(R.id.search_prev).setOnClickListener { stepHit(-1) }
+        findViewById<View>(R.id.search_next).setOnClickListener { stepHit(1) }
+        findViewById<View>(R.id.search_close).setOnClickListener { closeSearch() }
+    }
+
+    private fun openSearch() {
+        if (current?.doc == null) return
+        searchBar.visibility = View.VISIBLE
+        searchInput.requestFocus()
+        searchInput.selectAll()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun closeSearch() {
+        main.removeCallbacks(runSearch)
+        searchToken++
+        searchedQuery = ""
+        hitCount = 0
+        searchCount.text = ""
+        searchBar.visibility = View.GONE
+        current?.view?.clearSearch()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(searchInput.windowToken, 0)
+        current?.view?.requestFocus()
+    }
+
+    private fun search(query: String) {
+        val t = current ?: return
+        val d = t.doc ?: return
+        searchedQuery = query
+        val token = ++searchToken
+        if (query.isBlank()) {
+            hitCount = 0
+            searchCount.text = ""
+            t.view.clearSearch()
+            return
+        }
+        PdfEngine.run({ d.search(query) }) { r ->
+            if (token != searchToken || t !== current) return@run
+            val hits = r.getOrDefault(emptyList())
+            t.view.setSearchHits(hits)
+            hitCount = hits.size
+            if (hits.isEmpty()) {
+                searchCount.setText(R.string.search_none)
+                if (t.kind == DocKind.XFA_DYNAMIC) Toast.makeText(this, R.string.search_none_xfa, Toast.LENGTH_LONG).show()
+            } else {
+                showHit(t.view.firstHitFromCurrentPage())
+            }
+        }
+    }
+
+    private fun showHit(i: Int) {
+        hitIndex = i
+        current?.view?.showHit(i)
+        searchCount.text = getString(R.string.search_count, i + 1, hitCount)
+    }
+
+    private fun stepHit(delta: Int) {
+        if (hitCount == 0) return
+        showHit((hitIndex + delta).mod(hitCount))
     }
 
     // -----------------------------------------------------------------------
@@ -730,6 +843,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         main.removeCallbacks(hidePageChip)
+        main.removeCallbacks(runSearch)
         for (t in docs) {
             t.view.setDocument(null)
             release(t)
