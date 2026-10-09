@@ -655,14 +655,14 @@ class PdfPageView(context: Context) : View(context) {
         if (e.isFromSource(InputDevice.SOURCE_CLASS_POINTER) && e.actionMasked == MotionEvent.ACTION_SCROLL) {
             val v = e.getAxisValue(MotionEvent.AXIS_VSCROLL)
             val h = e.getAxisValue(MotionEvent.AXIS_HSCROLL)
-            if (e.isCtrlPressed) {
+            if ((e.metaState and KeyEvent.META_CTRL_ON) != 0) {
                 if (v != 0f) zoomTo(scale * 1.1f.pow(v), e.x, e.y)
                 return true
             }
             val step = 64 * density
             var dx = h * step
             var dy = -v * step
-            if (e.isShiftPressed) {
+            if ((e.metaState and KeyEvent.META_SHIFT_ON) != 0) {
                 dx = -v * step
                 dy = 0f
             }
