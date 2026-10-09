@@ -7,7 +7,6 @@ import androidx.appcompat.app.AppCompatDelegate
 object Prefs {
     private const val THEME = "theme"
     private const val CONTINUOUS_XFA = "continuous_xfa"
-    private const val VIEW_LAYOUT = "view_layout"
 
     private fun prefs(c: Context) = c.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
@@ -25,13 +24,5 @@ object Prefs {
 
     fun setContinuousXfa(c: Context, value: Boolean) {
         prefs(c).edit().putBoolean(CONTINUOUS_XFA, value).apply()
-    }
-
-    /** Page layout of the viewer (the last one chosen). */
-    fun viewLayout(c: Context): PdfPageView.Layout =
-        runCatching { PdfPageView.Layout.valueOf(prefs(c).getString(VIEW_LAYOUT, null)!!) }.getOrDefault(PdfPageView.Layout.CONTINUOUS)
-
-    fun setViewLayout(c: Context, layout: PdfPageView.Layout) {
-        prefs(c).edit().putString(VIEW_LAYOUT, layout.name).apply()
     }
 }

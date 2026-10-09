@@ -174,10 +174,7 @@ class MainActivity : AppCompatActivity() {
             selectTab(it)
             return
         }
-        val view = PdfPageView(this).apply {
-            visibility = View.GONE
-            setLayout(Prefs.viewLayout(this@MainActivity))
-        }
+        val view = PdfPageView(this).apply { visibility = View.GONE }
         val t = DocTab(view, item)
         view.onInput = { r -> onFormInput(t, r) }
         view.onStateChanged = {
@@ -523,7 +520,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun setLayout(mode: PdfPageView.Layout) {
         current?.view?.setLayout(mode)
-        Prefs.setViewLayout(this, mode)
         updateTools()
         invalidateOptionsMenu()
     }

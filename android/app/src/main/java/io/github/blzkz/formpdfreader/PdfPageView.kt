@@ -3,6 +3,7 @@ package io.github.blzkz.formpdfreader
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -100,8 +101,11 @@ class PdfPageView(context: Context) : View(context) {
     var fit = Fit.WIDTH
         private set
 
-    /** The fit follows the orientation until the user zooms or chooses one. */
-    private var autoFit = true
+    /**
+     * The layout is chosen when the document is first shown: two pages side
+     * by side in landscape (if it has more than one), otherwise continuous.
+     */
+    private var initialLayoutPending = true
 
     /** Pixels per PDF point. */
     private var scale = 1f
@@ -188,6 +192,7 @@ class PdfPageView(context: Context) : View(context) {
             r.onSuccess {
                 pages = it
                 single = single.coerceIn(0, max(0, pages.size - 1))
+                if (initialLayoutPending && width > 0) chooseInitialLayout()
                 relayout(null)
                 redraw()
                 notifyState()
@@ -262,9 +267,15 @@ class PdfPageView(context: Context) : View(context) {
         return if (best == Float.MAX_VALUE) scale else best.coerceIn(minScale, maxScale)
     }
 
-    /** On a tablet held horizontally, the whole page; otherwise its width. */
-    private fun defaultFit(): Fit =
-        if (resources.configuration.smallestScreenWidthDp >= 600 && width > height) Fit.PAGE else Fit.WIDTH
+    private fun chooseInitialLayout() {
+        initialLayoutPending = false
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        layoutMode = if (landscape && pages.size > 1) Layout.TWO_PAGES else Layout.CONTINUOUS
+        single = 0
+        fit = Fit.WIDTH
+        offsetX = 0f
+        offsetY = 0f
+    }
 
     /** Places the pages; [anchor] keeps a point of a page in place. */
     private fun relayout(anchor: Anchor?) {
@@ -272,7 +283,6 @@ class PdfPageView(context: Context) : View(context) {
             slots = emptyList()
             return
         }
-        if (autoFit) fit = defaultFit()
         if (fit != Fit.NONE) scale = fitScale(fit)
         val rows = rows()
         val rowWidths = rows.map { row -> row.sumOf { (pages[it].widthPt * scale).toDouble() }.toFloat() + gap * (row.size - 1) }
@@ -329,6 +339,7 @@ class PdfPageView(context: Context) : View(context) {
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        if (initialLayoutPending && pages.isNotEmpty()) chooseInitialLayout()
         // After a rotation, the line at the top stays at the top.
         val a = if (oldw > 0) anchorAt(oldw / 2f, 0f, w / 2f, 0f) else null
         relayout(a)
@@ -345,6 +356,7 @@ class PdfPageView(context: Context) : View(context) {
     // -----------------------------------------------------------------------
 
     fun setLayout(mode: Layout) {
+        initialLayoutPending = false
         if (mode == layoutMode) return
         val page = currentPage
         layoutMode = mode
@@ -354,7 +366,6 @@ class PdfPageView(context: Context) : View(context) {
     }
 
     fun setFitMode(f: Fit) {
-        autoFit = false
         fit = f
         relayout(anchorAt(width / 2f, 0f))
         invalidate()
@@ -364,7 +375,6 @@ class PdfPageView(context: Context) : View(context) {
     /** Zooms keeping the point (vx, vy) of the view in place. */
     fun zoomTo(newScale: Float, vx: Float = width / 2f, vy: Float = height / 2f) {
         val a = anchorAt(vx, vy)
-        autoFit = false
         fit = Fit.NONE
         scale = newScale.coerceIn(minScale, maxScale)
         relayout(a)
@@ -554,8 +564,7 @@ class PdfPageView(context: Context) : View(context) {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             // Keep the point under the fingers in place.
             val a = anchorAt(detector.focusX, detector.focusY)
-            autoFit = false
-            fit = Fit.NONE
+                fit = Fit.NONE
             scale = (scale * detector.scaleFactor).coerceIn(minScale, maxScale)
             relayout(a)
             actionMode?.invalidateContentRect()
@@ -574,7 +583,7 @@ class PdfPageView(context: Context) : View(context) {
     private var fingerDown = false
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.isFromSource(InputDevice.SOURCE_MOUSE)) return onMouseEvent(event)
+        if (event.isFromSource(InputDevice.SOURCE_MOUSE) && !isTouchpadGesture(event)) return onMouseEvent(event)
         fingerDown = event.actionMasked != MotionEvent.ACTION_UP && event.actionMasked != MotionEvent.ACTION_CANCEL
         // Dragging a selection handle (or extending the selection after a long press).
         if (dragging != null) {
@@ -607,6 +616,19 @@ class PdfPageView(context: Context) : View(context) {
     // -----------------------------------------------------------------------
     // Mouse and touchpad
     // -----------------------------------------------------------------------
+
+    /**
+     * Two-finger scroll and pinch on a touchpad: Android sends them as
+     * fingers on the screen (from the mouse source), so they scroll and zoom
+     * like touch gestures.
+     */
+    private fun isTouchpadGesture(e: MotionEvent): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val c = e.classification
+            if (c == MotionEvent.CLASSIFICATION_TWO_FINGER_SWIPE || c == MotionEvent.CLASSIFICATION_PINCH) return true
+        }
+        return e.pointerCount > 1
+    }
 
     private var mouseDown: PointF? = null
     private var mouseSelecting = false
