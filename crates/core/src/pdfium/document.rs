@@ -1152,6 +1152,32 @@ impl Document {
         .unwrap_or_default()
     }
 
+    /// Palabra que contiene el carácter `ch` de una página: (inicio, número
+    /// de caracteres). Un espacio o un signo de puntuación es su propia
+    /// "palabra".
+    pub fn text_word(&self, idx: usize, ch: i32) -> (i32, i32) {
+        self.with_text_page(idx, |tp| unsafe {
+            let n = sys::FPDFText_CountChars(tp);
+            if ch < 0 || ch >= n {
+                return (ch.max(0), 0);
+            }
+            let is_word = |i: i32| char::from_u32(sys::FPDFText_GetUnicode(tp, i)).is_some_and(|c| c.is_alphanumeric() || c == '_');
+            if !is_word(ch) {
+                return (ch, 1);
+            }
+            let mut start = ch;
+            while start > 0 && is_word(start - 1) {
+                start -= 1;
+            }
+            let mut end = ch + 1;
+            while end < n && is_word(end) {
+                end += 1;
+            }
+            (start, end - start)
+        })
+        .unwrap_or((ch.max(0), 0))
+    }
+
     /// Texto de los caracteres [start, start + count) de una página.
     pub fn text_range(&self, idx: usize, start: i32, count: i32) -> String {
         if count <= 0 {

@@ -20,11 +20,14 @@
             </intent-filter>
         </activity>
 
-        <!-- Viewer. PDF attachments open it in a new task, like tabs. -->
+        <!-- Viewer: the open documents as tabs. Only one: PDFs opened from
+             other apps are added as tabs. Keeps the tabs when the device
+             rotates, changes theme or attaches a keyboard. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|smallestScreenSize"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|smallestScreenSize|uiMode|navigation|density"
             android:windowSoftInputMode="adjustResize">
             <!-- Open PDFs from other apps (file managers, downloads, mail). -->
             <intent-filter>

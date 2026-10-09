@@ -17,17 +17,24 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.navigation.NavigationBarView
+import com.google.android.material.navigationrail.NavigationRailView
 import java.io.File
 
 /**
  * Start screen: recently opened documents (Home) and the settings, with a
- * bottom navigation bar. Documents are opened with the system picker, which
+ * bottom navigation bar (a side rail on tablets). Documents are opened with the system picker, which
  * needs no storage permission; the picker's grant is kept for the recents.
  */
 class HomeActivity : AppCompatActivity() {
 
     private lateinit var toolbar: MaterialToolbar
     private lateinit var bottomNav: BottomNavigationView
+    private lateinit var rail: NavigationRailView
+
+    /** The navigation in use: the rail on tablets, the bottom bar on phones. */
+    private lateinit var nav: NavigationBarView
+    private var isTablet = false
     private lateinit var homeView: View
     private lateinit var settingsView: View
     private lateinit var fab: View
@@ -38,7 +45,7 @@ class HomeActivity : AppCompatActivity() {
 
     private val backToHome = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() {
-            bottomNav.selectedItemId = R.id.nav_home
+            nav.selectedItemId = R.id.nav_home
         }
     }
 
@@ -53,30 +60,40 @@ class HomeActivity : AppCompatActivity() {
 
         toolbar = findViewById(R.id.toolbar)
         bottomNav = findViewById(R.id.bottom_nav)
+        rail = findViewById(R.id.nav_rail)
         homeView = findViewById(R.id.home_view)
         settingsView = findViewById(R.id.settings_view)
         fab = findViewById(R.id.fab_open)
         recents = findViewById(R.id.recents)
         recentsEmpty = findViewById(R.id.recents_empty)
 
-        applySystemInsets(findViewById(R.id.root), bottomNav)
+        isTablet = resources.configuration.smallestScreenWidthDp >= 600
+        if (isTablet) {
+            rail.visibility = View.VISIBLE
+            bottomNav.visibility = View.GONE
+        }
+        nav = if (isTablet) rail else bottomNav
+        applySystemInsets(findViewById(R.id.root), if (isTablet) null else bottomNav)
 
-        // As many ~130 dp columns as fit.
-        val widthDp = resources.configuration.screenWidthDp
-        recents.layoutManager = GridLayoutManager(this, maxOf(2, widthDp / 130))
+        // As many columns as fit.
+        val columnDp = resources.getDimension(R.dimen.card_column_width) / resources.displayMetrics.density
+        val widthDp = resources.configuration.screenWidthDp - if (isTablet) 80 else 0
+        recents.layoutManager = GridLayoutManager(this, maxOf(2, (widthDp / columnDp).toInt()))
         recents.adapter = adapter
 
-        fab.setOnClickListener { openDocument.launch(arrayOf("application/pdf")) }
+        val open = View.OnClickListener { openDocument.launch(arrayOf("application/pdf")) }
+        fab.setOnClickListener(open)
+        rail.headerView?.findViewById<View>(R.id.rail_fab)?.setOnClickListener(open)
 
         setupSettings()
 
         onBackPressedDispatcher.addCallback(this, backToHome)
-        bottomNav.setOnItemSelectedListener { item ->
+        nav.setOnItemSelectedListener { item ->
             showTab(item.itemId)
             true
         }
         val tab = savedInstanceState?.getInt(KEY_TAB) ?: R.id.nav_home
-        bottomNav.selectedItemId = tab
+        nav.selectedItemId = tab
         showTab(tab)
     }
 
@@ -88,14 +105,15 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putInt(KEY_TAB, bottomNav.selectedItemId)
+        outState.putInt(KEY_TAB, nav.selectedItemId)
     }
 
     private fun showTab(id: Int) {
         val home = id == R.id.nav_home
         homeView.isVisible = home
         settingsView.isVisible = !home
-        fab.isVisible = home
+        // Tablets have "Open PDF" on the rail.
+        fab.isVisible = home && !isTablet
         toolbar.title = getString(if (home) R.string.app_name else R.string.nav_settings)
         backToHome.isEnabled = !home
     }

@@ -10,7 +10,7 @@
     <com.google.android.material.card.MaterialCardView
         style="?attr/materialCardViewElevatedStyle"
         android:layout_width="match_parent"
-        android:layout_height="160dp"
+        android:layout_height="@dimen/card_thumb_height"
         app:cardBackgroundColor="@color/thumb_background"
         app:cardCornerRadius="12dp">
 

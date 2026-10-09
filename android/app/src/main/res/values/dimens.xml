@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Recent documents grid. -->
+    <dimen name="card_column_width">130dp</dimen>
+    <dimen name="card_thumb_height">160dp</dimen>
+</resources>

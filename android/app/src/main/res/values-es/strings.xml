@@ -13,7 +13,6 @@
     <string name="save_error">No se pudo guardar:\n%1$s</string>
     <string name="save_needs_location">Este fichero no se puede sobrescribir. Elige dónde guardarlo.</string>
     <string name="unsaved_title">Cambios sin guardar</string>
-    <string name="unsaved_message">El documento tiene cambios que no se han guardado.</string>
     <string name="discard">Descartar</string>
     <string name="cancel">Cancelar</string>
     <string name="ok">Aceptar</string>
@@ -42,4 +41,21 @@
     <string name="forms">Formularios</string>
     <string name="continuous_xfa">Formularios XFA dinámicos en una página</string>
     <string name="continuous_xfa_help">Los muestra como una sola página continua, sin saltos de página, como en la versión de escritorio. Se aplica a los documentos que abras a partir de ahora.</string>
+    <string name="view">Vista</string>
+    <string name="view_continuous">Continua</string>
+    <string name="view_single">Una página</string>
+    <string name="view_two">Dos páginas</string>
+    <string name="zoom">Zoom</string>
+    <string name="zoom_in">Ampliar</string>
+    <string name="zoom_out">Reducir</string>
+    <string name="fit_width">Ajustar al ancho</string>
+    <string name="fit_page">Ajustar a la página</string>
+    <string name="zoom_percent">%1$d %%</string>
+    <string name="go_to_page">Ir a la página</string>
+    <string name="go_to_page_hint">Página (1–%1$d)</string>
+    <string name="page_of">%1$d / %2$d</string>
+    <string name="previous_page">Página anterior</string>
+    <string name="next_page">Página siguiente</string>
+    <string name="close_tab">Cerrar pestaña</string>
+    <string name="unsaved_named">«%1$s» tiene cambios que no se han guardado.</string>
 </resources>

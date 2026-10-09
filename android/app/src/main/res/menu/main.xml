@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <item android:id="@+id/action_save" android:icon="@drawable/ic_save" android:title="@string/save" app:showAsAction="ifRoom" />
+    <item android:id="@+id/action_open" android:icon="@drawable/ic_add" android:title="@string/open" android:alphabeticShortcut="o" app:showAsAction="ifRoom" />
+    <item android:id="@+id/action_save" android:icon="@drawable/ic_save" android:title="@string/save" android:alphabeticShortcut="s" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_attachments" android:icon="@drawable/ic_attach" android:title="@string/attachments" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_save_as" android:title="@string/save_as" app:showAsAction="never" />
-    <item android:id="@+id/action_open" android:title="@string/open" app:showAsAction="never" />
+    <item android:id="@+id/action_view" android:title="@string/view" app:showAsAction="never">
+        <menu>
+            <group android:checkableBehavior="single">
+                <item android:id="@+id/view_continuous" android:title="@string/view_continuous" />
+                <item android:id="@+id/view_single" android:title="@string/view_single" />
+                <item android:id="@+id/view_two" android:title="@string/view_two" />
+            </group>
+        </menu>
+    </item>
+    <item android:id="@+id/action_go_to_page" android:title="@string/go_to_page" app:showAsAction="never" />
     <item android:id="@+id/action_copy_text" android:title="@string/copy_page_text" app:showAsAction="never" />
+    <item android:id="@+id/action_close_tab" android:title="@string/close_tab" app:showAsAction="never" />
 </menu>

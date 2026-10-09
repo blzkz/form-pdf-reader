@@ -13,7 +13,6 @@
     <string name="save_error">Could not save:\n%1$s</string>
     <string name="save_needs_location">This file cannot be overwritten. Choose where to save it.</string>
     <string name="unsaved_title">Unsaved changes</string>
-    <string name="unsaved_message">The document has changes that have not been saved.</string>
     <string name="discard">Discard</string>
     <string name="cancel">Cancel</string>
     <string name="ok">OK</string>
@@ -42,4 +41,21 @@
     <string name="forms">Forms</string>
     <string name="continuous_xfa">Dynamic XFA forms as one page</string>
     <string name="continuous_xfa_help">Shows them as one continuous page, without page breaks, as on the desktop version. Applies to documents opened from now on.</string>
+    <string name="view">View</string>
+    <string name="view_continuous">Continuous</string>
+    <string name="view_single">Single page</string>
+    <string name="view_two">Two pages</string>
+    <string name="zoom">Zoom</string>
+    <string name="zoom_in">Zoom in</string>
+    <string name="zoom_out">Zoom out</string>
+    <string name="fit_width">Fit width</string>
+    <string name="fit_page">Fit page</string>
+    <string name="zoom_percent">%1$d %%</string>
+    <string name="go_to_page">Go to page</string>
+    <string name="go_to_page_hint">Page (1–%1$d)</string>
+    <string name="page_of">%1$d / %2$d</string>
+    <string name="previous_page">Previous page</string>
+    <string name="next_page">Next page</string>
+    <string name="close_tab">Close tab</string>
+    <string name="unsaved_named">“%1$s” has changes that have not been saved.</string>
 </resources>
