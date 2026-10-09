@@ -224,6 +224,13 @@ bridge between Kotlin and Rust is generated with
 - scroll, and zoom with two fingers;
 - fill in forms, including dynamic XFA, by tapping fields and typing on the
   on-screen keyboard;
+- keep several documents open as tabs (PDF attachments open in a new tab);
+- show pages continuously, one at a time or two side by side, with zoom and
+  page controls in the toolbar on tablets;
+- select text with a long press (and the handles) or by dragging with a
+  mouse, and copy it;
+- use a hardware keyboard and mouse: Ctrl+S, Ctrl+O, Ctrl+W, Ctrl+Tab,
+  Ctrl+plus/minus, Page Up/Down, the wheel to scroll and Ctrl+wheel to zoom;
 - save, save as, view attachments and copy the text;
 - follow the device's light or dark theme (or a fixed one, in Settings).
 
