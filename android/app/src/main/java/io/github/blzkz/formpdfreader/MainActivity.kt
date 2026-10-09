@@ -1,41 +1,49 @@
 package io.github.blzkz.formpdfreader
 
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.webkit.MimeTypeMap
 import android.widget.FrameLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.File
+import java.io.FileInputStream
 import uniffi.form_pdf_reader_ffi.DocKind
 import uniffi.form_pdf_reader_ffi.InputResult
 import uniffi.form_pdf_reader_ffi.PdfDocument
 
 /**
- * One document per activity. PDF attachments open in a new task, so they
- * show up as separate entries in the recent apps list (like tabs).
+ * The viewer: one document per activity. It opens a file on the device
+ * ([EXTRA_PATH]) or a content URI (the system picker, other apps). PDF
+ * attachments open in a new task, so they show up as separate entries in
+ * the recent apps list (like tabs).
  */
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var toolbar: MaterialToolbar
+    private lateinit var progress: View
     private lateinit var pageView: PdfPageView
-    private lateinit var emptyView: TextView
 
     private var doc: PdfDocument? = null
-    private var docUri: Uri? = null
-    private var docName = ""
+    /** What is shown: where it is saved back to. */
+    private var current: DocItem? = null
+    /** The copy in the cache that PDFium reads. */
+    private var docFile: File? = null
     private var modified = false
         set(value) {
             field = value
@@ -46,36 +54,34 @@ class MainActivity : AppCompatActivity() {
     private var attachmentCallback: ((String?) -> Unit)? = null
 
     private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) confirmDiscard { open(uri) }
+        if (uri != null) confirmDiscard { open(itemFor(uri)) }
     }
 
     private val createDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        if (uri != null) saveTo(uri, afterSave = null)
+        if (uri != null) saveTo(itemFor(uri), afterSave = null)
     }
 
     private val pickAttachmentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val cb = attachmentCallback
         attachmentCallback = null
-        cb?.invoke(uri?.let { copyToCache(it, "picked") }?.absolutePath)
+        val path = uri?.let { runCatching { copyToCache(itemFor(it), "picked") }.getOrNull() }?.absolutePath
+        cb?.invoke(path)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         PdfEngine.start(applicationContext)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        setContentView(R.layout.activity_viewer)
+
+        toolbar = findViewById(R.id.toolbar)
+        progress = findViewById(R.id.progress)
+        setSupportActionBar(toolbar)
+        toolbar.setNavigationOnClickListener { onBackPressedDispatcher.onBackPressed() }
+        applySystemInsets(findViewById(R.id.root))
 
         pageView = PdfPageView(this).apply { onInput = ::onFormInput }
-        emptyView = TextView(this).apply {
-            setText(R.string.empty_hint)
-            gravity = Gravity.CENTER
-            textSize = 16f
-            val pad = (24 * resources.displayMetrics.density).toInt()
-            setPadding(pad, pad, pad, pad)
-            setOnClickListener { openDocument.launch(arrayOf("application/pdf")) }
-        }
-        setContentView(FrameLayout(this).apply {
-            addView(pageView)
-            addView(emptyView)
-        })
+        findViewById<FrameLayout>(R.id.page_container).addView(pageView)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -83,12 +89,17 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        intent?.data?.let { open(it) } ?: updateTitle()
+        val item = itemFor(intent)
+        if (item == null) {
+            finish()
+            return
+        }
+        open(item)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.data?.let { uri -> confirmDiscard { open(uri) } }
+        itemFor(intent)?.let { item -> confirmDiscard { open(item) } }
     }
 
     // -----------------------------------------------------------------------
@@ -115,10 +126,6 @@ class MainActivity : AppCompatActivity() {
             R.id.action_save_as -> saveAs()
             R.id.action_attachments -> showAttachments()
             R.id.action_copy_text -> copyPageText()
-            R.id.action_about -> AlertDialog.Builder(this)
-                .setMessage(getString(R.string.about_text, appVersion()))
-                .setPositiveButton(R.string.ok, null)
-                .show()
             else -> return super.onOptionsItemSelected(item)
         }
         return true
@@ -128,58 +135,100 @@ class MainActivity : AppCompatActivity() {
     // Opening
     // -----------------------------------------------------------------------
 
-    private fun open(uri: Uri) {
-        val name = displayName(uri)
-        title = getString(R.string.opening, name)
-        val file = try {
-            copyToCache(uri, "docs")
-        } catch (e: Exception) {
-            showError(getString(R.string.open_error, e.message ?: e.toString()))
-            return
+    private fun itemFor(intent: Intent): DocItem? {
+        intent.getStringExtra(EXTRA_PATH)?.let { return DocItem(File(it).name, path = it) }
+        val uri = intent.data ?: return null
+        return itemFor(uri)
+    }
+
+    private fun itemFor(uri: Uri): DocItem {
+        if (uri.scheme == "file") {
+            val path = uri.path.orEmpty()
+            return DocItem(File(path).name, path = path)
         }
+        return DocItem(displayName(uri), uri = uri.toString())
+    }
+
+    private fun open(item: DocItem) {
+        title = getString(R.string.opening, item.name)
+        progress.visibility = View.VISIBLE
+        val continuous = Prefs.continuousXfa(this)
         val handler = AndroidFormHandler(this)
-        PdfEngine.run({
-            PdfDocument.open(file.absolutePath, true).also { it.setHandler(handler) }
-        }) { r ->
-            r.onSuccess { d ->
-                // The previous document is freed on the PDFium thread.
-                doc?.let { old -> PdfEngine.run({ old.destroy() }) { } }
-                doc = d
-                docUri = uri
-                docName = name
-                modified = false
-                emptyView.visibility = android.view.View.GONE
-                pageView.setDocument(d)
-                invalidateOptionsMenu()
-                PdfEngine.run({ d.kind() }) { k ->
-                    if (k.getOrNull() == DocKind.XFA_DYNAMIC) {
-                        Toast.makeText(this, R.string.xfa_info, Toast.LENGTH_LONG).show()
+        // The core works with files: the document is copied to the cache.
+        Io.run({ copyToCache(item, "docs/${System.nanoTime()}") }) { copied ->
+            val file = copied.getOrElse { e -> return@run openFailed(item, e) }
+            PdfEngine.run({
+                PdfDocument.open(file.absolutePath, continuous).also { it.setHandler(handler) }
+            }) { r ->
+                progress.visibility = View.GONE
+                r.onSuccess { d ->
+                    // The previous document is freed on the PDFium thread.
+                    release()
+                    doc = d
+                    docFile = file
+                    current = item
+                    modified = false
+                    pageView.setDocument(d)
+                    invalidateOptionsMenu()
+                    remember(item, file.length())
+                    if (continuous) {
+                        PdfEngine.run({ d.kind() }) { k ->
+                            if (k.getOrNull() == DocKind.XFA_DYNAMIC) {
+                                Toast.makeText(this, R.string.xfa_info, Toast.LENGTH_LONG).show()
+                            }
+                        }
                     }
+                }.onFailure { e ->
+                    file.parentFile?.deleteRecursively()
+                    openFailed(item, e)
                 }
-            }.onFailure { e ->
-                updateTitle()
-                showError(getString(R.string.open_error, e.message ?: e.toString()))
             }
         }
     }
 
-    /** Copies a content URI into the cache: the core works with files. */
-    private fun copyToCache(uri: Uri, dir: String): File {
-        val folder = File(cacheDir, dir).apply { mkdirs() }
-        val out = File(folder, displayName(uri).replace('/', '_'))
-        contentResolver.openInputStream(uri).use { input ->
-            requireNotNull(input) { uri.toString() }
-            out.outputStream().use { input.copyTo(it) }
+    private fun openFailed(item: DocItem, e: Throwable) {
+        progress.visibility = View.GONE
+        updateTitle()
+        // A recent document that is gone or no longer accessible.
+        if (e is SecurityException || e is java.io.FileNotFoundException) Recents.remove(this, item.key)
+        MaterialAlertDialogBuilder(this)
+            .setMessage(getString(R.string.open_error, e.message ?: e.toString()))
+            .setPositiveButton(R.string.ok, null)
+            .setOnDismissListener { if (doc == null) finish() }
+            .show()
+    }
+
+    /** Adds the document to the start screen's recents. */
+    private fun remember(item: DocItem, size: Long) {
+        val uri = item.contentUri
+        if (uri != null) {
+            // Attachments extracted to the cache are not worth remembering.
+            if (uri.authority == "$packageName.files") return
+            // Keeps access to documents chosen with the system picker.
+            val rw = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            runCatching { contentResolver.takePersistableUriPermission(uri, rw) }
+                .recoverCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         }
+        Recents.add(this, item.copy(size = size, time = System.currentTimeMillis()))
+    }
+
+    /** Copies a document into the cache: the core works with files. */
+    private fun copyToCache(item: DocItem, dir: String): File {
+        val folder = File(cacheDir, dir).apply { mkdirs() }
+        val out = File(folder, item.name.replace('/', '_'))
+        val input = if (item.path != null) FileInputStream(item.path) else contentResolver.openInputStream(requireNotNull(item.contentUri))
+        requireNotNull(input) { item.key }.use { i -> out.outputStream().use { i.copyTo(it) } }
         return out
     }
 
     private fun displayName(uri: Uri): String {
         if (uri.scheme == "content") {
-            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                if (c.moveToFirst()) {
-                    val name = c.getString(0)
-                    if (!name.isNullOrBlank()) return name
+            runCatching {
+                contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val name = c.getString(0)
+                        if (!name.isNullOrBlank()) return name
+                    }
                 }
             }
         }
@@ -191,36 +240,42 @@ class MainActivity : AppCompatActivity() {
     // -----------------------------------------------------------------------
 
     private fun save(afterSave: (() -> Unit)? = null) {
-        val uri = docUri
-        if (uri == null || !canWrite(uri)) {
+        val item = current ?: return
+        val uri = item.contentUri
+        if (item.path == null && (uri == null || !canWrite(uri))) {
             Toast.makeText(this, R.string.save_needs_location, Toast.LENGTH_SHORT).show()
             saveAs()
             return
         }
-        saveTo(uri, afterSave)
+        saveTo(item, afterSave)
     }
 
     private fun saveAs() {
-        createDocument.launch(docName.ifBlank { "document.pdf" })
+        createDocument.launch(current?.name ?: "document.pdf")
     }
 
     private fun canWrite(uri: Uri): Boolean =
         uri.scheme == "content" &&
-            checkCallingOrSelfUriPermission(uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            checkCallingOrSelfUriPermission(uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == PackageManager.PERMISSION_GRANTED
 
-    private fun saveTo(uri: Uri, afterSave: (() -> Unit)?) {
+    private fun saveTo(target: DocItem, afterSave: (() -> Unit)?) {
         val d = doc ?: return
         pageView.commitField {
             PdfEngine.run({ d.saveBytes() }) { r ->
                 r.onSuccess { bytes ->
                     try {
-                        contentResolver.openOutputStream(uri, "wt").use { out ->
-                            requireNotNull(out) { uri.toString() }
-                            out.write(bytes)
+                        if (target.path != null) {
+                            File(target.path).writeBytes(bytes)
+                        } else {
+                            contentResolver.openOutputStream(requireNotNull(target.contentUri), "wt").use { out ->
+                                requireNotNull(out) { target.key }
+                                out.write(bytes)
+                            }
                         }
-                        docUri = uri
-                        docName = displayName(uri)
+                        current = target
                         modified = false
+                        Thumbnails.forget(target.key)
+                        remember(target, bytes.size.toLong())
                         Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
                         afterSave?.invoke()
                     } catch (e: Exception) {
@@ -234,7 +289,7 @@ class MainActivity : AppCompatActivity() {
     /** Asks before losing unsaved changes. */
     private fun confirmDiscard(then: () -> Unit) {
         if (!modified) return then()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle(R.string.unsaved_title)
             .setMessage(R.string.unsaved_message)
             .setPositiveButton(R.string.save) { _, _ -> save(afterSave = then) }
@@ -258,9 +313,7 @@ class MainActivity : AppCompatActivity() {
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u))) }
             }
         }
-        r.submit?.let { url ->
-            AlertDialog.Builder(this).setMessage(getString(R.string.submit_unsupported, url)).setPositiveButton(R.string.ok, null).show()
-        }
+        r.submit?.let { url -> showError(getString(R.string.submit_unsupported, url)) }
     }
 
     /** Called by [AndroidFormHandler] when the form asks for a file to attach. */
@@ -278,7 +331,7 @@ class MainActivity : AppCompatActivity() {
                 return@run
             }
             val labels = items.map { "${it.fileName}  (${it.size.toLong() / 1024} KB)" }.toTypedArray()
-            AlertDialog.Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.attachments)
                 .setItems(labels) { _, which ->
                     val a = items[which]
@@ -324,7 +377,7 @@ class MainActivity : AppCompatActivity() {
                 return@run
             }
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText(docName, text))
+            cm.setPrimaryClip(ClipData.newPlainText(current?.name, text))
             Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show()
         }
     }
@@ -332,26 +385,44 @@ class MainActivity : AppCompatActivity() {
     // -----------------------------------------------------------------------
 
     private fun updateTitle() {
+        val name = current?.name
         title = when {
-            doc == null -> getString(R.string.app_name)
-            modified -> "● $docName"
-            else -> docName
+            name == null -> getString(R.string.app_name)
+            modified -> "● $name"
+            else -> name
         }
     }
 
     private fun showError(message: String) {
-        AlertDialog.Builder(this).setMessage(message).setPositiveButton(R.string.ok, null).show()
+        MaterialAlertDialogBuilder(this).setMessage(message).setPositiveButton(R.string.ok, null).show()
     }
 
-    private fun appVersion(): String =
-        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: ""
+    /** Frees the document and its copy on the PDFium thread. */
+    private fun release() {
+        val d = doc ?: return
+        val file = docFile
+        doc = null
+        docFile = null
+        PdfEngine.run({ d.destroy() }) { file?.parentFile?.deleteRecursively() }
+    }
 
     override fun onDestroy() {
         super.onDestroy()
-        val d = doc
-        doc = null
-        pageView.setDocument(null)
-        // Free the document on the PDFium thread.
-        if (d != null) PdfEngine.run({ d.destroy() }) { }
+        if (::pageView.isInitialized) pageView.setDocument(null)
+        release()
+    }
+
+    companion object {
+        /** Path of a file on the device to open. */
+        const val EXTRA_PATH = "io.github.blzkz.formpdfreader.PATH"
+
+        fun intentFor(c: Context, item: DocItem): Intent =
+            if (item.path != null) {
+                Intent(c, MainActivity::class.java).putExtra(EXTRA_PATH, item.path)
+            } else {
+                intentFor(c, requireNotNull(item.contentUri))
+            }
+
+        fun intentFor(c: Context, uri: Uri): Intent = Intent(Intent.ACTION_VIEW, uri, c, MainActivity::class.java)
     }
 }

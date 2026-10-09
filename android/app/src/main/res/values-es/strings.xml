@@ -7,7 +7,6 @@
     <string name="attachments">Adjuntos del PDF</string>
     <string name="copy_page_text">Copiar el texto de la página</string>
     <string name="about">Acerca de</string>
-    <string name="empty_hint">Abre un PDF para leerlo o rellenar su formulario.\n\nLos formularios XFA dinámicos (Adobe LiveCycle) funcionan sin Adobe Reader.</string>
     <string name="opening">Abriendo %1$s…</string>
     <string name="open_error">No se pudo abrir el PDF:\n%1$s</string>
     <string name="saved">Guardado</string>
@@ -28,4 +27,19 @@
     <string name="no_app">No hay ninguna app para abrir este fichero.</string>
     <string name="xfa_info">Formulario XFA dinámico: se muestra como una sola página continua. Al guardar solo se añaden los datos rellenados; el PDF original no se modifica.</string>
     <string name="about_text">Form PDF Reader %1$s\n\nLector de PDF que rellena y guarda formularios AcroForm y XFA dinámicos sin Adobe Reader.\n\nMotor: PDFium (Chromium) con V8 y XFA.</string>
+    <string name="nav_home">Inicio</string>
+    <string name="nav_settings">Ajustes</string>
+    <string name="back">Atrás</string>
+    <string name="open_pdf">Abrir PDF</string>
+    <string name="recent_files">Recientes</string>
+    <string name="no_recent">Aquí aparecerán los documentos que abras.</string>
+    <string name="remove_from_recents">Quitar de recientes</string>
+    <string name="file_missing">El fichero ya no existe.</string>
+    <string name="theme">Tema</string>
+    <string name="theme_system">El del dispositivo</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Oscuro</string>
+    <string name="forms">Formularios</string>
+    <string name="continuous_xfa">Formularios XFA dinámicos en una página</string>
+    <string name="continuous_xfa_help">Los muestra como una sola página continua, sin saltos de página, como en la versión de escritorio. Se aplica a los documentos que abras a partir de ahora.</string>
 </resources>

@@ -20,6 +20,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.OverScroller
+import com.google.android.material.color.MaterialColors
 import java.nio.ByteBuffer
 import kotlin.math.max
 import kotlin.math.min
@@ -77,7 +78,10 @@ class PdfPageView(context: Context) : View(context) {
     private val pagePaint = Paint().apply { color = Color.WHITE }
     private val shadowPaint = Paint().apply { color = Color.argb(50, 0, 0, 0) }
     private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private val background = Color.rgb(0xE6, 0xE6, 0xE6)
+    /** Around the pages: a surface colour of the theme (light or dark). */
+    private val background = MaterialColors.getColor(
+        context, com.google.android.material.R.attr.colorSurfaceContainer, Color.rgb(0xE6, 0xE6, 0xE6),
+    )
 
     /** Text being composed by the keyboard and already sent to the form. */
     private var composing = ""

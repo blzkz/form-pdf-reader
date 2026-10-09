@@ -1,8 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.FormPdfReader" parent="Theme.AppCompat.DayNight.DarkActionBar">
-        <item name="colorPrimary">#9A2A2A</item>
-        <item name="colorPrimaryDark">#7A1F1F</item>
-        <item name="colorAccent">#C0504D</item>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Material 3, light or dark following the device (or the app setting).
+         The app draws behind the system bars and pads its views (Insets.kt). -->
+    <style name="Theme.FormPdfReader" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand_primary</item>
+        <item name="colorOnPrimary">@color/brand_on_primary</item>
+        <item name="colorPrimaryContainer">@color/brand_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/brand_on_primary_container</item>
+        <item name="colorSecondaryContainer">@color/brand_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/brand_on_secondary_container</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">@bool/light_bars</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">@bool/light_bars</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
     </style>
 </resources>

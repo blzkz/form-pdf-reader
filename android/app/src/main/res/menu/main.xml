@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <item android:id="@+id/action_open" android:title="@string/open" app:showAsAction="ifRoom" />
-    <item android:id="@+id/action_save" android:title="@string/save" app:showAsAction="ifRoom" />
+    <item android:id="@+id/action_save" android:icon="@drawable/ic_save" android:title="@string/save" app:showAsAction="ifRoom" />
+    <item android:id="@+id/action_attachments" android:icon="@drawable/ic_attach" android:title="@string/attachments" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_save_as" android:title="@string/save_as" app:showAsAction="never" />
-    <item android:id="@+id/action_attachments" android:title="@string/attachments" app:showAsAction="never" />
+    <item android:id="@+id/action_open" android:title="@string/open" app:showAsAction="never" />
     <item android:id="@+id/action_copy_text" android:title="@string/copy_page_text" app:showAsAction="never" />
-    <item android:id="@+id/action_about" android:title="@string/about" app:showAsAction="never" />
 </menu>
