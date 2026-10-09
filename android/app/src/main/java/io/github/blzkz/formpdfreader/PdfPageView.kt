@@ -725,6 +725,9 @@ class PdfPageView(context: Context) : View(context) {
     private var dragging: Handle? = null
     private var dragDx = 0f
     private var dragDy = 0f
+    /** Word selected by the long press: dragging afterwards never shrinks it. */
+    private var longPressWord: IntRange? = null
+    private var longPressPoint = PointF()
     private var charQueryBusy = false
     private var pendingDrag: PointF? = null
     private var actionMode: ActionMode? = null
@@ -746,6 +749,7 @@ class PdfPageView(context: Context) : View(context) {
         selectionRects = emptyList()
         selectionToken++
         dragging = null
+        longPressWord = null
         pendingDrag = null
         actionMode?.finish()
         actionMode = null
@@ -781,8 +785,10 @@ class PdfPageView(context: Context) : View(context) {
                 requestSelectionRects()
                 performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 if (fingerDown) {
-                    // The same gesture keeps going: moving the finger extends the end.
+                    // The same gesture keeps going: moving the finger extends it.
                     dragging = Handle.END
+                    longPressWord = w.start..(w.start + w.count - 1)
+                    longPressPoint = PointF(x, y)
                     dragDx = 0f
                     dragDy = 0f
                 } else {
@@ -813,9 +819,19 @@ class PdfPageView(context: Context) : View(context) {
         charQueryBusy = true
         charAt(sel.page, x, y) { c ->
             charQueryBusy = false
-            if (sel === selection && c >= 0 && c != sel.focus) {
-                sel.focus = c
-                requestSelectionRects()
+            if (sel === selection && c >= 0) {
+                val w = longPressWord
+                // After a long press the selection always includes the word.
+                val (anchor, focus) = when {
+                    w == null -> sel.anchor to c
+                    c >= w.first -> w.first to max(c, w.last)
+                    else -> w.last to c
+                }
+                if (anchor != sel.anchor || focus != sel.focus) {
+                    sel.anchor = anchor
+                    sel.focus = focus
+                    requestSelectionRects()
+                }
             }
             pendingDrag?.let {
                 pendingDrag = null
@@ -892,6 +908,7 @@ class PdfPageView(context: Context) : View(context) {
         sel.anchor = if (h == Handle.START) sel.end else sel.start
         sel.focus = if (h == Handle.START) sel.start else sel.end
         dragging = h
+        longPressWord = null
         dragDx = x - (if (h == Handle.START) line.left else line.right)
         dragDy = y - line.centerY()
         actionMode?.finish()
@@ -901,11 +918,14 @@ class PdfPageView(context: Context) : View(context) {
     private fun onHandleDrag(e: MotionEvent) {
         when (e.actionMasked) {
             MotionEvent.ACTION_MOVE -> {
+                // A finger held still after the long press does not move the end.
+                if (longPressWord != null && hypot(e.x - longPressPoint.x, e.y - longPressPoint.y) < touchSlop) return
                 actionMode?.finish()
                 dragTo(e.x - dragDx, e.y - dragDy)
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 dragging = null
+                longPressWord = null
                 showActionMode()
             }
         }
