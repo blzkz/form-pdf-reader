@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.blzkz.formpdfreader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         // The Rust core and PDFium are built for arm64 (scripts/android/build-rust.sh).
         ndk { abiFilters += listOf("arm64-v8a") }
     }
