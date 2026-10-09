@@ -658,15 +658,15 @@ class MainActivity : AppCompatActivity() {
             main.postDelayed(runSearch, 350)
         }
         searchInput.setOnEditorActionListener { _, actionId, event ->
-            val enter = actionId == EditorInfo.IME_ACTION_SEARCH ||
-                (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
-            if (enter) {
+            val enterKey = event?.keyCode == KeyEvent.KEYCODE_ENTER
+            if (actionId == EditorInfo.IME_ACTION_SEARCH || enterKey && event?.action == KeyEvent.ACTION_DOWN) {
                 main.removeCallbacks(runSearch)
                 val q = searchInput.text.toString()
                 // Enter: the next result (Shift+Enter: the previous one).
                 if (q == searchedQuery) stepHit(if (event?.isShiftPressed == true) -1 else 1) else search(q)
             }
-            enter
+            // The key release too: otherwise the focus would leave the field.
+            actionId == EditorInfo.IME_ACTION_SEARCH || enterKey
         }
         searchInput.setOnKeyListener { _, keyCode, event ->
             if (keyCode == KeyEvent.KEYCODE_ESCAPE && event.action == KeyEvent.ACTION_DOWN) {
