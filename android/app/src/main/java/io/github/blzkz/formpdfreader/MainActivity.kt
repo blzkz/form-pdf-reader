@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -553,7 +554,33 @@ class MainActivity : AppCompatActivity() {
             else -> R.id.view_continuous
         }
         menu.findItem(checked)?.isChecked = true
+        if (isTablet) fitActionIcons(menu)
         return super.onPrepareOptionsMenu(menu)
+    }
+
+    /**
+     * Tablets: as many action icons as fit beside the centred tools; the rest
+     * go to the overflow menu (in portrait, Open and Attachments). Otherwise
+     * the toolbar would push the tools aside and the zoom would leave the
+     * middle of the screen.
+     */
+    private fun fitActionIcons(menu: Menu) {
+        val density = resources.displayMetrics.density
+        val toolsDp = if (tools.width > 0) tools.width / density else 600f
+        // Room on the right half, minus the overflow button (48 dp each).
+        val room = resources.configuration.screenWidthDp / 2f - toolsDp / 2f - 16f
+        val slots = (room / 48f).toInt() - 1
+        for ((i, id) in intArrayOf(R.id.action_search, R.id.action_save, R.id.action_attachments, R.id.action_open).withIndex()) {
+            menu.findItem(id)?.setShowAsAction(
+                if (i < slots) MenuItem.SHOW_AS_ACTION_ALWAYS else MenuItem.SHOW_AS_ACTION_NEVER,
+            )
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Rotated: the action icons that fit beside the tools change.
+        invalidateOptionsMenu()
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -604,7 +631,10 @@ class MainActivity : AppCompatActivity() {
             if (left.minimumWidth != width || right.minimumWidth != width) {
                 left.minimumWidth = width
                 right.minimumWidth = width
-                tools.post { tools.requestLayout() }
+                tools.post {
+                    tools.requestLayout()
+                    invalidateOptionsMenu()
+                }
             }
         }
     }
