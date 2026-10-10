@@ -146,7 +146,7 @@ class PdfPageView(context: Context) : View(context) {
     private val background = MaterialColors.getColor(
         context, com.google.android.material.R.attr.colorSurfaceContainer, Color.rgb(0xE6, 0xE6, 0xE6),
     )
-    private val accent = MaterialColors.getColor(context, androidx.appcompat.R.attr.colorPrimary, Color.rgb(0x9A, 0x2A, 0x2A))
+    private val accent = MaterialColors.getColor(context, androidx.appcompat.R.attr.colorPrimary, Color.rgb(0x75, 0x5B, 0x00))
     private val selectionPaint = Paint().apply { color = Color.argb(0x60, Color.red(accent), Color.green(accent), Color.blue(accent)) }
 
     /** Text being composed by the keyboard and already sent to the form. */

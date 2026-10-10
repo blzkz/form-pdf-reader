@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand_primary">#9A2A2A</color>
+    <!-- Accent: egg yolk yellow (#F4B400). Buttons and FAB use the yellow
+         itself (primary container) with dark text; text and icons on light
+         surfaces use a darker gold so they stay readable. -->
+    <color name="brand_primary">#755B00</color>
     <color name="brand_on_primary">#FFFFFF</color>
-    <color name="brand_primary_container">#FFDAD5</color>
-    <color name="brand_on_primary_container">#410002</color>
-    <color name="brand_secondary_container">#FFDAD5</color>
-    <color name="brand_on_secondary_container">#2C1512</color>
+    <color name="brand_primary_container">#F4B400</color>
+    <color name="brand_on_primary_container">#261A00</color>
+    <color name="brand_secondary_container">#FFDF93</color>
+    <color name="brand_on_secondary_container">#261A00</color>
     <color name="thumb_background">#FFFFFF</color>
     <bool name="light_bars">true</bool>
 </resources>
