@@ -50,8 +50,15 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
+    /** A recent document being chosen again: replaced by the one chosen. */
+    private var replacing: DocItem? = null
+
     private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) startActivity(MainActivity.intentFor(this, uri))
+        val old = replacing
+        replacing = null
+        if (uri == null) return@registerForActivityResult
+        old?.let { Recents.remove(this, it.key) }
+        startActivity(MainActivity.intentFor(this, uri))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -141,6 +148,7 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun openItem(item: DocItem) {
+        if (item.needsPick) return askToChooseAgain(item)
         if (item.path != null && !File(item.path).exists()) {
             Toast.makeText(this, R.string.file_missing, Toast.LENGTH_SHORT).show()
             Recents.remove(this, item.key)
@@ -148,6 +156,27 @@ class HomeActivity : AppCompatActivity() {
             return
         }
         startActivity(MainActivity.intentFor(this, item))
+    }
+
+    /**
+     * A document opened from another app for that time only: Android does not
+     * let the app open it again, so it is chosen again with the system picker,
+     * which gives lasting access.
+     */
+    private fun askToChooseAgain(item: DocItem) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.choose_again_title)
+            .setMessage(getString(R.string.choose_again_message, item.name))
+            .setPositiveButton(R.string.choose_file) { _, _ ->
+                replacing = item
+                openDocument.launch(arrayOf("application/pdf"))
+            }
+            .setNeutralButton(R.string.remove_from_recents) { _, _ ->
+                Recents.remove(this, item.key)
+                loadRecents()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     // -----------------------------------------------------------------------

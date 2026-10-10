@@ -32,6 +32,8 @@ pub struct PdfApp {
     allow_quit: bool,
     search_focus: bool,
     show_about: bool,
+    show_settings: bool,
+    settings: crate::settings::Settings,
     show_xfa_info: bool,
     show_attachments: bool,
     continuous_xfa: bool,
@@ -51,6 +53,8 @@ impl PdfApp {
             allow_quit: false,
             search_focus: false,
             show_about: false,
+            show_settings: false,
+            settings: crate::settings::Settings::load(),
             show_xfa_info: false,
             show_attachments: false,
             continuous_xfa: true,
@@ -370,6 +374,11 @@ impl PdfApp {
                     self.print();
                 }
                 ui.separator();
+                if ui.button(t!("menu.settings")).clicked() {
+                    ui.close();
+                    self.show_settings = true;
+                }
+                ui.separator();
                 if ui.add_enabled(has, egui::Button::new(t!("menu.close")).shortcut_text("Ctrl+W")).clicked() {
                     ui.close();
                     self.request(Pending::Close);
@@ -580,6 +589,9 @@ impl PdfApp {
                 self.confirm = None;
             }
         }
+        if self.show_settings {
+            self.settings_window(ctx);
+        }
         if self.show_about {
             egui::Modal::new(egui::Id::new("acerca")).show(ctx, |ui| {
                 ui.set_max_width(440.0);
@@ -587,7 +599,7 @@ impl PdfApp {
                 ui.label(t!("about.desc"));
                 ui.label(t!("about.engine"));
                 ui.add_space(8.0);
-                if ui.button("Cerrar").clicked() {
+                if ui.button(t!("dialog.close")).clicked() {
                     self.show_about = false;
                 }
             });
@@ -627,7 +639,7 @@ impl PdfApp {
                     ui.label(RichText::new(t!("attach.unsaved")).color(Color32::from_rgb(200, 120, 0)));
                 }
                 ui.add_space(6.0);
-                if ui.button("Cerrar").clicked() {
+                if ui.button(t!("dialog.close")).clicked() {
                     close = true;
                 }
             });
@@ -672,6 +684,45 @@ impl PdfApp {
                 }
             });
         }
+    }
+
+    /// Ajustes: el idioma de la interfaz, que cambia en el acto y se recuerda.
+    fn settings_window(&mut self, ctx: &egui::Context) {
+        use form_pdf_reader::i18n;
+        egui::Modal::new(egui::Id::new("ajustes")).show(ctx, |ui| {
+            ui.set_min_width(320.0);
+            ui.heading(t!("settings.title"));
+            ui.add_space(8.0);
+            let system = i18n::LANGUAGES.iter().find(|(c, _)| *c == i18n::system_language()).map_or("English", |(_, n)| *n);
+            let system_label = t!("settings.language_system", system);
+            let mut chosen = self.settings.language.clone();
+            let shown = chosen
+                .as_deref()
+                .and_then(|c| i18n::LANGUAGES.iter().find(|(l, _)| *l == c))
+                .map_or(system_label.clone(), |(_, n)| n.to_string());
+            ui.horizontal(|ui| {
+                ui.label(t!("settings.language"));
+                egui::ComboBox::from_id_salt("idioma").selected_text(shown).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut chosen, None, system_label);
+                    for (code, name) in i18n::LANGUAGES {
+                        ui.selectable_value(&mut chosen, Some(code.to_string()), *name);
+                    }
+                });
+            });
+            if chosen != self.settings.language {
+                self.settings.language = chosen;
+                self.settings.apply_language();
+                self.settings.save();
+                // El mensaje de bienvenida se calculó en el idioma anterior.
+                if self.tabs.is_empty() {
+                    self.status = t!("status.welcome");
+                }
+            }
+            ui.add_space(12.0);
+            if ui.button(t!("dialog.close")).clicked() {
+                self.show_settings = false;
+            }
+        });
     }
 
     fn update_title(&mut self, ctx: &egui::Context) {

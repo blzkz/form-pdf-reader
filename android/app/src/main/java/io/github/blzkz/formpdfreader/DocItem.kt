@@ -10,6 +10,10 @@ import org.json.JSONObject
 /**
  * A recent document: a content URI ([uri], from the system picker or another
  * app) or, for file:// links, a path on the device ([path]).
+ *
+ * [needsPick]: opened from another app that only gave access for that time
+ * (file managers, MediaStore): Android does not let the app open it again,
+ * so the user has to choose it again with the system picker.
  */
 data class DocItem(
     val name: String,
@@ -18,13 +22,15 @@ data class DocItem(
     val size: Long = 0,
     /** Last modified or last opened, in milliseconds. */
     val time: Long = 0,
+    val needsPick: Boolean = false,
 ) {
     val key: String get() = path ?: uri.orEmpty()
 
     val contentUri: Uri? get() = uri?.let(Uri::parse)
 
-    /** "1.2 MB · 3 days ago" */
+    /** "1.2 MB · 3 days ago" ("Choose again · …" when it has to be chosen again). */
     fun details(c: Context): String = listOfNotNull(
+        if (needsPick) c.getString(R.string.recent_needs_pick) else null,
         size.takeIf { it > 0 }?.let { Formatter.formatShortFileSize(c, it) },
         time.takeIf { it > 0 }?.let {
             DateUtils.getRelativeTimeSpanString(it, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
@@ -51,6 +57,7 @@ object Recents {
                     uri = o.optString("uri").ifEmpty { null },
                     size = o.optLong("size"),
                     time = o.optLong("time"),
+                    needsPick = o.optBoolean("pick"),
                 )
             }
         }.getOrDefault(emptyList())
@@ -58,6 +65,11 @@ object Recents {
 
     fun add(c: Context, item: DocItem) {
         save(c, listOf(item) + list(c).filter { it.key != item.key })
+    }
+
+    /** The document can no longer be opened from Recents without choosing it again. */
+    fun markNeedsPick(c: Context, key: String) {
+        save(c, list(c).map { if (it.key == key) it.copy(needsPick = true) else it })
     }
 
     fun remove(c: Context, key: String) {
@@ -73,7 +85,8 @@ object Recents {
                     .put("path", it.path.orEmpty())
                     .put("uri", it.uri.orEmpty())
                     .put("size", it.size)
-                    .put("time", it.time),
+                    .put("time", it.time)
+                    .put("pick", it.needsPick),
             )
         }
         prefs(c).edit().putString(KEY, a.toString()).apply()

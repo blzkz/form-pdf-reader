@@ -42,6 +42,7 @@ import java.io.FileNotFoundException
 import uniffi.form_pdf_reader_ffi.DocKind
 import uniffi.form_pdf_reader_ffi.InputResult
 import uniffi.form_pdf_reader_ffi.PdfDocument
+import uniffi.form_pdf_reader_ffi.PdfException
 
 /**
  * The viewer: the open documents as tabs, like the desktop version. It opens
@@ -92,8 +93,18 @@ class MainActivity : AppCompatActivity() {
     /** The tab being saved with "Save as". */
     private var saveAsTab: DocTab? = null
 
+    /** A recent document that has to be chosen again: replaced by the one chosen. */
+    private var replacing: DocItem? = null
+
     private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) open(itemFor(uri))
+        val old = replacing
+        replacing = null
+        if (uri == null) {
+            if (docs.isEmpty()) finish()
+            return@registerForActivityResult
+        }
+        old?.let { Recents.remove(this, it.key) }
+        open(itemFor(uri))
     }
 
     private val createDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
@@ -335,14 +346,61 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Explains why a document could not be opened, in the user's terms. */
     private fun openFailed(t: DocTab, e: Throwable) {
-        // A recent document that is gone or no longer accessible.
-        if (e is SecurityException || e is FileNotFoundException) Recents.remove(this, t.item.key)
+        val item = t.item
         removeTab(t)
+        val noAccess = e is SecurityException
+        val missing = !noAccess && e is FileNotFoundException
+        val b = MaterialAlertDialogBuilder(this).setTitle(R.string.error_open_title)
+        when {
+            // The permission given by another app has expired (or was revoked).
+            noAccess -> {
+                Recents.markNeedsPick(this, item.key)
+                b.setMessage(getString(R.string.error_no_access, item.name))
+                    .setPositiveButton(R.string.choose_file) { _, _ -> chooseAgain(item) }
+                    .setNegativeButton(R.string.cancel, null)
+            }
+            missing -> {
+                Recents.remove(this, item.key)
+                b.setMessage(getString(R.string.error_not_found, item.name))
+                    .setPositiveButton(R.string.choose_file) { _, _ -> chooseAgain(item) }
+                    .setNegativeButton(R.string.cancel, null)
+            }
+            // The core explains it already (password, damaged file…), translated.
+            e is PdfException -> b.setMessage(getString(R.string.open_error, e.message.orEmpty()))
+                .setPositiveButton(R.string.ok, null)
+            else -> b.setMessage(getString(R.string.error_open_generic, item.name))
+                .setPositiveButton(R.string.ok, null)
+                .setNeutralButton(R.string.details) { _, _ -> showDetails(e) }
+        }
+        b.setOnDismissListener { finishIfIdle() }
+        b.show()
+    }
+
+    private var showingDetails = false
+
+    /** Closes the viewer when no document is left and nothing else is showing. */
+    private fun finishIfIdle() {
+        if (docs.isEmpty() && replacing == null && !showingDetails) finish()
+    }
+
+    /** Opens the system picker to choose [item] again; it replaces it in the recents. */
+    private fun chooseAgain(item: DocItem) {
+        replacing = item
+        openDocument.launch(arrayOf("application/pdf"))
+    }
+
+    private fun showDetails(e: Throwable) {
+        showingDetails = true
         MaterialAlertDialogBuilder(this)
-            .setMessage(getString(R.string.open_error, e.message ?: e.toString()))
+            .setTitle(R.string.details)
+            .setMessage(e.message ?: e.toString())
             .setPositiveButton(R.string.ok, null)
-            .setOnDismissListener { if (docs.isEmpty()) finish() }
+            .setOnDismissListener {
+                showingDetails = false
+                finishIfIdle()
+            }
             .show()
     }
 
@@ -359,7 +417,12 @@ class MainActivity : AppCompatActivity() {
             runCatching { contentResolver.takePersistableUriPermission(uri, rw) }
                 .recoverCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         }
-        Recents.add(this, item.copy(size = size, time = System.currentTimeMillis()))
+        // Without a lasting permission (documents shared by another app for that
+        // time only), it will have to be chosen again to open it from Recents.
+        val lasting = item.contentUri?.let { uri ->
+            contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+        } ?: true
+        Recents.add(this, item.copy(size = size, time = System.currentTimeMillis(), needsPick = !lasting))
     }
 
     /** Copies a document into the cache: the core works with files. */
@@ -437,9 +500,9 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
                         afterSave?.invoke()
                     } catch (e: Exception) {
-                        showError(getString(R.string.save_error, e.message ?: e.toString()))
+                        saveFailed(t, e)
                     }
-                }.onFailure { e -> showError(getString(R.string.save_error, e.message ?: e.toString())) }
+                }.onFailure { e -> saveFailed(t, e) }
             }
         }
     }
@@ -843,6 +906,21 @@ class MainActivity : AppCompatActivity() {
             t.modified -> "● ${t.item.name}"
             else -> t.item.name
         }
+    }
+
+    /** Explains why a document could not be saved. */
+    private fun saveFailed(t: DocTab, e: Throwable) {
+        val b = MaterialAlertDialogBuilder(this).setTitle(R.string.error_save_title)
+        if (e is SecurityException || e is FileNotFoundException) {
+            // No permission to write there (any more): somewhere else.
+            b.setMessage(getString(R.string.error_save_no_access, t.item.name))
+                .setPositiveButton(R.string.save_as) { _, _ -> saveAs(t) }
+                .setNegativeButton(R.string.cancel, null)
+        } else {
+            b.setMessage(getString(R.string.save_error, e.message ?: e.toString()))
+                .setPositiveButton(R.string.ok, null)
+        }
+        b.show()
     }
 
     private fun showError(message: String) {

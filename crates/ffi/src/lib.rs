@@ -158,8 +158,8 @@ pub fn init_pdfium() {
     pdfium::init();
 }
 
-/// Language of the texts produced by the core (error messages): "en", "es"…
-/// Call before anything else.
+/// Language of the texts produced by the core (error messages): "en", "es",
+/// "fr", "it", "pt" or "de"; any other language uses English.
 #[uniffi::export]
 pub fn set_language(code: String) {
     form_pdf_reader::i18n::set_language(&code);
