@@ -1,7 +1,7 @@
 # Paquete para Arch Linux / CachyOS construido desde este repositorio local.
 # Uso:  cd packaging && makepkg -si
 pkgname=form-pdf-reader
-pkgver=0.3.2
+pkgver=0.3.3
 pkgrel=1
 pkgdesc="PDF reader that fills and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)"
 # Nombres anteriores del proyecto.
