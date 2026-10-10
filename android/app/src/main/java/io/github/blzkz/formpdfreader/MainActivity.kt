@@ -593,6 +593,30 @@ class MainActivity : AppCompatActivity() {
         pagePrev.setOnClickListener { current?.view?.previousPage() }
         pageNext.setOnClickListener { current?.view?.nextPage() }
         pageLabel.setOnClickListener { askPage() }
+
+        // The view buttons (left) and the page controls (right) take the same
+        // width, so the zoom stays in the middle of the screen, between the
+        // two pages of the two-page view. The page label changes width.
+        val left = findViewById<View>(R.id.tools_left)
+        val right = findViewById<View>(R.id.tools_right)
+        tools.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            val width = maxOf(naturalWidth(left), naturalWidth(right))
+            if (left.minimumWidth != width || right.minimumWidth != width) {
+                left.minimumWidth = width
+                right.minimumWidth = width
+                tools.post { tools.requestLayout() }
+            }
+        }
+    }
+
+    /** Width of [v] for its content, without its minimum width. */
+    private fun naturalWidth(v: View): Int {
+        val min = v.minimumWidth
+        v.minimumWidth = 0
+        val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        v.measure(unspecified, unspecified)
+        v.minimumWidth = min
+        return v.measuredWidth
     }
 
     private fun setLayout(mode: PdfPageView.Layout) {
