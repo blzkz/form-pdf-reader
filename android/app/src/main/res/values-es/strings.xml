@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Form PDF Reader</string>
     <string name="open">Abrir</string>
     <string name="save">Guardar</string>
     <string name="save_as">Guardar como…</string>
@@ -68,4 +67,15 @@
     <string name="close_search">Cerrar la búsqueda</string>
     <string name="open_source_licenses">Licencias de código abierto</string>
     <string name="licenses_missing">Esta compilación no incluye los textos de las licencias (ejecuta scripts/android/build-rust.sh).</string>
+    <string name="recent_needs_pick">Elegir de nuevo</string>
+    <string name="choose_file">Elegir el archivo</string>
+    <string name="details">Detalles</string>
+    <string name="choose_again_title">Vuelve a elegir el documento</string>
+    <string name="choose_again_message">«%1$s» se abrió desde otra app, y Android solo dio permiso para verlo esa vez. Elígelo de nuevo para abrirlo; a partir de entonces se abrirá directamente desde Recientes.</string>
+    <string name="error_open_title">No se pudo abrir el documento</string>
+    <string name="error_no_access">La app ya no tiene permiso para abrir «%1$s». Pasa con los documentos abiertos desde otra app, como un gestor de archivos. Elígelo de nuevo para abrirlo.</string>
+    <string name="error_not_found">«%1$s» ya no existe o se ha movido. Puedes buscarlo y elegirlo de nuevo.</string>
+    <string name="error_open_generic">No se pudo leer «%1$s». Puede que esté dañado o en un sitio al que la app no tiene acceso.</string>
+    <string name="error_save_title">No se pudo guardar</string>
+    <string name="error_save_no_access">La app no tiene permiso para guardar los cambios en «%1$s». Guárdalo como un archivo nuevo con «Guardar como».</string>
 </resources>

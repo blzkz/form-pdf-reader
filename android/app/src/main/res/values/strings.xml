@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Form PDF Reader</string>
+    <string name="app_name" translatable="false">Form PDF Reader</string>
     <string name="open">Open</string>
     <string name="save">Save</string>
     <string name="save_as">Save as…</string>
@@ -68,4 +68,15 @@
     <string name="close_search">Close search</string>
     <string name="open_source_licenses">Open source licences</string>
     <string name="licenses_missing">The licence texts were not included in this build (run scripts/android/build-rust.sh).</string>
+    <string name="recent_needs_pick">Choose again</string>
+    <string name="choose_file">Choose the file</string>
+    <string name="details">Details</string>
+    <string name="choose_again_title">Choose the document again</string>
+    <string name="choose_again_message">“%1$s” was opened from another app, and Android only allowed access to it that one time. Choose it again to open it; from then on it will open directly from Recent.</string>
+    <string name="error_open_title">Could not open the document</string>
+    <string name="error_no_access">The app no longer has permission to open “%1$s”. This happens with documents opened from another app, such as a file manager. Choose it again to open it.</string>
+    <string name="error_not_found">“%1$s” no longer exists or has been moved. You can look for it and choose it again.</string>
+    <string name="error_open_generic">“%1$s” could not be read. It may be damaged or be somewhere the app cannot access.</string>
+    <string name="error_save_title">Could not save</string>
+    <string name="error_save_no_access">The app does not have permission to save changes to “%1$s”. Save it as a new file with “Save as”.</string>
 </resources>

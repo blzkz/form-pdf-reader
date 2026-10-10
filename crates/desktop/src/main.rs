@@ -3,12 +3,16 @@
 mod app;
 use form_pdf_reader::t;
 mod autotest;
+mod settings;
 mod viewer;
 
 use std::path::PathBuf;
 
 fn main() -> eframe::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,lopdf=error")).init();
+
+    // Idioma elegido en los ajustes (antes del primer texto).
+    settings::Settings::load().apply_language();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(code) = cli(&args) {

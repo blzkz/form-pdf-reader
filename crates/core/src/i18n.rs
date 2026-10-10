@@ -8,16 +8,29 @@
 //! El idioma sale de `FORM_PDF_READER_LANG` o, si no está, del idioma del
 //! sistema (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG`, como gettext). Si no hay catálogo para ese
 //! idioma se usa el inglés. Una clave que falte en un catálogo se busca en el
-//! inglés y, si tampoco está, se muestra la propia clave.
+//! inglés y, si tampoco está, se muestra la propia clave. La aplicación puede
+//! cambiarlo en cualquier momento con [`set_language`] (el ajuste de idioma
+//! del escritorio, el idioma de Android).
 //!
 //! Para añadir un idioma: crear `locales/<código>.txt` y añadirlo a
-//! `CATALOGS`.
+//! `CATALOGS` y a [`LANGUAGES`].
 
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{LazyLock, RwLock};
 
 /// (código de idioma, contenido del catálogo). El primero es el de reserva.
-const CATALOGS: &[(&str, &str)] = &[("en", include_str!("../locales/en.txt")), ("es", include_str!("../locales/es.txt"))];
+const CATALOGS: &[(&str, &str)] = &[
+    ("en", include_str!("../locales/en.txt")),
+    ("es", include_str!("../locales/es.txt")),
+    ("fr", include_str!("../locales/fr.txt")),
+    ("it", include_str!("../locales/it.txt")),
+    ("pt", include_str!("../locales/pt.txt")),
+    ("de", include_str!("../locales/de.txt")),
+];
+
+/// Idiomas disponibles: (código, nombre en ese idioma), para elegirlos.
+pub const LANGUAGES: &[(&str, &str)] =
+    &[("en", "English"), ("es", "Español"), ("fr", "Français"), ("it", "Italiano"), ("pt", "Português"), ("de", "Deutsch")];
 
 struct Tables {
     lang: &'static str,
@@ -39,22 +52,39 @@ fn parse(src: &'static str) -> HashMap<&'static str, String> {
     m
 }
 
-static FORCED: OnceLock<String> = OnceLock::new();
-
-/// Fija el idioma desde la aplicación (por ejemplo, Android, que no usa las
-/// variables de entorno). Debe llamarse antes del primer texto traducido;
-/// después no tiene efecto. Devuelve false si llegó tarde.
-pub fn set_language(code: &str) -> bool {
-    FORCED.set(code.to_ascii_lowercase()).is_ok() && T.get().is_none()
+/// Código de idioma de "es_ES.UTF-8", "pt-BR", "de"…
+fn base(code: &str) -> String {
+    code.split(['_', '.', '@', '-']).next().unwrap_or("").to_ascii_lowercase()
 }
 
-static T: OnceLock<Tables> = OnceLock::new();
+static T: LazyLock<RwLock<Tables>> = LazyLock::new(|| RwLock::new(load(&requested())));
+
+fn load(want: &str) -> Tables {
+    let (lang, src) = CATALOGS.iter().find(|(c, _)| *c == want).copied().unwrap_or(CATALOGS[0]);
+    Tables { lang, current: parse(src), fallback: parse(CATALOGS[0].1) }
+}
+
+/// Cambia el idioma de la interfaz (desde los ajustes, o en Android, que no
+/// usa las variables de entorno). Un idioma sin catálogo usa el inglés.
+/// Devuelve si el idioma tiene catálogo.
+pub fn set_language(code: &str) -> bool {
+    let want = base(code);
+    *T.write().unwrap_or_else(|e| e.into_inner()) = load(&want);
+    CATALOGS.iter().any(|(c, _)| *c == want)
+}
+
+/// Vuelve al idioma del sistema (el del entorno).
+pub fn use_system_language() {
+    *T.write().unwrap_or_else(|e| e.into_inner()) = load(&requested());
+}
+
+/// Idioma del sistema con catálogo, o "en".
+pub fn system_language() -> &'static str {
+    load(&requested()).lang
+}
 
 /// Código de idioma pedido por el entorno (p. ej. "es" de "es_ES.UTF-8").
 fn requested() -> String {
-    if let Some(f) = FORCED.get() {
-        return f.split(['_', '.', '@', '-']).next().unwrap_or("").to_string();
-    }
     // Mismo orden que gettext: LANGUAGE (lista "es:en"), LC_ALL,
     // LC_MESSAGES, LANG. FORM_PDF_READER_LANG manda sobre todos.
     let raw = ["FORM_PDF_READER_LANG", "LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
@@ -63,25 +93,17 @@ fn requested() -> String {
         .map(|v| v.split(':').next().unwrap_or("").to_string())
         .find(|v| !v.is_empty() && v != "C" && v != "POSIX")
         .unwrap_or_default();
-    raw.split(['_', '.', '@', '-']).next().unwrap_or("").to_ascii_lowercase()
-}
-
-fn tables() -> &'static Tables {
-    T.get_or_init(|| {
-        let want = requested();
-        let (lang, src) = CATALOGS.iter().find(|(c, _)| *c == want).copied().unwrap_or(CATALOGS[0]);
-        Tables { lang, current: parse(src), fallback: parse(CATALOGS[0].1) }
-    })
+    base(&raw)
 }
 
 /// Idioma de la interfaz ("en", "es"…).
 pub fn lang() -> &'static str {
-    tables().lang
+    T.read().unwrap_or_else(|e| e.into_inner()).lang
 }
 
 /// Texto de una clave.
 pub fn tr(key: &str) -> String {
-    let t = tables();
+    let t = T.read().unwrap_or_else(|e| e.into_inner());
     t.current.get(key).or_else(|| t.fallback.get(key)).cloned().unwrap_or_else(|| key.to_string())
 }
 
@@ -110,6 +132,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cambiar_idioma() {
+        assert!(set_language("fr_FR.UTF-8"));
+        assert_eq!(lang(), "fr");
+        assert_eq!(tr("dialog.cancel"), "Annuler");
+        assert!(set_language("pt-BR"));
+        assert_eq!(lang(), "pt");
+        // Sin catálogo: inglés.
+        assert!(!set_language("ja"));
+        assert_eq!(lang(), "en");
+        assert_eq!(tr("dialog.cancel"), "Cancel");
+        use_system_language();
+    }
+
+    #[test]
     fn catalogos_completos() {
         // Todos los idiomas tienen las mismas claves que el inglés.
         let en = parse(CATALOGS[0].1);
@@ -120,6 +156,7 @@ mod tests {
             faltan.sort();
             sobran.sort();
             assert!(faltan.is_empty() && sobran.is_empty(), "{code}: faltan {faltan:?}, sobran {sobran:?}");
+            assert!(LANGUAGES.iter().any(|(c, _)| c == code), "{code} no está en LANGUAGES");
             // Mismos marcadores {n} en cada texto.
             for (k, v) in &m {
                 for i in 0..5 {

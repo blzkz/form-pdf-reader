@@ -34,7 +34,9 @@ object PdfEngine {
         if (started) return
         started = true
         val tmp = context.cacheDir.resolve("tmp").absolutePath
-        val lang = Locale.getDefault().language
+        // The app's language (Android 13+ lets each app have its own); the
+        // core uses English for a language it does not have.
+        val lang = context.resources.configuration.locales[0]?.language ?: Locale.getDefault().language
         executor.submit {
             // libform_pdf_reader_ffi.so depends on libpdfium.so.
             System.loadLibrary("pdfium")

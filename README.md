@@ -17,12 +17,20 @@ on top of Chromium's **PDFium** engine built with V8 and XFA.
 It was created to fill in the Banco de España job application form, which no
 free Linux viewer could handle.
 
-The interface is available in English and Spanish. It follows the system
-language (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG`) and falls back to
-English. Set `FORM_PDF_READER_LANG=en` or `es` to force one. Translations
-live in `crates/core/locales/<code>.txt`; adding a language means adding a
-file there and registering it in `crates/core/src/i18n.rs`. Texts that belong to a form itself (its
-labels, messages and validations) stay in the form's own language.
+The interface is available in English, Spanish, French, Italian, Portuguese
+and German. On the desktop it follows the system language (`LANGUAGE`,
+`LC_ALL`, `LC_MESSAGES`, `LANG`), and **File > Settings** lets you choose
+another one, which applies at once and is remembered in
+`~/.config/form-pdf-reader/settings.conf`. `FORM_PDF_READER_LANG=fr` (or
+`en`, `es`, `it`, `pt`, `de`) forces one. The Android app follows the
+device's language, or the app language chosen in the system settings
+(Android 13+). Any other language uses English.
+
+Desktop translations live in `crates/core/locales/<code>.txt` (adding one
+means adding a file there and registering it in `crates/core/src/i18n.rs`);
+the Android ones in `android/app/src/main/res/values-<code>/strings.xml`.
+Texts that belong to a form itself (its labels, messages and validations)
+stay in the form's own language.
 
 ## Features
 
