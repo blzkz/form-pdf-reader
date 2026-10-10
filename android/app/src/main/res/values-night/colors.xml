@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand_primary">#FFB4A9</color>
-    <color name="brand_on_primary">#690003</color>
-    <color name="brand_primary_container">#7D1F1E</color>
-    <color name="brand_on_primary_container">#FFDAD5</color>
-    <color name="brand_secondary_container">#5D3F3B</color>
-    <color name="brand_on_secondary_container">#FFDAD5</color>
+    <!-- Accent: egg yolk yellow (#F4B400), dark theme. -->
+    <color name="brand_primary">#F8C54A</color>
+    <color name="brand_on_primary">#3F2E00</color>
+    <color name="brand_primary_container">#F4B400</color>
+    <color name="brand_on_primary_container">#261A00</color>
+    <color name="brand_secondary_container">#594400</color>
+    <color name="brand_on_secondary_container">#FFDF93</color>
     <color name="thumb_background">#FFFFFF</color>
     <bool name="light_bars">false</bool>
 </resources>
