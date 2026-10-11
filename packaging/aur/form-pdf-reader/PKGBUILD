@@ -11,7 +11,10 @@ pkgdesc="PDF reader that fills in and saves dynamic XFA forms without Adobe Read
 arch=('x86_64')
 url="https://github.com/blzkz/form-pdf-reader"
 license=('MIT')
-depends=('gcc-libs' 'glibc' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'fontconfig' 'ttf-liberation')
+# The windowing and OpenGL libraries are loaded at run time (namcap does not
+# see them); Liberation fonts are PDFium's substitutes for the standard fonts.
+depends=('libgcc' 'glibc' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'fontconfig' 'ttf-liberation'
+         'hicolor-icon-theme')
 makedepends=('cargo' 'python')
 optdepends=('zenity: dialogs for the alerts of the forms'
             'xdg-desktop-portal: open and save dialogs')
@@ -41,7 +44,7 @@ build() {
   export FORM_PDF_READER_PACKAGE=1
   cargo build --frozen --release -p form-pdf-reader
   CARGO_NET_OFFLINE=true python scripts/third_party_notices.py --package form-pdf-reader \
-    --target x86_64-unknown-linux-gnu --pdfium "$srcdir/pdfium" --out target/THIRD-PARTY-NOTICES.txt
+    --target "$CARCH-unknown-linux-gnu" --pdfium "$srcdir/pdfium" --out target/THIRD-PARTY-NOTICES.txt
 }
 
 check() {

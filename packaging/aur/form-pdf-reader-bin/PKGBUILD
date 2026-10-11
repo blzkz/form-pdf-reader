@@ -10,17 +10,20 @@ pkgdesc="PDF reader that fills in and saves dynamic XFA forms without Adobe Read
 arch=('x86_64')
 url="https://github.com/blzkz/form-pdf-reader"
 license=('MIT')
-depends=('gcc-libs' 'glibc' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'fontconfig' 'ttf-liberation')
+# The windowing and OpenGL libraries are loaded at run time (namcap does not
+# see them); Liberation fonts are PDFium's substitutes for the standard fonts.
+depends=('libgcc' 'glibc' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'fontconfig' 'ttf-liberation'
+         'hicolor-icon-theme')
 optdepends=('zenity: dialogs for the alerts of the forms'
             'xdg-desktop-portal: open and save dialogs')
 provides=("$_pkgname")
 conflicts=("$_pkgname")
-options=('!strip' '!debug')
-source=("$_pkgname-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-$pkgver-x86_64.tar.gz")
-sha256sums=('3022c6802baf663763c428071e3ea2c2d45c82c31c9982fde50789901f183248')
+options=('!debug')
+source_x86_64=("$_pkgname-$pkgver-$CARCH.tar.gz::$url/releases/download/v$pkgver/$_pkgname-$pkgver-$CARCH.tar.gz")
+sha256sums_x86_64=('3022c6802baf663763c428071e3ea2c2d45c82c31c9982fde50789901f183248')
 
 package() {
-  cd "$_pkgname-$pkgver-x86_64"
+  cd "$_pkgname-$pkgver-$CARCH"
   install -Dm755 "$_pkgname" "$pkgdir/usr/lib/$_pkgname/$_pkgname"
   install -Dm644 lib/libpdfium.so "$pkgdir/usr/lib/$_pkgname/libpdfium.so"
   install -dm755 "$pkgdir/usr/bin"
