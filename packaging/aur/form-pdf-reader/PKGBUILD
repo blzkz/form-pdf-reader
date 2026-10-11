@@ -1,4 +1,4 @@
-# Maintainer: blzkz <blzkz at users dot noreply dot github dot com>
+# Maintainer: blzkz <blzkz@blzkz.es>
 #
 # Builds Form PDF Reader from the release sources. PDFium, with V8 and XFA,
 # comes prebuilt from pdfium-binaries (building it takes hours): the same
