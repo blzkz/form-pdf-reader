@@ -1,0 +1,38 @@
+# Maintainer: blzkz <blzkz at users dot noreply dot github dot com>
+#
+# Binary package: repackages the x86_64 build attached to each GitHub release.
+# The source package is form-pdf-reader.
+pkgname=form-pdf-reader-bin
+_pkgname=form-pdf-reader
+pkgver=0.3.3
+pkgrel=1
+pkgdesc="PDF reader that fills in and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)"
+arch=('x86_64')
+url="https://github.com/blzkz/form-pdf-reader"
+license=('MIT')
+depends=('gcc-libs' 'glibc' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'fontconfig' 'ttf-liberation')
+optdepends=('zenity: dialogs for the alerts of the forms'
+            'xdg-desktop-portal: open and save dialogs')
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+options=('!strip' '!debug')
+source=("$_pkgname-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-$pkgver-x86_64.tar.gz")
+sha256sums=('3022c6802baf663763c428071e3ea2c2d45c82c31c9982fde50789901f183248')
+
+package() {
+  cd "$_pkgname-$pkgver-x86_64"
+  install -Dm755 "$_pkgname" "$pkgdir/usr/lib/$_pkgname/$_pkgname"
+  install -Dm644 lib/libpdfium.so "$pkgdir/usr/lib/$_pkgname/libpdfium.so"
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s "/usr/lib/$_pkgname/$_pkgname" "$pkgdir/usr/bin/$_pkgname"
+
+  install -Dm644 "$_pkgname.desktop" "$pkgdir/usr/share/applications/$_pkgname.desktop"
+  install -Dm644 "$_pkgname.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/$_pkgname.svg"
+  for s in 16 24 32 48 64 128 256; do
+    install -Dm644 "icons/$s/$_pkgname.png" "$pkgdir/usr/share/icons/hicolor/${s}x${s}/apps/$_pkgname.png"
+  done
+
+  # Licence of the program and of the third-party software it includes.
+  install -Dm644 LICENSE THIRD-PARTY-NOTICES.txt -t "$pkgdir/usr/share/licenses/$pkgname/"
+  cp -r licenses "$pkgdir/usr/share/licenses/$pkgname/pdfium-third-party"
+}
