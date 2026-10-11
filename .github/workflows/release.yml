@@ -20,6 +20,9 @@ jobs:
     # Old glibc (2.35): one binary for Ubuntu 22.04+, Debian 12+, Fedora, Arch.
     # Canonical image on ECR Public: Docker Hub rate-limits anonymous pulls.
     container: public.ecr.aws/ubuntu/ubuntu:22.04
+    env:
+      # Without the runner's PDFium folder in the binary's RPATH.
+      FORM_PDF_READER_PACKAGE: "1"
     steps:
       - name: System packages
         run: |

@@ -185,6 +185,10 @@ Each [GitHub release](../../releases) has ready-made packages for x86_64:
 The binary is built on Ubuntu 22.04 (glibc 2.35), so it also runs on newer
 distributions.
 
+On Arch Linux and CachyOS it can also come from the AUR: `form-pdf-reader-bin`
+(the release build) or `form-pdf-reader` (built from source), for example with
+`yay -S form-pdf-reader-bin`. Their `PKGBUILD`s are in `packaging/aur/`.
+
 ## Building and installing
 
 You need stable Rust, `curl` and the usual desktop libraries: Wayland or X11,

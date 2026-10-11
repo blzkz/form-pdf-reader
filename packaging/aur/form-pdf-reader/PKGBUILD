@@ -1,0 +1,75 @@
+# Maintainer: blzkz <blzkz@blzkz.es>
+#
+# Builds Form PDF Reader from the release sources. PDFium, with V8 and XFA,
+# comes prebuilt from pdfium-binaries (building it takes hours): the same
+# build the project uses, checked by its SHA-256.
+pkgname=form-pdf-reader
+pkgver=0.3.3
+pkgrel=1
+_pdfium=8086
+pkgdesc="PDF reader that fills in and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)"
+arch=('x86_64')
+url="https://github.com/blzkz/form-pdf-reader"
+license=('MIT')
+# The windowing and OpenGL libraries are loaded at run time (namcap does not
+# see them); Liberation fonts are PDFium's substitutes for the standard fonts.
+depends=('libgcc' 'glibc' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'fontconfig' 'ttf-liberation'
+         'hicolor-icon-theme')
+makedepends=('cargo' 'python')
+optdepends=('zenity: dialogs for the alerts of the forms'
+            'xdg-desktop-portal: open and save dialogs')
+conflicts=("$pkgname-bin")
+options=('!lto' '!debug')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+        "pdfium-v8-linux-x64-$_pdfium.tgz::https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F$_pdfium/pdfium-v8-linux-x64.tgz")
+noextract=("pdfium-v8-linux-x64-$_pdfium.tgz")
+sha256sums=('2ea41a8acf0cd7036f0f68540c2af0f48b00f0edb1e6836b7b2ac0778d4a6316'
+            '8e3efa4fe6784ed80fd58ef3c839b072ddcd79b16880706892a008f8a2da730b')
+
+prepare() {
+  mkdir -p pdfium
+  bsdtar -xf "pdfium-v8-linux-x64-$_pdfium.tgz" -C pdfium
+
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  export PDFIUM_LIB_DIR="$srcdir/pdfium/lib"
+  # Without the build folder in the binary's RPATH.
+  export FORM_PDF_READER_PACKAGE=1
+  cargo build --frozen --release -p form-pdf-reader
+  CARGO_NET_OFFLINE=true python scripts/third_party_notices.py --package form-pdf-reader \
+    --target "$CARCH-unknown-linux-gnu" --pdfium "$srcdir/pdfium" --out target/THIRD-PARTY-NOTICES.txt
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  export PDFIUM_LIB_DIR="$srcdir/pdfium/lib"
+  export FORM_PDF_READER_PACKAGE=1
+  cargo test --frozen --release
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/$pkgname "$pkgdir/usr/lib/$pkgname/$pkgname"
+  install -Dm644 "$srcdir/pdfium/lib/libpdfium.so" "$pkgdir/usr/lib/$pkgname/libpdfium.so"
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s "/usr/lib/$pkgname/$pkgname" "$pkgdir/usr/bin/$pkgname"
+
+  install -Dm644 assets/$pkgname.desktop "$pkgdir/usr/share/applications/$pkgname.desktop"
+  install -Dm644 assets/$pkgname.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/$pkgname.svg"
+  for s in 16 24 32 48 64 128 256; do
+    install -Dm644 "assets/icons/$s/$pkgname.png" "$pkgdir/usr/share/icons/hicolor/${s}x${s}/apps/$pkgname.png"
+  done
+
+  # Licence of the program and of the third-party software it includes.
+  install -Dm644 LICENSE target/THIRD-PARTY-NOTICES.txt -t "$pkgdir/usr/share/licenses/$pkgname/"
+  cp -r "$srcdir/pdfium/licenses" "$pkgdir/usr/share/licenses/$pkgname/pdfium-third-party"
+}

@@ -1,7 +1,7 @@
 # Paquete para Arch Linux / CachyOS construido desde este repositorio local.
 # Uso:  cd packaging && makepkg -si
 pkgname=form-pdf-reader
-pkgver=0.3.3
+pkgver=0.3.4
 pkgrel=1
 pkgdesc="PDF reader that fills and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)"
 # Nombres anteriores del proyecto.
@@ -10,7 +10,7 @@ conflicts=('pdf-reader-editor' 'simple-pdf-reader')
 replaces=('pdf-reader-editor' 'simple-pdf-reader')
 arch=('x86_64')
 license=('MIT')
-depends=('gcc-libs' 'glibc' 'libxkbcommon' 'wayland' 'libx11' 'mesa' 'fontconfig' 'ttf-liberation')
+depends=('libgcc' 'glibc' 'libxkbcommon' 'wayland' 'libx11' 'libglvnd' 'fontconfig' 'ttf-liberation' 'hicolor-icon-theme')
 optdepends=('zenity: diálogos de alertas de los formularios' 'xdg-desktop-portal: diálogos de abrir y guardar')
 makedepends=('cargo' 'curl' 'python')
 options=('!lto' '!debug')
@@ -21,7 +21,7 @@ _root="$(realpath "$startdir/..")"
 build() {
   cd "$_root"
   scripts/descargar-pdfium.sh
-  CARGO_TARGET_DIR="$srcdir/target" cargo build --release --locked
+  FORM_PDF_READER_PACKAGE=1 CARGO_TARGET_DIR="$srcdir/target" cargo build --release --locked
   python scripts/third_party_notices.py --package form-pdf-reader --target x86_64-unknown-linux-gnu \
     --pdfium vendor/pdfium --out "$srcdir/THIRD-PARTY-NOTICES.txt"
 }
