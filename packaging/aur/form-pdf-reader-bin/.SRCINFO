@@ -1,6 +1,6 @@
 pkgbase = form-pdf-reader-bin
 	pkgdesc = PDF reader that fills in and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)
-	pkgver = 0.3.3
+	pkgver = 0.3.4
 	pkgrel = 1
 	url = https://github.com/blzkz/form-pdf-reader
 	arch = x86_64
@@ -19,7 +19,7 @@ pkgbase = form-pdf-reader-bin
 	provides = form-pdf-reader
 	conflicts = form-pdf-reader
 	options = !debug
-	source_x86_64 = form-pdf-reader-0.3.3-x86_64.tar.gz::https://github.com/blzkz/form-pdf-reader/releases/download/v0.3.3/form-pdf-reader-0.3.3-x86_64.tar.gz
-	sha256sums_x86_64 = 3022c6802baf663763c428071e3ea2c2d45c82c31c9982fde50789901f183248
+	source_x86_64 = form-pdf-reader-0.3.4-x86_64.tar.gz::https://github.com/blzkz/form-pdf-reader/releases/download/v0.3.4/form-pdf-reader-0.3.4-x86_64.tar.gz
+	sha256sums_x86_64 = c4c1673a4788fc79f6eebb31bf978026ecd2be178aaea9e38f40458a75f1bd70
 
 pkgname = form-pdf-reader-bin
