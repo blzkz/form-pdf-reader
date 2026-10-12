@@ -4,7 +4,7 @@
 # comes prebuilt from pdfium-binaries (building it takes hours): the same
 # build the project uses, checked by its SHA-256.
 pkgname=form-pdf-reader
-pkgver=0.3.6
+pkgver=0.3.7
 pkgrel=1
 _pdfium=8086
 pkgdesc="PDF reader that fills in and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)"
@@ -23,7 +23,7 @@ options=('!lto' '!debug')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
         "pdfium-v8-linux-x64-$_pdfium.tgz::https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F$_pdfium/pdfium-v8-linux-x64.tgz")
 noextract=("pdfium-v8-linux-x64-$_pdfium.tgz")
-sha256sums=('d7fc858ae0a2bb95d05e67372e0a286881ab667cb93fce51d1a7498e0e37b65b'
+sha256sums=('dab9591a683b1af65087d0ae91b161b4001ba1431d0a49cc802087a98c9e5a60'
             '8e3efa4fe6784ed80fd58ef3c839b072ddcd79b16880706892a008f8a2da730b')
 
 prepare() {
