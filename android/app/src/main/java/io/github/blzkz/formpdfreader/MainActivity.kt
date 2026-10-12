@@ -542,7 +542,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         val has = current?.doc != null
-        for (id in intArrayOf(R.id.action_search, R.id.action_save, R.id.action_save_as, R.id.action_attachments, R.id.action_copy_text, R.id.action_go_to_page, R.id.action_view)) {
+        for (id in intArrayOf(R.id.action_search, R.id.action_share, R.id.action_save, R.id.action_save_as, R.id.action_attachments, R.id.action_copy_text, R.id.action_go_to_page, R.id.action_view)) {
             menu.findItem(id)?.isEnabled = has
         }
         // Tablets have these in the toolbar.
@@ -570,7 +570,7 @@ class MainActivity : AppCompatActivity() {
         // Room on the right half, minus the overflow button (48 dp each).
         val room = resources.configuration.screenWidthDp / 2f - toolsDp / 2f - 16f
         val slots = (room / 48f).toInt() - 1
-        for ((i, id) in intArrayOf(R.id.action_search, R.id.action_save, R.id.action_attachments, R.id.action_open).withIndex()) {
+        for ((i, id) in intArrayOf(R.id.action_search, R.id.action_save, R.id.action_share, R.id.action_attachments, R.id.action_open).withIndex()) {
             menu.findItem(id)?.setShowAsAction(
                 if (i < slots) MenuItem.SHOW_AS_ACTION_ALWAYS else MenuItem.SHOW_AS_ACTION_NEVER,
             )
@@ -586,6 +586,7 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.action_search -> openSearch()
+            R.id.action_share -> share()
             R.id.action_open -> openDocument.launch(arrayOf("application/pdf"))
             R.id.action_save -> save()
             R.id.action_save_as -> saveAs()
@@ -930,6 +931,27 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent.createChooser(view, file.name))
         } catch (e: Exception) {
             Toast.makeText(this, R.string.no_app, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Shares the document as it is shown, with the data filled in even if it
+     * has not been saved: a copy in the cache, sent to the app the user picks.
+     */
+    private fun share() {
+        val t = current ?: return
+        val d = t.doc ?: return
+        val failed = { e: Throwable -> showError(getString(R.string.share_error, e.message ?: e.toString())) }
+        t.view.commitField {
+            PdfEngine.run({ d.saveBytes() }) { r ->
+                r.onSuccess { bytes ->
+                    runCatching {
+                        val file = Share.target(this, t.item.name)
+                        file.writeBytes(bytes)
+                        Share.pdf(this, file)
+                    }.onFailure(failed)
+                }.onFailure(failed)
+            }
         }
     }
 

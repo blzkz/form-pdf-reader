@@ -78,4 +78,7 @@
     <string name="error_open_generic">Impossible de lire « %1$s ». Il est peut-être endommagé ou situé à un endroit auquel l’application n’a pas accès.</string>
     <string name="error_save_title">Impossible d’enregistrer</string>
     <string name="error_save_no_access">L’application n’a pas l’autorisation d’enregistrer les modifications dans « %1$s ». Enregistrez-le comme nouveau fichier avec « Enregistrer sous ».</string>
+    <string name="share">Partager</string>
+    <string name="share_title">Partager « %1$s »</string>
+    <string name="share_error">Impossible de partager le document :\n%1$s</string>
 </resources>

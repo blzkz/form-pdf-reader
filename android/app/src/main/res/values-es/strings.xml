@@ -78,4 +78,7 @@
     <string name="error_open_generic">No se pudo leer «%1$s». Puede que esté dañado o en un sitio al que la app no tiene acceso.</string>
     <string name="error_save_title">No se pudo guardar</string>
     <string name="error_save_no_access">La app no tiene permiso para guardar los cambios en «%1$s». Guárdalo como un archivo nuevo con «Guardar como».</string>
+    <string name="share">Compartir</string>
+    <string name="share_title">Compartir «%1$s»</string>
+    <string name="share_error">No se pudo compartir el documento:\n%1$s</string>
 </resources>

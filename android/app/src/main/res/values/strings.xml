@@ -79,4 +79,7 @@
     <string name="error_open_generic">“%1$s” could not be read. It may be damaged or be somewhere the app cannot access.</string>
     <string name="error_save_title">Could not save</string>
     <string name="error_save_no_access">The app does not have permission to save changes to “%1$s”. Save it as a new file with “Save as”.</string>
+    <string name="share">Share</string>
+    <string name="share_title">Share “%1$s”</string>
+    <string name="share_error">Could not share the document:\n%1$s</string>
 </resources>
