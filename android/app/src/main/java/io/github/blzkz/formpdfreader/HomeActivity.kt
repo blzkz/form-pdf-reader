@@ -140,11 +140,34 @@ class HomeActivity : AppCompatActivity() {
     private fun onLongPress(item: DocItem) {
         MaterialAlertDialogBuilder(this)
             .setTitle(item.name)
-            .setItems(arrayOf(getString(R.string.remove_from_recents))) { _, _ ->
-                Recents.remove(this, item.key)
-                loadRecents()
+            .setItems(arrayOf(getString(R.string.share), getString(R.string.remove_from_recents))) { _, which ->
+                if (which == 0) {
+                    share(item)
+                } else {
+                    Recents.remove(this, item.key)
+                    loadRecents()
+                }
             }
             .show()
+    }
+
+    /** Shares a recent document: a copy of the file as it is saved. */
+    private fun share(item: DocItem) {
+        if (item.needsPick) return askToChooseAgain(item)
+        Io.run({
+            val file = Share.target(this, item.name)
+            val input = item.path?.let { File(it).inputStream() }
+                ?: contentResolver.openInputStream(requireNotNull(item.contentUri))
+            requireNotNull(input) { item.key }.use { i -> file.outputStream().use { i.copyTo(it) } }
+            file
+        }) { r ->
+            r.onSuccess { Share.pdf(this, it) }.onFailure { e ->
+                MaterialAlertDialogBuilder(this)
+                    .setMessage(getString(R.string.share_error, e.message ?: e.toString()))
+                    .setPositiveButton(R.string.ok, null)
+                    .show()
+            }
+        }
     }
 
     private fun openItem(item: DocItem) {

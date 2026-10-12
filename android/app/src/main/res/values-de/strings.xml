@@ -78,4 +78,7 @@
     <string name="error_open_generic">„%1$s“ konnte nicht gelesen werden. Möglicherweise ist es beschädigt oder liegt an einem Ort, auf den die App keinen Zugriff hat.</string>
     <string name="error_save_title">Speichern nicht möglich</string>
     <string name="error_save_no_access">Die App hat keine Berechtigung, Änderungen in „%1$s“ zu speichern. Speichern Sie es mit „Speichern unter“ als neue Datei.</string>
+    <string name="share">Teilen</string>
+    <string name="share_title">„%1$s“ teilen</string>
+    <string name="share_error">Das Dokument konnte nicht geteilt werden:\n%1$s</string>
 </resources>

@@ -245,6 +245,8 @@ bridge between Kotlin and Rust is generated with
 - use a hardware keyboard and mouse: Ctrl+S, Ctrl+O, Ctrl+F, Ctrl+W, Ctrl+Tab,
   Ctrl+plus/minus, Page Up/Down, the wheel to scroll and Ctrl+wheel to zoom;
 - save, save as, view attachments and copy the text;
+- share the document (with the data filled in) to WhatsApp, Telegram, e-mail
+  or any other app, from the viewer or from the recent documents;
 - follow the device's light or dark theme (or a fixed one, in Settings).
 
 The app asks for no permissions: documents come from the system file picker

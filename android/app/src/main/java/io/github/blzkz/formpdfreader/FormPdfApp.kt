@@ -14,5 +14,7 @@ class FormPdfApp : Application() {
         // Copies of documents left behind by a previous run (before any
         // activity makes new ones).
         File(cacheDir, "docs").deleteRecursively()
+        // Copies sent with Share in a previous run (the other app has them).
+        File(cacheDir, "share").deleteRecursively()
     }
 }

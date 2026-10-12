@@ -78,4 +78,7 @@
     <string name="error_open_generic">Impossibile leggere «%1$s». Potrebbe essere danneggiato o trovarsi in una posizione a cui l’app non ha accesso.</string>
     <string name="error_save_title">Impossibile salvare</string>
     <string name="error_save_no_access">L’app non ha l’autorizzazione per salvare le modifiche in «%1$s». Salvalo come nuovo file con «Salva con nome».</string>
+    <string name="share">Condividi</string>
+    <string name="share_title">Condividi «%1$s»</string>
+    <string name="share_error">Impossibile condividere il documento:\n%1$s</string>
 </resources>
