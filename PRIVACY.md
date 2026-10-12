@@ -16,8 +16,9 @@ software developed by blzkz.
   document is open, the app keeps a temporary copy in its private cache, and
   deletes it when the document is closed.
 - The list of recent documents and your settings are
-  stored only on your device, in the app's private storage. Uninstalling the
-  app, or clearing its data, deletes them.
+  stored only on your device, in the app's private storage, and are not
+  included in Android's backup. Uninstalling the app, or clearing its data,
+  deletes them.
 - The app only has access to the documents you choose with the system file
   picker or open from another app.
 - If a form contains a web link and you tap it, the link opens in your
@@ -40,8 +41,9 @@ personal.**
   Mientras un documento está abierto, la app guarda una copia temporal en su
   caché privada y la borra al cerrarlo.
 - La lista de documentos recientes y tus ajustes se
-  guardan solo en tu dispositivo, en el almacenamiento privado de la app. Se
-  borran al desinstalarla o al borrar sus datos.
+  guardan solo en tu dispositivo, en el almacenamiento privado de la app, y
+  no se incluyen en la copia de seguridad de Android. Se borran al
+  desinstalarla o al borrar sus datos.
 - La app solo accede a los documentos que eliges con el selector de archivos
   del sistema o que abres desde otra app.
 - Si un formulario contiene un enlace web y lo pulsas, se abre en tu
