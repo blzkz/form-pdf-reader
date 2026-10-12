@@ -155,7 +155,13 @@ class PdfPageView(context: Context) : View(context) {
     init {
         isFocusable = true
         isFocusableInTouchMode = true
+        // With a hardware keyboard Android draws its focus highlight over the
+        // focused view: the whole document turned grey.
+        defaultFocusHighlightEnabled = false
     }
+
+    /** The field being edited (where it was tapped), kept visible above the keyboard. */
+    private var editAnchor: Anchor? = null
 
     // -----------------------------------------------------------------------
     // Document
@@ -346,6 +352,17 @@ class PdfPageView(context: Context) : View(context) {
         // After a rotation, the line at the top stays at the top.
         val a = if (oldw > 0) anchorAt(oldw / 2f, 0f, w / 2f, 0f) else null
         relayout(a)
+        // The keyboard has opened over the field being edited: bring it up.
+        val e = editAnchor
+        if (e != null && h < oldh) {
+            slotOf(e.page)?.let { slot ->
+                val y = slot.y + e.fy * slot.h
+                if (y - offsetY > h - 64 * density) {
+                    offsetY = y - h / 2f
+                    clampOffsets()
+                }
+            }
+        }
         notifyState()
     }
 
@@ -1077,6 +1094,7 @@ class PdfPageView(context: Context) : View(context) {
         val pageH = p.heightPt * s
         val lx = (x - (slot.x - offsetX)).toDouble()
         val ly = (y - (slot.y - offsetY)).toDouble()
+        editAnchor = anchorAt(x, y)
         requestFocus()
         commitComposing()
         send { d.tap(i.toUInt(), pageW, pageH, lx, ly) }
@@ -1096,6 +1114,7 @@ class PdfPageView(context: Context) : View(context) {
                 imm.restartInput(this)
                 imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
             } else {
+                editAnchor = null
                 imm.hideSoftInputFromWindow(windowToken, 0)
             }
             // PDFium sometimes lays out one event later: check again.
