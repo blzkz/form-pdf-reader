@@ -4,7 +4,7 @@
 # The source package is form-pdf-reader.
 pkgname=form-pdf-reader-bin
 _pkgname=form-pdf-reader
-pkgver=0.3.5
+pkgver=0.3.6
 pkgrel=1
 pkgdesc="PDF reader that fills in and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)"
 arch=('x86_64')
@@ -20,7 +20,7 @@ provides=("$_pkgname")
 conflicts=("$_pkgname")
 options=('!debug')
 source_x86_64=("$_pkgname-$pkgver-$CARCH.tar.gz::$url/releases/download/v$pkgver/$_pkgname-$pkgver-$CARCH.tar.gz")
-sha256sums_x86_64=('54e109785e9281d937c8a783400f8cf38e61e7189dd24a1dc837715e0193cbd1')
+sha256sums_x86_64=('8350cb8dc261512ab977deb72979dcfb2c8af259606fdd1cd6e91e38f2d8e307')
 
 package() {
   cd "$_pkgname-$pkgver-$CARCH"
