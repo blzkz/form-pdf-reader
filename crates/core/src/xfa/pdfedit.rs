@@ -176,25 +176,50 @@ impl<'a> UpdateBuilder<'a> {
         id
     }
 
+    /// En un PDF cifrado, cifra las cadenas y el contenido de `obj` con la
+    /// clave del documento, como el resto de objetos del fichero. lopdf
+    /// descifra el PDF al leerlo; sin esto los objetos nuevos irían en claro
+    /// y quien lo lea (PDFium, Adobe) los "descifraría" y obtendría basura.
+    fn encrypt(&self, id: ObjectId, obj: &mut Object) -> Result<()> {
+        if let Some(state) = &self.doc.encryption_state {
+            lopdf::encryption::encrypt_object(state, id, obj).map_err(|e| anyhow!("{e}"))?;
+        }
+        Ok(())
+    }
+
     /// Escribe (o sustituye) un objeto que no es stream.
-    pub fn set_object(&mut self, id: ObjectId, obj: &Object) {
+    pub fn set_object(&mut self, id: ObjectId, obj: &Object) -> Result<()> {
+        let mut o = obj.clone();
+        self.encrypt(id, &mut o)?;
         self.objects.retain(|(i, _)| *i != id);
-        self.objects.push((id, serialize_obj(obj)));
+        self.objects.push((id, serialize_obj(&o)));
+        Ok(())
     }
 
     /// Escribe (o sustituye) un stream comprimido con Flate. `dict` no debe
     /// llevar /Length ni /Filter (se añaden aquí).
-    pub fn set_stream(&mut self, id: ObjectId, dict: &Dictionary, data: &[u8]) {
-        let compressed = deflate(data);
+    pub fn set_stream(&mut self, id: ObjectId, dict: &Dictionary, data: &[u8]) -> Result<()> {
         let mut d = dict.clone();
         d.set("Filter", Object::Name(b"FlateDecode".to_vec()));
-        d.set("Length", Object::Integer(compressed.len() as i64));
+        // El contenido se cifra ya comprimido; las cadenas del diccionario,
+        // aparte (encrypt_object solo cifra el contenido de un stream).
+        let mut stream = Object::Stream(lopdf::Stream::new(d.clone(), deflate(data)));
+        self.encrypt(id, &mut stream)?;
+        let content = match stream {
+            Object::Stream(st) => st.content,
+            _ => unreachable!(),
+        };
+        let mut dict = Object::Dictionary(d);
+        self.encrypt(id, &mut dict)?;
+        let Object::Dictionary(mut d) = dict else { unreachable!() };
+        d.set("Length", Object::Integer(content.len() as i64));
         let mut body = serialize_obj(&Object::Dictionary(d));
         body.extend_from_slice(b"\nstream\n");
-        body.extend_from_slice(&compressed);
+        body.extend_from_slice(&content);
         body.extend_from_slice(b"\nendstream");
         self.objects.retain(|(i, _)| *i != id);
         self.objects.push((id, body));
+        Ok(())
     }
 
     /// Hace que el trailer de la actualización apunte a este /Info.
@@ -252,6 +277,11 @@ impl<'a> UpdateBuilder<'a> {
                 d.set(key.to_vec(), v.clone());
             }
         }
+        // lopdf quita /Encrypt del trailer al descifrar: el de la
+        // actualización debe seguir apuntando al diccionario de cifrado.
+        if let Some(enc) = self.doc.encryption_state.as_ref().and_then(|s| s.encrypt_object_id()) {
+            d.set("Encrypt", Object::Reference(enc));
+        }
         if let Some(info) = self.info {
             d.set("Info", Object::Reference(info));
         }
@@ -271,7 +301,7 @@ impl<'a> UpdateBuilder<'a> {
 pub fn replace_streams(base: &[u8], xfa: &XfaPdf, replacements: &[(ObjectId, Vec<u8>)]) -> Result<Vec<u8>> {
     let mut b = UpdateBuilder::new(base, xfa);
     for (id, data) in replacements {
-        b.set_stream(*id, &Dictionary::new(), data);
+        b.set_stream(*id, &Dictionary::new(), data)?;
     }
     b.finish()
 }

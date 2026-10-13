@@ -90,5 +90,9 @@ object Recents {
             )
         }
         prefs(c).edit().putString(KEY, a.toString()).apply()
+        // Thumbnails of documents no longer listed.
+        val keys = items.take(MAX).map { it.key }
+        val app = c.applicationContext
+        Io.run({ Thumbnails.prune(app, keys) }) {}
     }
 }

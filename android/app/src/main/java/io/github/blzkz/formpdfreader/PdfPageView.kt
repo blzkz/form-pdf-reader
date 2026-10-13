@@ -56,7 +56,10 @@ import uniffi.form_pdf_reader_ffi.SearchHit
  * new ones arrive.
  *
  * Text is selected with a long press (then with the handles) or by dragging
- * with a mouse; the floating toolbar copies it.
+ * with a mouse; the floating toolbar copies it. In the text field being
+ * edited, a long press (then moving the finger), a double tap or dragging
+ * with a mouse selects part of its text; the floating toolbar cuts, copies,
+ * pastes or deletes it.
  */
 class PdfPageView(context: Context) : View(context) {
 
@@ -170,6 +173,7 @@ class PdfPageView(context: Context) : View(context) {
     /** Shows [document]. Page sizes are read on the PDFium thread. */
     fun setDocument(document: PdfDocument?) {
         clearSelection()
+        endFieldEditing()
         hits = emptyList()
         hitIndex = -1
         doc = document
@@ -629,8 +633,15 @@ class PdfPageView(context: Context) : View(context) {
             return true
         }
 
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            // In the field being edited it selects a word; elsewhere it is a
+            // second tap.
+            if (inField(e.x, e.y)) selectFieldWord(e.x, e.y) else onSingleTapUp(e)
+            return true
+        }
+
         override fun onLongPress(e: MotionEvent) {
-            startSelection(e.x, e.y)
+            if (inField(e.x, e.y)) startFieldSelection(e.x, e.y) else startSelection(e.x, e.y)
         }
     })
 
@@ -664,6 +675,11 @@ class PdfPageView(context: Context) : View(context) {
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.isFromSource(InputDevice.SOURCE_MOUSE) && !isTouchpadGesture(event)) return onMouseEvent(event)
         fingerDown = event.actionMasked != MotionEvent.ACTION_UP && event.actionMasked != MotionEvent.ACTION_CANCEL
+        // Selecting in a text field after a long press.
+        if (fieldDragging) {
+            onFieldDrag(event)
+            return true
+        }
         // Dragging a selection handle (or extending the selection after a long press).
         if (dragging != null) {
             onHandleDrag(event)
@@ -712,19 +728,30 @@ class PdfPageView(context: Context) : View(context) {
     private var mouseDown: PointF? = null
     private var mouseSelecting = false
 
-    /** Click: like a tap. Drag: selects text. The wheel scrolls (see onGenericMotionEvent). */
+    /**
+     * Click: like a tap. Drag: selects text (in the field being edited, its
+     * text). The wheel scrolls (see onGenericMotionEvent).
+     */
     private fun onMouseEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (e.isButtonPressed(MotionEvent.BUTTON_PRIMARY)) {
                     requestFocus()
+                    if (inField(e.x, e.y)) {
+                        fieldMouseDown(e.x, e.y)
+                        return true
+                    }
                     mouseDown = PointF(e.x, e.y)
                     mouseSelecting = false
-                } else if (e.isButtonPressed(MotionEvent.BUTTON_SECONDARY) && selection != null) {
-                    showActionMode()
+                } else if (e.isButtonPressed(MotionEvent.BUTTON_SECONDARY)) {
+                    if (inField(e.x, e.y)) showFieldActionMode(e.x, e.y) else if (selection != null) showActionMode()
                 }
             }
             MotionEvent.ACTION_MOVE -> {
+                if (fieldMouse) {
+                    fieldDragTo(e.x, e.y)
+                    return true
+                }
                 val down = mouseDown ?: return true
                 if (mouseSelecting) {
                     dragTo(e.x, e.y)
@@ -735,6 +762,11 @@ class PdfPageView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP -> {
+                if (fieldMouse) {
+                    fieldMouse = false
+                    fieldRelease(e.x, e.y)
+                    return true
+                }
                 val down = mouseDown
                 mouseDown = null
                 if (mouseSelecting) {
@@ -747,6 +779,10 @@ class PdfPageView(context: Context) : View(context) {
             MotionEvent.ACTION_CANCEL -> {
                 mouseDown = null
                 mouseSelecting = false
+                if (fieldMouse) {
+                    fieldMouse = false
+                    fieldRelease(e.x, e.y)
+                }
             }
         }
         return true
@@ -1027,16 +1063,19 @@ class PdfPageView(context: Context) : View(context) {
         val d = doc ?: return false
         val sel = selection ?: return false
         PdfEngine.run({ d.textRange(sel.page.toUInt(), sel.start, sel.end - sel.start + 1) }) { r ->
-            val text = r.getOrNull().orEmpty()
-            if (text.isEmpty()) return@run
-            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText(null, text))
-            // Android 13+ confirms the copy itself.
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                Toast.makeText(context, R.string.copied, Toast.LENGTH_SHORT).show()
-            }
+            toClipboard(r.getOrNull().orEmpty())
         }
         return true
+    }
+
+    private fun toClipboard(text: String) {
+        if (text.isEmpty()) return
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText(null, text))
+        // Android 13+ confirms the copy itself.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(context, R.string.copied, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun showActionMode() {
@@ -1085,19 +1124,44 @@ class PdfPageView(context: Context) : View(context) {
     // -----------------------------------------------------------------------
 
     private fun tap(x: Float, y: Float) {
-        val d = doc ?: return
-        val slot = slotAt(x, y) ?: return
-        val i = slot.page
-        val p = pages[i]
-        val s = scale.toDouble()
-        val pageW = p.widthPt * s
-        val pageH = p.heightPt * s
-        val lx = (x - (slot.x - offsetX)).toDouble()
-        val ly = (y - (slot.y - offsetY)).toDouble()
+        if (doc == null || slotAt(x, y) == null) return
         editAnchor = anchorAt(x, y)
         requestFocus()
         commitComposing()
-        send { d.tap(i.toUInt(), pageW, pageH, lx, ly) }
+        fieldActionMode?.finish()
+        sendPointer(x, y, onPageUnder = true) { p, w, h, lx, ly -> tap(p, w, h, lx, ly) }
+    }
+
+    /**
+     * Sends a pointer event at (x, y) of the view, on the page of the field
+     * being edited (or, with [onPageUnder], the page under the point), and
+     * remembers where the text field that gets the cursor is.
+     */
+    private fun sendPointer(
+        x: Float,
+        y: Float,
+        onPageUnder: Boolean = false,
+        fromUser: Boolean = true,
+        then: (() -> Unit)? = null,
+        event: PdfDocument.(UInt, Double, Double, Double, Double) -> InputResult,
+    ) {
+        val d = doc ?: return
+        val page = (if (onPageUnder) slotAt(x, y)?.page else field?.first) ?: return
+        val slot = slotOf(page) ?: return
+        val p = pages[page]
+        val s = scale
+        val pageW = (p.widthPt * s).toDouble()
+        val pageH = (p.heightPt * s).toDouble()
+        val lx = (x - (slot.x - offsetX)).toDouble()
+        val ly = (y - (slot.y - offsetY)).toDouble()
+        PdfEngine.run({ d.event(page.toUInt(), pageW, pageH, lx, ly) }) { r ->
+            if (d !== doc) return@run
+            r.onSuccess {
+                it.field?.let { f -> field = page to RectF(f.left / s, f.top / s, f.right / s, f.bottom / s) }
+                handleResult(it, fromUser)
+            }
+            then?.invoke()
+        }
     }
 
     /** Sends an input to the form and handles its result on the UI thread. */
@@ -1107,6 +1171,12 @@ class PdfPageView(context: Context) : View(context) {
 
     private fun handleResult(r: InputResult, fromUser: Boolean) {
         if (r.restructured) reloadPages() else if (r.redraw) redraw()
+        editingField = r.textInput
+        // The field may have moved (or another one has the cursor).
+        if (!r.textInput || r.restructured) {
+            field = null
+            fieldActionMode?.finish()
+        }
         if (fromUser) {
             val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             if (r.textInput) {
@@ -1163,12 +1233,14 @@ class PdfPageView(context: Context) : View(context) {
     private fun typeText(text: String) {
         val d = doc ?: return
         if (text.isEmpty()) return
+        fieldActionMode?.finish()
         send { d.typeText(text) }
     }
 
-    private fun pressKey(key: Key) {
+    private fun pressKey(key: Key, shift: Boolean = false, ctrl: Boolean = false) {
         val d = doc ?: return
-        send { d.key(key) }
+        fieldActionMode?.finish()
+        send { d.keyWith(key, shift, ctrl) }
     }
 
     private fun commitComposing() {
@@ -1249,22 +1321,10 @@ class PdfPageView(context: Context) : View(context) {
         }
         // Shortcuts belong to the activity.
         if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return super.onKeyDown(keyCode, event)
-        val key = when (keyCode) {
-            KeyEvent.KEYCODE_DEL -> Key.BACKSPACE
-            KeyEvent.KEYCODE_FORWARD_DEL -> Key.DELETE
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> Key.ENTER
-            KeyEvent.KEYCODE_TAB -> Key.TAB
-            KeyEvent.KEYCODE_ESCAPE -> Key.ESCAPE
-            KeyEvent.KEYCODE_DPAD_LEFT -> Key.LEFT
-            KeyEvent.KEYCODE_DPAD_RIGHT -> Key.RIGHT
-            KeyEvent.KEYCODE_DPAD_UP -> Key.UP
-            KeyEvent.KEYCODE_DPAD_DOWN -> Key.DOWN
-            KeyEvent.KEYCODE_MOVE_HOME -> Key.HOME
-            KeyEvent.KEYCODE_MOVE_END -> Key.END
-            else -> null
-        }
+        val key = keyFor(keyCode)
         if (key != null && doc != null) {
-            pressKey(key)
+            // Shift with the arrows, Home or End selects.
+            pressKey(key, shift = event.isShiftPressed)
             return true
         }
         val c = event.unicodeChar
@@ -1275,11 +1335,254 @@ class PdfPageView(context: Context) : View(context) {
         return super.onKeyDown(keyCode, event)
     }
 
+    private fun keyFor(keyCode: Int): Key? = when (keyCode) {
+        KeyEvent.KEYCODE_DEL -> Key.BACKSPACE
+        KeyEvent.KEYCODE_FORWARD_DEL -> Key.DELETE
+        KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> Key.ENTER
+        KeyEvent.KEYCODE_TAB -> Key.TAB
+        KeyEvent.KEYCODE_ESCAPE -> Key.ESCAPE
+        KeyEvent.KEYCODE_DPAD_LEFT -> Key.LEFT
+        KeyEvent.KEYCODE_DPAD_RIGHT -> Key.RIGHT
+        KeyEvent.KEYCODE_DPAD_UP -> Key.UP
+        KeyEvent.KEYCODE_DPAD_DOWN -> Key.DOWN
+        KeyEvent.KEYCODE_MOVE_HOME -> Key.HOME
+        KeyEvent.KEYCODE_MOVE_END -> Key.END
+        else -> null
+    }
+
+    /**
+     * Ctrl shortcuts while a text field has the cursor: select all, copy,
+     * cut, paste, and moving by words or to the start or end. False if no
+     * field is being edited or the shortcut is not one of these.
+     */
+    fun fieldShortcut(keyCode: Int, ch: Char, shift: Boolean): Boolean {
+        if (!editingField || doc == null) return false
+        when (ch) {
+            'a' -> fieldSelectAll()
+            'c' -> fieldCopy(cut = false)
+            'x' -> fieldCopy(cut = true)
+            'v' -> fieldPaste()
+            else -> {
+                val key = keyFor(keyCode)?.takeIf { it != Key.TAB && it != Key.ENTER && it != Key.ESCAPE } ?: return false
+                pressKey(key, shift, ctrl = true)
+            }
+        }
+        return true
+    }
+
+    // -----------------------------------------------------------------------
+    // Selection in the text field being edited
+    // -----------------------------------------------------------------------
+
+    /** The text field with the cursor: its page and rectangle in points. */
+    private var field: Pair<Int, RectF>? = null
+
+    /** A text field has the cursor (the keyboard types into the form). */
+    var editingField = false
+        private set
+
+    /** Moving the finger after a long press selects in the field. */
+    private var fieldDragging = false
+    private var fieldMoved = false
+    private val fieldPressPoint = PointF()
+
+    /** The mouse button is down in the field. */
+    private var fieldMouse = false
+    private var lastFieldClick = 0L
+    private val lastFieldClickPoint = PointF()
+
+    private var fieldDragBusy = false
+    private var fieldDragPending: PointF? = null
+
+    private var fieldActionMode: ActionMode? = null
+    private val fieldMenuPoint = PointF()
+
+    private fun endFieldEditing() {
+        field = null
+        editingField = false
+        fieldDragging = false
+        fieldMouse = false
+        fieldActionMode?.finish()
+    }
+
+    /** The keyboard forgets the word it was composing: the text changes under it. */
+    private fun resetKeyboard() {
+        commitComposing()
+        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).restartInput(this)
+    }
+
+    /** (x, y) of the view is on the text field being edited. */
+    private fun inField(x: Float, y: Float): Boolean {
+        val (page, r) = field ?: return false
+        val slot = slotOf(page) ?: return false
+        val l = slot.x - offsetX
+        val t = slot.y - offsetY
+        return x >= l + r.left * scale && x <= l + r.right * scale && y >= t + r.top * scale && y <= t + r.bottom * scale
+    }
+
+    /** Long press in the field: the cursor goes there and moving the finger selects. */
+    private fun startFieldSelection(x: Float, y: Float) {
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        fieldActionMode?.finish()
+        resetKeyboard()
+        fieldPressPoint.set(x, y)
+        fieldMoved = false
+        if (!fingerDown) {
+            selectFieldWord(x, y)
+            return
+        }
+        fieldDragging = true
+        parent?.requestDisallowInterceptTouchEvent(true)
+        sendPointer(x, y, fromUser = false) { p, w, h, lx, ly -> press(p, w, h, lx, ly) }
+    }
+
+    private fun onFieldDrag(e: MotionEvent) {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                // A finger held still after the long press selects the word.
+                if (!fieldMoved && hypot(e.x - fieldPressPoint.x, e.y - fieldPressPoint.y) < touchSlop) return
+                fieldMoved = true
+                fieldDragTo(e.x, e.y)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                fieldDragging = false
+                if (fieldMoved) {
+                    fieldRelease(e.x, e.y) { showFieldActionMode(e.x, e.y) }
+                } else {
+                    fieldRelease(fieldPressPoint.x, fieldPressPoint.y) { selectFieldWord(fieldPressPoint.x, fieldPressPoint.y) }
+                }
+            }
+        }
+    }
+
+    private fun fieldMouseDown(x: Float, y: Float) {
+        fieldActionMode?.finish()
+        resetKeyboard()
+        val now = System.currentTimeMillis()
+        val double = now - lastFieldClick < ViewConfiguration.getDoubleTapTimeout() &&
+            hypot(x - lastFieldClickPoint.x, y - lastFieldClickPoint.y) < touchSlop
+        lastFieldClick = if (double) 0L else now
+        lastFieldClickPoint.set(x, y)
+        if (double) {
+            sendPointer(x, y, fromUser = false) { p, w, h, lx, ly -> doubleTap(p, w, h, lx, ly) }
+            return
+        }
+        fieldMouse = true
+        sendPointer(x, y) { p, w, h, lx, ly -> press(p, w, h, lx, ly) }
+    }
+
+    /** Moves the end of the selection; one move at a time, the latest wins. */
+    private fun fieldDragTo(x: Float, y: Float) {
+        if (fieldDragBusy) {
+            fieldDragPending = PointF(x, y)
+            return
+        }
+        fieldDragBusy = true
+        sendPointer(x, y, fromUser = false, then = {
+            fieldDragBusy = false
+            fieldDragPending?.let {
+                fieldDragPending = null
+                fieldDragTo(it.x, it.y)
+            }
+        }) { p, w, h, lx, ly -> drag(p, w, h, lx, ly) }
+    }
+
+    private fun fieldRelease(x: Float, y: Float, then: (() -> Unit)? = null) {
+        fieldDragPending = null
+        sendPointer(x, y, fromUser = false) { p, w, h, lx, ly -> drag(p, w, h, lx, ly) }
+        sendPointer(x, y, fromUser = false, then = then) { p, w, h, lx, ly -> release(p, w, h, lx, ly) }
+    }
+
+    private fun selectFieldWord(x: Float, y: Float) {
+        resetKeyboard()
+        sendPointer(x, y, fromUser = false, then = { showFieldActionMode(x, y) }) { p, w, h, lx, ly -> doubleTap(p, w, h, lx, ly) }
+    }
+
+    private fun fieldCopy(cut: Boolean) {
+        val d = doc ?: return
+        PdfEngine.run({
+            val text = d.selectedText()
+            text to (if (cut && text.isNotEmpty()) d.replaceSelection("") else null)
+        }) { r ->
+            val (text, result) = r.getOrNull() ?: return@run
+            toClipboard(text)
+            if (result != null && d === doc) handleResult(result, false)
+        }
+    }
+
+    private fun fieldPaste() {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+        if (text.isNullOrEmpty()) return
+        fieldReplace(text)
+    }
+
+    private fun fieldReplace(text: String) {
+        val d = doc ?: return
+        resetKeyboard()
+        PdfEngine.run({ d.replaceSelection(text) }) { r -> r.onSuccess { if (d === doc) handleResult(it, false) } }
+    }
+
+    private fun fieldSelectAll() {
+        val d = doc ?: return
+        PdfEngine.run({ d.selectAllInField() }) { r -> r.onSuccess { if (d === doc) handleResult(it, false) } }
+    }
+
+    private fun showFieldActionMode(x: Float, y: Float) {
+        if (!editingField) return
+        fieldMenuPoint.set(x, y)
+        fieldActionMode?.let {
+            it.invalidateContentRect()
+            return
+        }
+        fieldActionMode = startActionMode(object : ActionMode.Callback2() {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                menu.add(Menu.NONE, MENU_CUT, 0, android.R.string.cut)
+                menu.add(Menu.NONE, MENU_COPY, 1, android.R.string.copy)
+                menu.add(Menu.NONE, MENU_PASTE, 2, android.R.string.paste)
+                menu.add(Menu.NONE, MENU_DELETE, 3, R.string.delete)
+                menu.add(Menu.NONE, MENU_SELECT_ALL, 4, android.R.string.selectAll)
+                return true
+            }
+
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
+
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                when (item.itemId) {
+                    MENU_CUT -> fieldCopy(cut = true)
+                    MENU_COPY -> fieldCopy(cut = false)
+                    MENU_PASTE -> fieldPaste()
+                    MENU_DELETE -> fieldReplace("")
+                    MENU_SELECT_ALL -> {
+                        fieldSelectAll()
+                        return true
+                    }
+                }
+                mode.finish()
+                return true
+            }
+
+            override fun onDestroyActionMode(mode: ActionMode) {
+                if (fieldActionMode === mode) fieldActionMode = null
+            }
+
+            override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+                val r = (24 * density).roundToInt()
+                val cx = fieldMenuPoint.x.roundToInt()
+                val cy = fieldMenuPoint.y.roundToInt()
+                outRect.set(cx - r, cy - r, cx + r, cy + r)
+            }
+        }, ActionMode.TYPE_FLOATING)
+    }
+
     companion object {
         private const val TILE_W = 1024
         private const val TILE_H = 512
         private const val MENU_COPY = 1
         private const val MENU_SELECT_ALL = 2
+        private const val MENU_CUT = 3
+        private const val MENU_PASTE = 4
+        private const val MENU_DELETE = 5
 
         /** Zoom levels of the zoom in/out buttons, in percent. */
         val ZOOM_STEPS = intArrayOf(10, 25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500, 600, 800)

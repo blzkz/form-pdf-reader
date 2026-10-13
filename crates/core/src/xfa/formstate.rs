@@ -201,10 +201,10 @@ pub fn write(b: &mut UpdateBuilder, doc: &lopdf::Document, json: &str, datasets:
         _ => (b.alloc(), Dictionary::new()),
     };
     let sid = b.alloc();
-    b.set_stream(sid, &Dictionary::new(), json.as_bytes());
+    b.set_stream(sid, &Dictionary::new(), json.as_bytes())?;
     info.set(KEY_STATE.to_vec(), Object::Reference(sid));
     info.set(KEY_HASH.to_vec(), Object::String(fingerprint(datasets).into_bytes(), lopdf::StringFormat::Literal));
-    b.set_object(info_id, &Object::Dictionary(info));
+    b.set_object(info_id, &Object::Dictionary(info))?;
     b.set_info(info_id);
     Ok(())
 }

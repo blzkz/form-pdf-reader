@@ -102,6 +102,10 @@ pub struct InputResult {
     pub uris: Vec<String>,
     /// URL the form tried to submit to (not supported).
     pub submit: Option<String>,
+    /// The text field that got the cursor with this tap or press, in pixels
+    /// of the page drawn at the size given to it (only from `tap` and
+    /// `press`).
+    pub field: Option<PageRect>,
 }
 
 /// A rectangle in pixels on a page drawn at a given size.
@@ -220,11 +224,34 @@ impl PdfDocument {
             redraw: true,
             modified: u.form_changed,
             restructured,
-            text_input: doc.editing_field() && u.caret.is_some() || u.text_field_focused,
+            text_input: doc.editing_text() || doc.editing_field() && u.caret.is_some(),
             open_files: u.open_files.into_iter().map(|p| p.display().to_string()).collect(),
             uris: u.uris,
             submit: u.submit_requested,
+            field: None,
         }
+    }
+
+    /// `finish`, plus the rectangle of the text field that has the cursor.
+    fn finish_with_field(doc: &mut Document, page_w: f64, page_h: f64) -> InputResult {
+        let mut r = Self::finish(doc);
+        if r.text_input
+            && let Some((p, b)) = doc.focused_text_field()
+        {
+            let (x0, y0) = doc.page_to_device(p, page_w, page_h, b[0], b[1]);
+            let (x1, y1) = doc.page_to_device(p, page_w, page_h, b[2], b[3]);
+            r.field = Some(PageRect { left: x0.min(x1) as f32, top: y0.min(y1) as f32, right: x0.max(x1) as f32, bottom: y0.max(y1) as f32 });
+        }
+        r
+    }
+
+    fn pointer(&self, page: u32, page_w: f64, page_h: f64, x: f64, y: f64, f: impl FnOnce(&mut Document, usize, f64, f64)) -> InputResult {
+        let mut doc = self.lock();
+        let p = usize_page(page);
+        let (px, py) = Self::to_page(&doc, p, page_w, page_h, x, y);
+        doc.set_current_page(p);
+        f(&mut doc, p, px, py);
+        Self::finish_with_field(&mut doc, page_w, page_h)
     }
 }
 
@@ -312,13 +339,62 @@ impl PdfDocument {
 
     /// A tap at (`x`, `y`) pixels on the page drawn at `page_w` × `page_h`.
     pub fn tap(&self, page: u32, page_w: f64, page_h: f64, x: f64, y: f64) -> InputResult {
+        self.pointer(page, page_w, page_h, x, y, |doc, p, px, py| {
+            doc.mouse_move(p, px, py, 0);
+            doc.left_down(p, px, py, 0);
+            doc.left_up(p, px, py, 0);
+        })
+    }
+
+    /// Mouse button (or finger) down at (`x`, `y`), as in `tap`. Until
+    /// `release`, `drag` selects text in a text field.
+    pub fn press(&self, page: u32, page_w: f64, page_h: f64, x: f64, y: f64) -> InputResult {
+        self.pointer(page, page_w, page_h, x, y, |doc, p, px, py| {
+            doc.mouse_move(p, px, py, 0);
+            doc.left_down(p, px, py, 0);
+        })
+    }
+
+    /// Moves the pressed button to (`x`, `y`).
+    pub fn drag(&self, page: u32, page_w: f64, page_h: f64, x: f64, y: f64) -> InputResult {
+        self.pointer(page, page_w, page_h, x, y, |doc, p, px, py| {
+            doc.mouse_move(p, px, py, keys::MOD_LBUTTON);
+        })
+    }
+
+    /// Releases the button pressed with `press`.
+    pub fn release(&self, page: u32, page_w: f64, page_h: f64, x: f64, y: f64) -> InputResult {
+        self.pointer(page, page_w, page_h, x, y, |doc, p, px, py| {
+            doc.left_up(p, px, py, 0);
+        })
+    }
+
+    /// Double click: selects the word in a text field.
+    pub fn double_tap(&self, page: u32, page_w: f64, page_h: f64, x: f64, y: f64) -> InputResult {
+        self.pointer(page, page_w, page_h, x, y, |doc, p, px, py| {
+            doc.left_double_click(p, px, py, 0);
+        })
+    }
+
+    /// Text selected in the field being edited.
+    pub fn selected_text(&self) -> String {
+        self.lock().selected_text()
+    }
+
+    /// Replaces the text selected in the field being edited (empty: deletes
+    /// it; with no selection: inserts at the cursor).
+    pub fn replace_selection(&self, text: String) -> InputResult {
         let mut doc = self.lock();
-        let p = usize_page(page);
-        let (px, py) = Self::to_page(&doc, p, page_w, page_h, x, y);
-        doc.set_current_page(p);
-        doc.mouse_move(p, px, py, 0);
-        doc.left_down(p, px, py, 0);
-        doc.left_up(p, px, py, 0);
+        doc.replace_selection(&text);
+        let mut r = Self::finish(&mut doc);
+        r.modified = true;
+        r
+    }
+
+    /// Selects all the text of the field being edited.
+    pub fn select_all_in_field(&self) -> InputResult {
+        let mut doc = self.lock();
+        doc.select_all();
         Self::finish(&mut doc)
     }
 
@@ -334,7 +410,14 @@ impl PdfDocument {
 
     /// A special key.
     pub fn key(&self, key: Key) -> InputResult {
+        self.key_with(key, false, false)
+    }
+
+    /// A special key with Shift (extends the selection with the arrows,
+    /// Home and End) and/or Ctrl (moves by words, or to the start or end).
+    pub fn key_with(&self, key: Key, shift: bool, ctrl: bool) -> InputResult {
         let mut doc = self.lock();
+        let mods = if shift { keys::MOD_SHIFT } else { 0 } | if ctrl { keys::MOD_CTRL } else { 0 };
         let vk = match key {
             Key::Backspace => keys::VK_BACK,
             Key::Delete => keys::VK_DELETE,
@@ -348,11 +431,11 @@ impl PdfDocument {
             Key::Home => keys::VK_HOME,
             Key::End => keys::VK_END,
         };
-        doc.key_down(vk, 0);
+        doc.key_down(vk, mods);
         if let Some(c) = keys::char_for_vk(vk) {
-            doc.char_input(c as u32, 0);
+            doc.char_input(c as u32, mods);
         }
-        doc.key_up(vk, 0);
+        doc.key_up(vk, mods);
         let mut r = Self::finish(&mut doc);
         r.modified |= matches!(key, Key::Backspace | Key::Delete | Key::Enter);
         r

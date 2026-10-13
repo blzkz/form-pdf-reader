@@ -20,6 +20,7 @@
     <string name="form">Formular</string>
     <string name="no_attachments">Dieses PDF hat keine angehängten Dateien.</string>
     <string name="copied">Text kopiert</string>
+    <string name="delete">Löschen</string>
     <string name="no_text">Diese Seite enthält keinen auswählbaren Text.</string>
     <string name="submit_unsupported">Das Formular hat versucht, sich an „%1$s“ zu senden. Das Senden wird nicht unterstützt: Speichern Sie das PDF und reichen Sie es über den angegebenen Weg ein.</string>
     <string name="no_app">Es gibt keine App, die diese Datei öffnen kann.</string>
@@ -81,4 +82,11 @@
     <string name="share">Teilen</string>
     <string name="share_title">„%1$s“ teilen</string>
     <string name="share_error">Das Dokument konnte nicht geteilt werden:\n%1$s</string>
+    <string name="drafts_title">Ungespeicherte Änderungen</string>
+    <string name="drafts_message">Die App wurde geschlossen, bevor diese Dokumente gespeichert wurden:\n\n%1$s</string>
+    <string name="draft_found">„%1$s“ enthält ungespeicherte Änderungen (%2$s). Wiederherstellen?</string>
+    <string name="recover">Wiederherstellen</string>
+    <string name="later">Später</string>
+    <string name="draft_recovered">Ungespeicherte Änderungen wiederhergestellt</string>
+    <string name="save_incomplete">Das Dokument wurde nicht vollständig geschrieben.</string>
 </resources>

@@ -154,7 +154,7 @@ pub fn write(b: &mut UpdateBuilder, doc: &lopdf::Document, atts: &[Attachment]) 
             let mut params = Dictionary::new();
             params.set("Size", Object::Integer(a.data.len() as i64));
             ef.set("Params", Object::Dictionary(params));
-            b.set_stream(ef_id, &ef, &a.data);
+            b.set_stream(ef_id, &ef, &a.data)?;
 
             let fs_id = b.alloc();
             let ascii: String = a.file_name.chars().map(|c| if c.is_ascii() && !c.is_ascii_control() { c } else { '_' }).collect();
@@ -166,7 +166,7 @@ pub fn write(b: &mut UpdateBuilder, doc: &lopdf::Document, atts: &[Attachment]) 
             efd.set("F", Object::Reference(ef_id));
             efd.set("UF", Object::Reference(ef_id));
             fs.set("EF", Object::Dictionary(efd));
-            b.set_object(fs_id, &Object::Dictionary(fs));
+            b.set_object(fs_id, &Object::Dictionary(fs))?;
 
             arr.push(Object::String(pdf_text(&a.name), lopdf::StringFormat::Literal));
             arr.push(Object::Reference(fs_id));
@@ -174,14 +174,14 @@ pub fn write(b: &mut UpdateBuilder, doc: &lopdf::Document, atts: &[Attachment]) 
         let tree_id = b.alloc();
         let mut tree = Dictionary::new();
         tree.set("Names", Object::Array(arr));
-        b.set_object(tree_id, &Object::Dictionary(tree));
+        b.set_object(tree_id, &Object::Dictionary(tree))?;
         names.set("EmbeddedFiles", Object::Reference(tree_id));
     }
-    b.set_object(names_id, &Object::Dictionary(names));
+    b.set_object(names_id, &Object::Dictionary(names))?;
     if rewrite_catalog {
         let mut cat = catalog;
         cat.set("Names", Object::Reference(names_id));
-        b.set_object(root_id, &Object::Dictionary(cat));
+        b.set_object(root_id, &Object::Dictionary(cat))?;
     }
     Ok(())
 }

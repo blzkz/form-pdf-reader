@@ -20,6 +20,7 @@
     <string name="form">Formulário</string>
     <string name="no_attachments">Este PDF não tem ficheiros anexados.</string>
     <string name="copied">Texto copiado</string>
+    <string name="delete">Eliminar</string>
     <string name="no_text">Esta página não tem texto selecionável.</string>
     <string name="submit_unsupported">O formulário tentou enviar-se para «%1$s». O envio não é suportado: guarde o PDF e envie-o pelo canal indicado.</string>
     <string name="no_app">Não há nenhuma app para abrir este ficheiro.</string>
@@ -81,4 +82,11 @@
     <string name="share">Partilhar</string>
     <string name="share_title">Partilhar «%1$s»</string>
     <string name="share_error">Não foi possível partilhar o documento:\n%1$s</string>
+    <string name="drafts_title">Alterações não guardadas</string>
+    <string name="drafts_message">A app fechou antes de guardar estes documentos:\n\n%1$s</string>
+    <string name="draft_found">«%1$s» tem alterações não guardadas (%2$s). Recuperá-las?</string>
+    <string name="recover">Recuperar</string>
+    <string name="later">Mais tarde</string>
+    <string name="draft_recovered">Alterações não guardadas recuperadas</string>
+    <string name="save_incomplete">O documento não foi escrito por completo.</string>
 </resources>

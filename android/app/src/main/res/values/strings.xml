@@ -21,6 +21,7 @@
     <string name="form">Form</string>
     <string name="no_attachments">This PDF has no attached files.</string>
     <string name="copied">Text copied</string>
+    <string name="delete">Delete</string>
     <string name="no_text">This page has no selectable text.</string>
     <string name="submit_unsupported">The form tried to submit itself to “%1$s”. Submitting is not supported: save the PDF and send it through the indicated channel.</string>
     <string name="no_app">There is no app to open this file.</string>
@@ -82,4 +83,11 @@
     <string name="share">Share</string>
     <string name="share_title">Share “%1$s”</string>
     <string name="share_error">Could not share the document:\n%1$s</string>
+    <string name="drafts_title">Unsaved changes</string>
+    <string name="drafts_message">The app closed before these documents were saved:\n\n%1$s</string>
+    <string name="draft_found">“%1$s” has unsaved changes (%2$s). Recover them?</string>
+    <string name="recover">Recover</string>
+    <string name="later">Later</string>
+    <string name="draft_recovered">Unsaved changes recovered</string>
+    <string name="save_incomplete">The document was not written completely.</string>
 </resources>
