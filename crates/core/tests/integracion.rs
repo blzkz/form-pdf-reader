@@ -446,6 +446,101 @@ fn seleccion_en_campos() {
     doc.kill_focus();
 }
 
+/// Un punto (en coordenadas de página) de cada campo de texto de la
+/// primera página, en orden de lectura.
+fn campos_de_texto(doc: &Document) -> Vec<(f64, f64)> {
+    let (w, _) = doc.page_size(0);
+    let h = doc.content_height(0);
+    let mut puntos = Vec::new();
+    let mut zonas: Vec<[f64; 4]> = Vec::new();
+    let mut y = 4.0;
+    while y < h as f64 {
+        let mut x = 4.0;
+        while x < w as f64 {
+            let dentro = zonas.iter().any(|b| x >= b[0] && x <= b[2] && y >= b[1].min(b[3]) && y <= b[1].max(b[3]));
+            if !dentro && matches!(doc.field_at(0, x, y), 6 | 15) {
+                zonas.push(doc.field_bounds(0, x, y));
+                puntos.push((x + 3.0, y + 2.0));
+            }
+            x += 8.0;
+        }
+        y += 6.0;
+    }
+    puntos
+}
+
+/// Escribe `texto` en el primer campo de texto de la primera página que lo
+/// acepta (algunos son fechas o tienen formato) y lo deja guardado en el
+/// formulario. Devuelve dónde.
+fn rellenar_un_campo(doc: &mut Document, texto: &str, xfa_datos: bool) -> Option<(f64, f64)> {
+    for (x, y) in campos_de_texto(doc).into_iter().take(20) {
+        click(doc, x, y);
+        doc.select_all();
+        doc.type_text(texto);
+        doc.kill_focus();
+        let ok = if xfa_datos {
+            datasets(doc).contains(texto)
+        } else {
+            click(doc, x, y);
+            let t = doc.focused_text();
+            doc.kill_focus();
+            t == texto
+        };
+        if ok {
+            return Some((x, y));
+        }
+    }
+    None
+}
+
+/// Formularios públicos de distintos organismos (ver fixtures/README.md):
+/// se abren con su tipo, se dibujan, se rellena un campo, se guarda como
+/// actualización incremental y el dato se lee al reabrir. Dos están cifrados
+/// (contraseña de propietario).
+fn corpus() {
+    let casos = [
+        ("hmrc-chv1.pdf", FormKind::XfaFull),
+        ("us-army-da4856.pdf", FormKind::XfaFull),
+        ("ec-mir-7.3.1.pdf", FormKind::XfaFull),
+        ("gencat-22100.pdf", FormKind::XfaFull),
+        ("irs-f1040x.pdf", FormKind::XfaForeground),
+        ("uscis-i9.pdf", FormKind::AcroForm),
+    ];
+    let texto = "12345";
+    for (f, tipo) in casos {
+        let src = Path::new("tests/fixtures/corpus").join(f);
+        let mut doc = Document::open(&src).unwrap();
+        doc.set_alert_handler(Box::new(|_| form_pdf_reader::pdfium::AlertAnswer::Ok));
+        assert_eq!(doc.kind(), tipo, "{f}");
+        let xfa = tipo != FormKind::AcroForm;
+        assert_eq!(doc.is_xfa(), xfa, "{f}: XFA cargado");
+        // La primera página tiene contenido (no solo el aviso de "espere").
+        let (w, h) = doc.page_size(0);
+        let px = doc.render(0, (w / 4.0) as i32, (h / 4.0) as i32).unwrap();
+        let tinta = px.chunks(4).filter(|c| c[0] < 128).count();
+        assert!(tinta > 200, "{f}: página casi en blanco ({tinta})");
+        // En los XFA estáticos se escribe en la capa AcroForm (PDFium no lleva
+        // el valor a `datasets`; ver README, limitaciones).
+        let dinamico = tipo == FormKind::XfaFull;
+        let (x, y) = rellenar_un_campo(&mut doc, texto, dinamico).unwrap_or_else(|| panic!("{f}: ningún campo de texto aceptó el texto"));
+
+        let out = tmp(&format!("corpus-{f}"));
+        doc.save(&out).unwrap();
+        drop(doc);
+        let orig = std::fs::read(&src).unwrap();
+        assert!(std::fs::read(&out).unwrap().starts_with(&orig), "{f}: el original debe quedar intacto");
+        let mut d2 = Document::open(&out).unwrap();
+        d2.set_alert_handler(Box::new(|_| form_pdf_reader::pdfium::AlertAnswer::Ok));
+        assert_eq!(d2.is_xfa(), xfa, "{f}: XFA cargado al reabrir");
+        if dinamico {
+            assert!(datasets(&mut d2).contains(texto), "{f}: el dato no está al reabrir");
+        }
+        click(&mut d2, x, y);
+        assert_eq!(d2.focused_text(), texto, "{f}: el campo no muestra el dato al reabrir");
+        d2.kill_focus();
+    }
+}
+
 #[test]
 fn pdfium_completo() {
     normal();
@@ -455,6 +550,7 @@ fn pdfium_completo() {
     pdf_adobe();
     saltos_de_linea();
     seleccion_en_campos();
+    corpus();
     adjuntos();
     fechas_y_cascada();
 }
