@@ -1,7 +1,7 @@
 # Form PDF Reader
 
-**Read, fill in and save dynamic XFA forms on Linux, without Adobe Reader on
-Windows, a virtual machine or Wine.**
+**Read, fill in and save dynamic XFA forms on Linux, Windows and Android,
+without Adobe Reader.**
 
 Many official forms are dynamic XFA forms (Adobe LiveCycle). Other PDF
 viewers only show a "Please wait… / Adobe Reader 8 or higher is required"
@@ -21,7 +21,8 @@ The interface is available in English, Spanish, French, Italian, Portuguese
 and German. On the desktop it follows the system language (`LANGUAGE`,
 `LC_ALL`, `LC_MESSAGES`, `LANG`), and **File > Settings** lets you choose
 another one, which applies at once and is remembered in
-`~/.config/form-pdf-reader/settings.conf`. `FORM_PDF_READER_LANG=fr` (or
+`~/.config/form-pdf-reader/settings.conf` (on Windows,
+`%APPDATA%\form-pdf-reader\settings.conf`). `FORM_PDF_READER_LANG=fr` (or
 `en`, `es`, `it`, `pt`, `de`) forces one. The Android app follows the
 device's language, or the app language chosen in the system settings
 (Android 13+). Any other language uses English.
@@ -50,6 +51,8 @@ stay in the form's own language.
   delete), with its size and type limits. Files are embedded in the PDF the
   same way Acrobat does it. "View" opens PDF attachments in a new tab.
   "Archivo > Adjuntos del PDF…" lists the embedded files of any PDF.
+- **Protected PDFs:** a PDF that needs a password to open asks for it, and
+  stays protected with the same password when saved.
 - **Saving:** Ctrl+S and Save As, with a warning about unsaved changes.
   Saving keeps the original file intact (see below).
 - **Export and print:** a "flat" (image) PDF on A4 pages. Printing opens that
@@ -126,14 +129,15 @@ as when Adobe Reader saves the form.
 ## Known limitations
 
 - Digital signatures and submitting the form by e-mail or web do not work.
-- Non-embedded corporate fonts are replaced by Liberation Sans, so some text
-  is slightly wider.
+- Non-embedded corporate fonts are replaced by Liberation Sans (Arial on
+  Windows), so some text is slightly wider.
 - The date picker is in English (PDFium's choice) and opens on the current
   month. Dates can also be typed.
 - PDFium wraps the displayed text of some dropdowns onto two lines. The stored
   value is correct.
-- Text selection does not work on dynamic XFA forms, because PDFium renders
-  them without a text layer.
+- The *Text* tool does not select text on dynamic XFA forms, because PDFium
+  renders them without a text layer. The text of each field can still be
+  selected while editing it.
 - Dynamic XFA forms are always shown in continuous view.
 - If a PDF saved by this application is opened in Adobe Reader, Adobe uses
   its own saved form state from the last time it saved the file. The data is
@@ -183,10 +187,17 @@ Each [GitHub release](../../releases) has ready-made packages for x86_64:
 | Fedora | `form-pdf-reader-*.x86_64.rpm` | `sudo dnf install ./form-pdf-reader-*.x86_64.rpm` |
 | Arch Linux, CachyOS | `form-pdf-reader-*-x86_64.pkg.tar.zst` | `sudo pacman -U form-pdf-reader-*-x86_64.pkg.tar.zst` |
 | Any distribution | `form-pdf-reader-*-x86_64.tar.gz` | extract it and run `./instalar.sh` |
+| Windows 10/11 (x64) | `form-pdf-reader-*-windows-x64-setup.exe` | run it; it installs for your user, without administrator rights |
+| Windows 10/11 (x64), portable | `form-pdf-reader-*-windows-x64-portable.zip` | extract it anywhere and run `form-pdf-reader.exe` |
 | Android 8+ (arm64) | `form-pdf-reader-*-android-arm64.apk` | open it on the phone and allow installing it |
 
 The binary is built on Ubuntu 22.04 (glibc 2.35), so it also runs on newer
 distributions.
+
+On Windows the installer adds Form PDF Reader to the Start menu and to
+"Open with" for PDF files, without changing the default PDF app. The files
+are not signed with a code-signing certificate, so Windows SmartScreen may
+warn the first time: choose "More info" and "Run anyway".
 
 On Arch Linux and CachyOS it can also come from the AUR: `form-pdf-reader-bin`
 (the release build) or `form-pdf-reader` (built from source), for example with
@@ -227,6 +238,13 @@ Other ways to install it:
   packages.
 - `scripts/empaquetar.sh` creates a self-contained tar.gz in `dist/`.
 - `scripts/appimage.sh` creates an AppImage if `appimagetool` is installed.
+
+On Windows (Rust with the MSVC toolchain, Git Bash for the scripts):
+`PDFIUM_PLATFORM=win-x64 scripts/descargar-pdfium.sh`, then
+`cargo build --release`; `pdfium.dll` (in `vendor/pdfium/bin`) has to be
+next to `form-pdf-reader.exe`. The installer is built with Inno Setup from
+`packaging/windows/form-pdf-reader.iss`; the `Windows` workflow does all of
+it.
 
 ## Android app
 
