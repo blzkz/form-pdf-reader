@@ -7,12 +7,12 @@ use form_pdf_reader::pdfium::{Document, FormKind, keys};
 use form_pdf_reader::xfa;
 use std::path::{Path, PathBuf};
 
-/// Fichero de `diagnostico/`, en la raíz del repositorio (las pruebas se
-/// ejecutan desde la carpeta del crate). No está en el repositorio: las
-/// partes que lo usan se omiten si no existe.
-fn diag(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../diagnostico").join(name)
-}
+/// Formulario XFA dinámico real (Banco de España), en blanco.
+const XFA: &str = "tests/fixtures/TINTERNET_original.pdf";
+
+/// El mismo formulario rellenado con datos inventados y guardado con Adobe
+/// Reader, con dos adjuntos.
+const XFA_ADOBE: &str = "tests/fixtures/TINTERNET_adobe.pdf";
 
 fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("pdfre-test-{}", std::process::id()));
@@ -31,11 +31,7 @@ fn click(doc: &mut Document, x: f64, y: f64) {
 }
 
 fn xfa_dinamico() {
-    let src = &diag("TINTERNET_original.pdf");
-    if !src.exists() {
-        eprintln!("(sin {}: se omite la prueba XFA)", src.display());
-        return;
-    }
+    let src = Path::new(XFA);
     let mut doc = Document::open(src).unwrap();
     assert_eq!(doc.kind(), FormKind::XfaFull);
     assert!(doc.is_xfa() && doc.is_dynamic_xfa() && doc.is_continuous());
@@ -159,10 +155,7 @@ fn click_mm(doc: &mut Document, x: f64, y: f64) {
 
 /// Abrir un desplegable y cerrarlo pulsando fuera no debe dejar restos.
 fn desplegable_cierre() {
-    let src = &diag("TINTERNET_original.pdf");
-    if !src.exists() {
-        return;
-    }
+    let src = Path::new(XFA);
     let mut doc = Document::open(src).unwrap();
     let antes = region(&doc, 944, 300);
     click_mm(&mut doc, 289.0, 929.0);
@@ -183,10 +176,7 @@ fn desplegable_cierre() {
 
 /// Componente de adjuntos del formulario: añadir, ver, eliminar, guardar.
 fn adjuntos() {
-    let src = &diag("TINTERNET_original.pdf");
-    if !src.exists() {
-        return;
-    }
+    let src = Path::new(XFA);
     let mut doc = Document::open(src).unwrap();
     assert!(doc.has_attachment_bridge());
     let fichero = std::rc::Rc::new(std::cell::RefCell::new(std::fs::canonicalize("tests/fixtures/normal.pdf").unwrap()));
@@ -237,14 +227,9 @@ fn adjuntos() {
     assert_eq!(d2.eval_js(&format!("xfa.resolveNode(\"{fila}\").parent.className")).as_deref(), Some("subform"));
 }
 
-/// PDF real rellenado con Adobe. Tiene datos personales, así que no está en
-/// el repositorio: si no existe, la prueba se omite.
-fn pdf_real() {
-    let src = &diag("formulario_real.pdf");
-    if !src.exists() {
-        eprintln!("(sin {}: se omite la prueba con el PDF real)", src.display());
-        return;
-    }
+/// Formulario guardado con Adobe Reader.
+fn pdf_adobe() {
+    let src = Path::new(XFA_ADOBE);
     let mut doc = Document::open(src).unwrap();
     let alertas = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
     let a2 = alertas.clone();
@@ -298,10 +283,7 @@ fn titulaciones(doc: &mut Document) -> String {
 /// Fechas (tecleadas y con calendario) y desplegables en cascada de la
 /// sección de titulaciones.
 fn fechas_y_cascada() {
-    let src = &diag("TINTERNET_original.pdf");
-    if !src.exists() {
-        return;
-    }
+    let src = Path::new(XFA);
     // Fecha tecleada: se guarda como DD/MM/AAAA, igual que Adobe (la
     // validación del propio formulario exige ese formato en el dato).
     let mut doc = Document::open(src).unwrap();
@@ -362,13 +344,117 @@ fn fechas_y_cascada() {
     }
 }
 
+/// Valores de los elementos `etiqueta` de un paquete `datasets`.
+fn valores(ds: &str, etiqueta: &str) -> Vec<String> {
+    let re = regex::Regex::new(&format!(r"<{etiqueta}(?:\s[^>]*?)?\s*>([^<]*)</{etiqueta}")).unwrap();
+    re.captures_iter(ds).map(|c| c[1].to_string()).collect()
+}
+
+fn ds_de(pdf: &Path) -> String {
+    String::from_utf8(xfa::read_datasets(&std::fs::read(pdf).unwrap()).unwrap()).unwrap()
+}
+
+/// Saltos de línea de los párrafos: Adobe los guarda como `&#xD;` y PDFium
+/// solo dibuja como salto el `\n`. Al abrir se convierten y al guardar se
+/// escriben otra vez como Adobe.
+fn saltos_de_linea() {
+    let src = Path::new(XFA_ADOBE);
+    let mut doc = Document::open(src).unwrap();
+    let campo = "xfa.form.Impreso.FormContent.Sections.experienciaProfesional.table.section[1].content.line4Subform.tareasYResponsabilidades";
+    let r = doc.eval_js(&format!("var v = xfa.resolveNode(\"{campo}\").rawValue; v.indexOf(\"\\r\") + \" \" + v.split(\"\\n\").length")).unwrap();
+    let (cr, lineas) = r.split_once(' ').unwrap();
+    assert_eq!(cr, "-1", "quedan retornos de carro en el valor");
+    assert!(lineas.parse::<usize>().unwrap() > 5, "líneas: {lineas}");
+
+    // Guardar sin cambios: los párrafos quedan igual que los guardó Adobe.
+    let out = tmp("saltos.pdf");
+    doc.save(&out).unwrap();
+    let orig = valores(&ds_de(src), "tareasYResponsabilidades");
+    assert!(orig.iter().any(|v| v.contains("&#xD;&#xD;")), "{orig:?}");
+    assert_eq!(valores(&ds_de(&out), "tareasYResponsabilidades"), orig);
+    drop(doc);
+
+    // Un salto escrito con Intro también se guarda como `&#xD;`.
+    let mut doc = Document::open(&out).unwrap();
+    click(&mut doc, 300.0, 2700.0);
+    doc.key_down(keys::VK_END, keys::MOD_CTRL);
+    doc.key_up(keys::VK_END, keys::MOD_CTRL);
+    tecla(&mut doc, keys::VK_RETURN);
+    doc.type_text("FIN");
+    doc.kill_focus();
+    let out2 = tmp("saltos2.pdf");
+    doc.save(&out2).unwrap();
+    let v = valores(&ds_de(&out2), "tareasYResponsabilidades");
+    assert!(v[1].ends_with("&#xD;FIN"), "{:?}", v[1]);
+    assert!(!v[1].contains('\n') && !v[1].contains('\r'), "{:?}", v[1]);
+}
+
+fn tecla(doc: &mut Document, vk: i32) {
+    doc.key_down(vk, 0);
+    if let Some(c) = keys::char_for_vk(vk) {
+        doc.char_input(c as u32, 0);
+    }
+    doc.key_up(vk, 0);
+}
+
+fn arrastrar(doc: &mut Document, a: (f64, f64), b: (f64, f64)) {
+    doc.left_down(0, a.0, a.1, 0);
+    for i in 1..=10 {
+        let t = i as f64 / 10.0;
+        doc.mouse_move(0, a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, keys::MOD_LBUTTON);
+    }
+    doc.left_up(0, b.0, b.1, 0);
+}
+
+/// Seleccionar parte del texto de un campo arrastrando el ratón y borrarla
+/// o sustituirla, como en Adobe. PDFium no selecciona al arrastrar en XFA y,
+/// con texto seleccionado, Retroceso y Supr borraban un solo carácter.
+fn seleccion_en_campos() {
+    let mut doc = Document::open(Path::new(XFA_ADOBE)).unwrap();
+    let len = |d: &Document| d.focused_text().chars().count();
+    // Párrafo "Tareas" de la segunda experiencia profesional.
+    let (a, b) = ((38.0, 2533.0), (75.0, 2533.0));
+    arrastrar(&mut doc, a, b);
+    let sel = doc.selected_text();
+    assert!(!sel.is_empty() && doc.focused_text().contains(&sel), "selección: {sel:?}");
+    let n = len(&doc);
+    tecla(&mut doc, keys::VK_BACK);
+    assert_eq!(len(&doc), n - sel.chars().count(), "Retroceso debe borrar la selección");
+
+    arrastrar(&mut doc, a, b);
+    let (n, k) = (len(&doc), doc.selected_text().chars().count());
+    assert!(k > 0);
+    doc.type_text("Z");
+    assert_eq!(len(&doc), n - k + 1, "escribir debe sustituir la selección");
+
+    arrastrar(&mut doc, a, b);
+    let (n, k) = (len(&doc), doc.selected_text().chars().count());
+    tecla(&mut doc, keys::VK_DELETE);
+    assert_eq!(len(&doc), n - k, "Supr debe borrar la selección");
+    assert_eq!(doc.selected_text(), "");
+
+    // Arrastrar hasta fuera del campo: selecciona hasta el final sin perder
+    // el foco (un clic fuera se lo daría a otro campo).
+    arrastrar(&mut doc, a, (100.0, 4000.0));
+    assert!(len(&doc) > 0, "el campo perdió el foco");
+    assert!(doc.focused_text().ends_with(&doc.selected_text()) && !doc.selected_text().is_empty());
+
+    // Un clic sin mover el ratón solo coloca el cursor.
+    doc.left_down(0, b.0, b.1, 0);
+    doc.left_up(0, b.0, b.1, 0);
+    assert_eq!(doc.selected_text(), "");
+    doc.kill_focus();
+}
+
 #[test]
 fn pdfium_completo() {
     normal();
     acroform();
     xfa_dinamico();
     desplegable_cierre();
-    pdf_real();
+    pdf_adobe();
+    saltos_de_linea();
+    seleccion_en_campos();
     adjuntos();
     fechas_y_cascada();
 }

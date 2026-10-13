@@ -2,7 +2,7 @@
 
 use super::host::{AlertHandler, BrowseHandler, FormHost, ResponseHandler};
 pub use crate::xfa::attachments::Attachment;
-use super::{from_wide_buf, init, last_error_message, sys, to_wide};
+use super::{from_wide_buf, init, keys, last_error_message, sys, to_wide};
 use anyhow::{Context, Result, bail};
 use crate::xfa::{self, CompatReport};
 use std::cell::RefCell;
@@ -68,6 +68,21 @@ impl Default for OpenOptions {
 /// Factor para conservar precisión subpíxel en FPDF_DeviceToPage (que usa enteros).
 const SUBPIXEL: f64 = 16.0;
 
+/// Tipo de los campos de texto XFA (también fechas y números). En los de
+/// AcroForm PDFium ya selecciona al arrastrar.
+const XFA_TEXT_FIELD: i32 = 15;
+
+#[derive(Debug, Clone, Copy)]
+struct TextDrag {
+    idx: usize,
+    /// Punto de la pulsación (donde quedó el cursor).
+    anchor: (f64, f64),
+    /// Zona del campo (izq, abajo, der, arriba), medida al empezar a mover.
+    bounds: Option<[f64; 4]>,
+    /// Último punto enviado.
+    last: Option<(f64, f64)>,
+}
+
 pub struct Document {
     doc: sys::FPDF_DOCUMENT,
     form: sys::FPDF_FORMHANDLE,
@@ -92,6 +107,12 @@ pub struct Document {
     button_held: bool,
     /// Lista desplegable abierta: (página, zona del desplegable + su lista).
     open_list: Option<(usize, [f64; 4])>,
+    /// Arrastre con el botón pulsado que empezó en un campo de texto XFA
+    /// (ver `drag_select`).
+    text_drag: Option<TextDrag>,
+    /// Carácter que llegará tras una tecla ya resuelta aquí (el WM_CHAR de
+    /// Retroceso cuando se borró la selección): se descarta.
+    swallow_char: Option<u32>,
     /// Bytes del fichero tal como está en disco (base para guardar).
     base: Vec<u8>,
     compat: Option<CompatReport>,
@@ -167,6 +188,8 @@ impl Document {
             known_extent: None,
             button_held: false,
             open_list: None,
+            text_drag: None,
+            swallow_char: None,
             base,
             compat,
             extent_cache: RefCell::new(HashMap::new()),
@@ -395,12 +418,18 @@ impl Document {
     // -----------------------------------------------------------------------
 
     pub fn mouse_move(&mut self, idx: usize, px: f64, py: f64, mods: i32) -> bool {
+        if self.button_held
+            && let Some(d) = self.text_drag.filter(|d| d.idx == idx)
+        {
+            return self.drag_select(d, px, py);
+        }
         let p = self.page(idx);
         unsafe { sys::FORM_OnMouseMove(self.form, p, mods, px, py) != 0 }
     }
 
     pub fn left_down(&mut self, idx: usize, px: f64, py: f64, mods: i32) -> bool {
         self.button_held = true;
+        self.text_drag = None;
         // Lista desplegable abierta y clic fuera de ella: PDFium la cierra mal
         // (sigue dibujando las opciones sin fondo). Se cierra antes con Escape,
         // que sí la cierra bien.
@@ -445,6 +474,9 @@ impl Document {
             }
         }
         let handled = self.left_down_inner(idx, px, py, mods);
+        if ty == XFA_TEXT_FIELD && mods & keys::MOD_SHIFT == 0 && !self.skip_up {
+            self.text_drag = Some(TextDrag { idx, anchor: (tx, tyy), bounds: None, last: None });
+        }
         if let Some(b) = before
             && let Some(after) = self.strip(idx, py) {
                 // Solo cuenta como lista lo que cambia por debajo del campo: al
@@ -456,6 +488,52 @@ impl Document {
                 log::debug!("lista abierta: {:?} (cambios bajo el campo: {below:?})", self.open_list);
             }
         handled
+    }
+
+    /// Selección arrastrando el ratón en un campo de texto. PDFium no
+    /// selecciona al mover el ratón (el movimiento no llega al campo XFA),
+    /// pero sí con Mayúsculas + clic: selecciona desde el cursor, que quedó
+    /// donde empezó el arrastre. Cada movimiento se envía así, sin salir del
+    /// campo (un clic fuera daría el foco a otro campo).
+    fn drag_select(&mut self, mut d: TextDrag, px: f64, py: f64) -> bool {
+        let b = d.bounds.unwrap_or_else(|| self.field_bounds(d.idx, d.anchor.0, d.anchor.1));
+        d.bounds = Some(b);
+        // Sin llegar al borde: los márgenes del campo no son texto y el
+        // último punto ya cuenta como fuera (quitaría el foco).
+        let (ix, iy) = (((b[2] - b[0]) / 2.0 - 0.5).clamp(0.0, 2.0), ((b[3] - b[1]) / 2.0 - 0.5).clamp(0.0, 5.0));
+        let x = px.clamp(b[0] + ix, b[2] - ix);
+        let y = py.clamp(b[1] + iy, b[3] - iy);
+        // Un temblor al hacer clic no es un arrastre.
+        let moved = (x - d.anchor.0).abs() > 2.0 || (y - d.anchor.1).abs() > 2.0;
+        if (moved || d.last.is_some()) && d.last != Some((x, y)) {
+            let p = self.page(d.idx);
+            unsafe { sys::FORM_OnLButtonDown(self.form, p, keys::MOD_SHIFT, x, y) };
+            d.last = Some((x, y));
+        }
+        self.text_drag = Some(d);
+        true
+    }
+
+    /// Zona (izq, abajo, der, arriba) en coordenadas de página del campo que
+    /// hay en (`px`, `py`), recorriendo desde ese punto hasta que cambia el
+    /// tipo de campo.
+    pub fn field_bounds(&self, idx: usize, px: f64, py: f64) -> [f64; 4] {
+        let ty = self.field_at(idx, px, py);
+        let reach = |dx: f64, dy: f64| {
+            let mut k = 0.0;
+            while k < 2000.0 && self.field_at(idx, px + dx * (k + 1.0), py + dy * (k + 1.0)) == ty {
+                k += 1.0;
+            }
+            k
+        };
+        [px - reach(-1.0, 0.0), py - reach(0.0, -1.0), px + reach(1.0, 0.0), py + reach(0.0, 1.0)]
+    }
+
+    /// Campo de texto enfocado con el último clic: página y zona (como
+    /// `field_bounds`). None si el último clic no fue en un campo de texto.
+    pub fn focused_text_field(&self) -> Option<(usize, [f64; 4])> {
+        let (idx, x, y, ty) = self.last_focus?;
+        (ty == XFA_TEXT_FIELD || ty == sys::FPDF_FORMFIELD_TEXTFIELD as i32).then(|| (idx, self.field_bounds(idx, x, y)))
     }
 
     /// Franja de la página (±320 pt alrededor de `y`) renderizada a 1 px/pt.
@@ -588,7 +666,9 @@ impl Document {
             return true;
         }
         let p = self.page(idx);
-        let (x, y) = self.press_redirect.take().unwrap_or((px, py));
+        let dragged = self.text_drag.take().and_then(|d| d.last);
+        let redirect = self.press_redirect.take();
+        let (x, y) = dragged.or(redirect).unwrap_or((px, py));
         let r = unsafe { sys::FORM_OnLButtonUp(self.form, p, mods, x, y) != 0 };
         if std::mem::take(&mut self.pressed_button) {
             // El click del botón puede haber quitado filas (removeInstance).
@@ -685,6 +765,15 @@ impl Document {
 
     pub fn key_down(&mut self, vk: i32, mods: i32) -> bool {
         let Some(p) = self.key_page() else { return false };
+        self.swallow_char = None;
+        // Con texto seleccionado en un campo, PDFium borra un solo carácter
+        // con Supr o Retroceso (como si no hubiera selección).
+        if matches!(vk, keys::VK_BACK | keys::VK_DELETE) && self.delete_selection() {
+            if vk == keys::VK_BACK {
+                self.swallow_char = keys::char_for_vk(vk).map(|c| c as u32);
+            }
+            return true;
+        }
         if vk == super::keys::VK_TAB {
             // El foco pasa a un campo que no conocemos.
             self.last_focus = None;
@@ -702,6 +791,18 @@ impl Document {
 
     pub fn char_input(&mut self, ch: u32, mods: i32) -> bool {
         let Some(p) = self.key_page() else { return false };
+        if self.swallow_char.take() == Some(ch) {
+            return true;
+        }
+        if ch == 8 && self.delete_selection() {
+            return true;
+        }
+        // Escribir con texto seleccionado lo sustituye. PDFium insertaría el
+        // carácter en el cursor y dejaría la selección; se borra antes y el
+        // carácter sigue su camino normal (con las validaciones del campo).
+        if ch >= 0x20 && ch != 0x7f {
+            self.delete_selection();
+        }
         // Caracteres fuera del BMP: se envían como pares sustitutos UTF-16.
         let mut buf = [0u16; 2];
         let Some(c) = char::from_u32(ch) else { return false };
@@ -746,6 +847,15 @@ impl Document {
         let Some(p) = self.key_page() else { return };
         let w = to_wide(text);
         unsafe { sys::FORM_ReplaceSelection(self.form, p, w.as_ptr()) };
+    }
+
+    /// Borra el texto seleccionado del campo con el foco. false si no hay.
+    pub fn delete_selection(&mut self) -> bool {
+        if self.selected_text().is_empty() {
+            return false;
+        }
+        self.replace_selection("");
+        true
     }
 
     pub fn select_all(&mut self) -> bool {
