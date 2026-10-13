@@ -1,6 +1,7 @@
 //! Soporte XFA propio de la aplicación (además de lo que hace PDFium):
 //! correcciones de compatibilidad y guardado de datos sobre el PDF original.
 
+pub mod acrosync;
 pub mod attachments;
 pub mod compat;
 pub mod formstate;

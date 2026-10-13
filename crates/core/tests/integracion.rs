@@ -525,8 +525,8 @@ fn corpus() {
         let px = doc.render(0, (w / 4.0) as i32, (h / 4.0) as i32).unwrap();
         let tinta = px.chunks(4).filter(|c| c[0] < 128).count();
         assert!(tinta > 200, "{f}: página casi en blanco ({tinta})");
-        // En los XFA estáticos se escribe en la capa AcroForm (PDFium no lleva
-        // el valor a `datasets`; ver README, limitaciones).
+        // En los XFA estáticos PDFium escribe en la capa AcroForm (el valor se
+        // pasa a `datasets` al guardar; ver xfa::acrosync).
         let dinamico = tipo == FormKind::XfaFull;
         let (x, y) = rellenar_un_campo(&mut doc, texto, dinamico).unwrap_or_else(|| panic!("{f}: ningún campo de texto aceptó el texto"));
 
@@ -540,6 +540,12 @@ fn corpus() {
         assert_eq!(d2.is_xfa(), xfa, "{f}: XFA cargado al reabrir");
         if dinamico {
             assert!(datasets(&mut d2).contains(texto), "{f}: el dato no está al reabrir");
+        }
+        // En XFA, el dato debe estar en `datasets`, que es lo que lee Adobe
+        // (en los estáticos PDFium solo lo deja en la capa AcroForm).
+        if xfa {
+            let ds = String::from_utf8_lossy(&xfa::read_datasets(&std::fs::read(&out).unwrap()).unwrap()).into_owned();
+            assert!(ds.contains(&format!(">{texto}</")), "{f}: el dato no está en datasets");
         }
         click(&mut d2, x, y);
         assert_eq!(d2.focused_text(), texto, "{f}: el campo no muestra el dato al reabrir");

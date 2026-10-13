@@ -1119,7 +1119,16 @@ impl Document {
         self.host.state.borrow_mut().form_state = None;
         self.run_command("@capture");
         let state = self.host.state.borrow_mut().form_state.take();
-        let pdfium_bytes = self.save_to_bytes(true)?;
+        let mut pdfium_bytes = self.save_to_bytes(true)?;
+        if self.xfa_loaded && self.kind == FormKind::XfaForeground {
+            // XFA estático: PDFium deja los valores solo en la capa AcroForm
+            // y Adobe lee los de `datasets` (ver xfa::acrosync).
+            match xfa::acrosync::sync(&pdfium_bytes, self.password.as_deref()) {
+                Ok(Some(b)) => pdfium_bytes = b,
+                Ok(None) => {}
+                Err(e) => log::warn!("No se pudieron pasar los valores a datasets: {e:#}"),
+            }
+        }
         if self.xfa_loaded && (self.compat.is_some() || self.kind == FormKind::XfaFull) {
             let st = self.host.attachments.borrow();
             let atts = st.dirty.then_some(st.items.as_slice());
