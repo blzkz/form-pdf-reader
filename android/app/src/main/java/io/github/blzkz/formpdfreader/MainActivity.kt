@@ -578,7 +578,7 @@ class MainActivity : AppCompatActivity() {
             val size = contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
             if (size >= 0 && size != bytes.size.toLong()) throw IOException(getString(R.string.save_incomplete))
         } catch (e: Exception) {
-            if (overwritten && !before.isNullOrEmpty()) {
+            if (overwritten && before != null && before.isNotEmpty()) {
                 runCatching { contentResolver.openOutputStream(uri, "wt")?.use { it.write(before) } }
             }
             throw e
