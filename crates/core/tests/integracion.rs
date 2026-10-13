@@ -215,7 +215,7 @@ fn adjuntos() {
     drop(doc);
     let saved = std::fs::read(&out).unwrap();
     assert!(saved.starts_with(&std::fs::read(src).unwrap()));
-    let atts = xfa::attachments::load(&saved).unwrap();
+    let atts = xfa::attachments::load(&saved, None).unwrap();
     assert_eq!(atts.len(), 1);
     assert_eq!(atts[0].file_name, "normal.pdf");
     assert_eq!(atts[0].data, std::fs::read("tests/fixtures/normal.pdf").unwrap());
@@ -547,6 +547,87 @@ fn corpus() {
     }
 }
 
+/// Copia de `src` cifrada (AES-256) con contraseña para abrirla.
+fn cifrar(src: &Path, contraseña: &str, nombre: &str) -> PathBuf {
+    use lopdf::encryption::crypt_filters::{Aes256CryptFilter, CryptFilter};
+    use lopdf::{EncryptionState, EncryptionVersion, Permissions};
+    let mut doc = lopdf::Document::load(src).unwrap();
+    let filtro: std::sync::Arc<dyn CryptFilter> = std::sync::Arc::new(Aes256CryptFilter);
+    let clave = [7u8; 32];
+    let version = EncryptionVersion::V5 {
+        encrypt_metadata: true,
+        crypt_filters: std::collections::BTreeMap::from([(b"StdCF".to_vec(), filtro)]),
+        file_encryption_key: &clave,
+        stream_filter: b"StdCF".to_vec(),
+        string_filter: b"StdCF".to_vec(),
+        owner_password: "propietario",
+        user_password: contraseña,
+        permissions: Permissions::all(),
+    };
+    doc.encrypt(&EncryptionState::try_from(version).unwrap()).unwrap();
+    let out = tmp(nombre);
+    doc.save(&out).unwrap();
+    out
+}
+
+fn abrir_con(path: &Path, contraseña: Option<&str>) -> anyhow::Result<Document> {
+    Document::open_with(path, form_pdf_reader::pdfium::OpenOptions { continuous_xfa: true, password: contraseña.map(str::to_string) })
+}
+
+fn pide_contraseña(r: anyhow::Result<Document>) -> Option<bool> {
+    r.err().and_then(|e| e.downcast_ref::<form_pdf_reader::pdfium::PasswordRequired>().map(|p| p.wrong))
+}
+
+/// PDF que piden contraseña para abrirlos: se pide, se avisa si no es
+/// correcta y, al guardar, el PDF sigue cifrado con la misma contraseña.
+fn contraseña_de_usuario() {
+    // AcroForm.
+    let src = cifrar(Path::new("tests/fixtures/acroform.pdf"), "secreto", "acro-cifrado.pdf");
+    assert_eq!(pide_contraseña(abrir_con(&src, None)), Some(false), "debe pedir contraseña");
+    assert_eq!(pide_contraseña(abrir_con(&src, Some("otra"))), Some(true), "contraseña incorrecta");
+    let mut doc = abrir_con(&src, Some("secreto")).unwrap();
+    assert_eq!(doc.kind(), FormKind::AcroForm);
+    doc.left_down(0, 300.0, 731.0, 0);
+    doc.left_up(0, 300.0, 731.0, 0);
+    doc.type_text("Cifrado");
+    doc.kill_focus();
+    let out = tmp("acro-cifrado-guardado.pdf");
+    doc.save(&out).unwrap();
+    drop(doc);
+    assert_eq!(pide_contraseña(abrir_con(&out, None)), Some(false), "el guardado debe seguir cifrado");
+    let mut d2 = abrir_con(&out, Some("secreto")).unwrap();
+    d2.left_down(0, 300.0, 731.0, 0);
+    d2.left_up(0, 300.0, 731.0, 0);
+    assert_eq!(d2.focused_text(), "Cifrado");
+    d2.kill_focus();
+    drop(d2);
+
+    // XFA dinámico: el núcleo descifra la plantilla y los datos con la
+    // contraseña y cifra lo que añade al guardar.
+    let src = cifrar(Path::new(XFA), "secreto", "xfa-cifrado.pdf");
+    assert_eq!(pide_contraseña(abrir_con(&src, None)), Some(false));
+    let mut doc = abrir_con(&src, Some("secreto")).unwrap();
+    assert!(doc.is_xfa() && doc.is_continuous(), "XFA con sus correcciones");
+    click(&mut doc, 100.0, 788.0);
+    doc.type_text("Ana");
+    doc.kill_focus();
+    let out = tmp("xfa-cifrado-guardado.pdf");
+    doc.save(&out).unwrap();
+    drop(doc);
+    assert!(std::fs::read(&out).unwrap().starts_with(&std::fs::read(&src).unwrap()), "actualización incremental");
+    assert_eq!(pide_contraseña(abrir_con(&out, None)), Some(false));
+    let ds = xfa::read_datasets_with(&std::fs::read(&out).unwrap(), Some("secreto")).unwrap();
+    assert!(String::from_utf8_lossy(&ds).contains("<nombre>ANA</nombre>"), "datos guardados");
+    let mut d2 = abrir_con(&out, Some("secreto")).unwrap();
+    assert!(d2.is_xfa());
+    assert!(datasets_con(&mut d2, "secreto").contains("<nombre>ANA</nombre>"));
+}
+
+fn datasets_con(doc: &mut Document, contraseña: &str) -> String {
+    let b = doc.bytes_for_save().unwrap();
+    String::from_utf8_lossy(&xfa::read_datasets_with(&b, Some(contraseña)).unwrap()).into_owned()
+}
+
 #[test]
 fn pdfium_completo() {
     normal();
@@ -557,6 +638,7 @@ fn pdfium_completo() {
     saltos_de_linea();
     seleccion_en_campos();
     corpus();
+    contraseña_de_usuario();
     adjuntos();
     fechas_y_cascada();
 }

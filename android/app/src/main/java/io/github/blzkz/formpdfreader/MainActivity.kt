@@ -74,6 +74,8 @@ class MainActivity : AppCompatActivity() {
         /** Changes made so far, and how many of them the draft has. */
         var edits = 0
         var draftedEdits = 0
+        /** The password the PDF asked for, while it is open (never stored). */
+        var password: String? = null
     }
 
     private lateinit var toolbar: MaterialToolbar
@@ -352,7 +354,7 @@ class MainActivity : AppCompatActivity() {
         Io.run({ copyToCache(item, "docs/${System.nanoTime()}", from = draft) }) { copied ->
             val file = copied.getOrElse { e -> return@run openFailed(t, e) }
             PdfEngine.run({
-                PdfDocument.open(file.absolutePath, continuous).also { it.setHandler(formHandler) }
+                PdfDocument.open(file.absolutePath, continuous, t.password).also { it.setHandler(formHandler) }
             }) { r ->
                 r.onSuccess { d ->
                     if (t !in docs) {
@@ -374,16 +376,64 @@ class MainActivity : AppCompatActivity() {
                     }
                     PdfEngine.run({ d.kind() }) { k ->
                         t.kind = k.getOrNull()
-                        if (continuous && t.kind == DocKind.XFA_DYNAMIC) {
+                        // (After recovering changes, that notice is the one to read.)
+                        if (continuous && t.kind == DocKind.XFA_DYNAMIC && draft == null) {
                             Toast.makeText(this, R.string.xfa_info, Toast.LENGTH_LONG).show()
                         }
                     }
                 }.onFailure { e ->
                     file.parentFile?.deleteRecursively()
-                    openFailed(t, e)
+                    when {
+                        t !in docs -> Unit
+                        e is PdfException.Password -> askPassword(t, wrong = false)
+                        e is PdfException.WrongPassword -> askPassword(t, wrong = true)
+                        else -> openFailed(t, e)
+                    }
                 }
             }
         }
+    }
+
+    /** The PDF needs a password to open: asks for it and opens it again (Cancel closes its tab). */
+    private fun askPassword(t: DocTab, wrong: Boolean) {
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val field = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine()
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            contentDescription = getString(R.string.password_title)
+        }
+        val box = FrameLayout(this).apply {
+            setPadding(pad, pad / 2, pad, 0)
+            addView(field)
+        }
+        val message = getString(R.string.password_prompt, t.item.name) +
+            if (wrong) "\n\n" + getString(R.string.password_wrong) else ""
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.password_title)
+            .setMessage(message)
+            .setView(box)
+            .setPositiveButton(R.string.open) { _, _ ->
+                t.password = field.text.toString()
+                load(t)
+            }
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                removeTab(t)
+                finishIfIdle()
+            }
+            .setCancelable(false)
+            .create()
+        field.setOnEditorActionListener { _, action, _ ->
+            if (action == EditorInfo.IME_ACTION_DONE) {
+                dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+                true
+            } else {
+                false
+            }
+        }
+        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialog.show()
+        field.requestFocus()
     }
 
     /** Explains why a document could not be opened, in the user's terms. */

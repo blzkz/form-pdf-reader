@@ -151,3 +151,7 @@ err.read_pdf = could not read the PDF
 err.no_root = PDF without /Root
 err.bad_catalog = unreadable catalog
 err.rasterize = Could not rasterize sheet {0}
+err.wrong_password = the password is not correct
+dialog.password_title = Password
+dialog.password_prompt = “{0}” is protected with a password. Enter it to open the document.
+dialog.password_wrong = The password is not correct. Try again.

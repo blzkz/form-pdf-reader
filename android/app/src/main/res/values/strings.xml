@@ -90,4 +90,7 @@
     <string name="later">Later</string>
     <string name="draft_recovered">Unsaved changes recovered</string>
     <string name="save_incomplete">The document was not written completely.</string>
+    <string name="password_title">Password</string>
+    <string name="password_prompt">“%1$s” is protected with a password. Enter it to open the document.</string>
+    <string name="password_wrong">The password is not correct. Try again.</string>
 </resources>

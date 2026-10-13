@@ -19,7 +19,7 @@ mod fonts;
 mod host;
 pub mod keys;
 
-pub use document::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, Document, FormKind, OpenOptions, SearchHit, Updates, write_atomic};
+pub use document::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, Document, FormKind, OpenOptions, PasswordRequired, SearchHit, Updates, write_atomic};
 
 use std::sync::Once;
 

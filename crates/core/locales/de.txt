@@ -151,3 +151,7 @@ err.read_pdf = das PDF konnte nicht gelesen werden
 err.no_root = PDF ohne /Root
 err.bad_catalog = unlesbarer Katalog
 err.rasterize = Blatt {0} konnte nicht gerastert werden
+err.wrong_password = das Kennwort ist nicht korrekt
+dialog.password_title = Kennwort
+dialog.password_prompt = „{0}“ ist kennwortgeschützt. Geben Sie das Kennwort ein, um das Dokument zu öffnen.
+dialog.password_wrong = Das Kennwort ist nicht korrekt. Versuchen Sie es erneut.

@@ -73,9 +73,9 @@ fn walk_names(doc: &lopdf::Document, node: &Dictionary, out: &mut Vec<(String, O
     }
 }
 
-/// Lee los adjuntos incrustados de un PDF.
-pub fn load(pdf: &[u8]) -> Result<Vec<Attachment>> {
-    let doc = lopdf::Document::load_mem(pdf).context(crate::t!("err.read_pdf"))?;
+/// Lee los adjuntos incrustados de un PDF (con `password` si lo pide).
+pub fn load(pdf: &[u8], password: Option<&str>) -> Result<Vec<Attachment>> {
+    let doc = super::pdfedit::load(pdf, password).context(crate::t!("err.read_pdf"))?;
     load_from(&doc)
 }
 

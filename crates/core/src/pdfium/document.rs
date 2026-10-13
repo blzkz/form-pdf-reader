@@ -52,16 +52,33 @@ pub struct SearchHit {
 }
 
 /// Opciones de apertura.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct OpenOptions {
     /// Aplicar la vista continua a los XFA dinámicos (recomendado: el motor de
     /// paginación de PDFium falla con muchos formularios).
     pub continuous_xfa: bool,
+    /// Contraseña para abrir el PDF (contraseña de usuario), si la pide.
+    pub password: Option<String>,
 }
+
+/// El PDF pide una contraseña para abrirlo (`wrong`: la dada no es
+/// correcta). Se obtiene con `err.downcast_ref::<PasswordRequired>()`.
+#[derive(Debug, Clone, Copy)]
+pub struct PasswordRequired {
+    pub wrong: bool,
+}
+
+impl std::fmt::Display for PasswordRequired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&if self.wrong { crate::t!("err.wrong_password") } else { crate::t!("pdfium.password") })
+    }
+}
+
+impl std::error::Error for PasswordRequired {}
 
 impl Default for OpenOptions {
     fn default() -> Self {
-        OpenOptions { continuous_xfa: true }
+        OpenOptions { continuous_xfa: true, password: None }
     }
 }
 
@@ -118,6 +135,8 @@ pub struct Document {
     tabbed_from_text: bool,
     /// Bytes del fichero tal como está en disco (base para guardar).
     base: Vec<u8>,
+    /// Contraseña con la que se abrió (el PDF guardado conserva el cifrado).
+    password: Option<String>,
     compat: Option<CompatReport>,
     extent_cache: RefCell<HashMap<usize, f32>>,
     /// Bytes entregados a PDFium. PDFium los lee de forma perezosa: deben vivir tanto
@@ -139,11 +158,16 @@ impl Document {
 
     pub fn from_bytes(base: Vec<u8>, path: PathBuf, opts: OpenOptions) -> Result<Document> {
         init();
-        let prepared = xfa::prepare(&base, opts.continuous_xfa);
+        let password = opts.password.filter(|p| !p.is_empty());
+        let prepared = xfa::prepare(&base, opts.continuous_xfa, password.as_deref());
         let compat = prepared.compat;
         let data: Box<[u8]> = prepared.render_bytes.into_boxed_slice();
-        let doc = unsafe { sys::FPDF_LoadMemDocument64(data.as_ptr() as *const c_void, data.len(), std::ptr::null()) };
+        let pw = password.as_deref().map(|p| std::ffi::CString::new(p).unwrap_or_default());
+        let doc = unsafe { sys::FPDF_LoadMemDocument64(data.as_ptr() as *const c_void, data.len(), pw.as_ref().map_or(std::ptr::null(), |c| c.as_ptr())) };
         if doc.is_null() {
+            if unsafe { sys::FPDF_GetLastError() } as u32 == sys::FPDF_ERR_PASSWORD {
+                return Err(PasswordRequired { wrong: password.is_some() }.into());
+            }
             bail!("{}", crate::t!("err.open_pdf", last_error_message()));
         }
         let kind = match unsafe { sys::FPDF_GetFormType(doc) } as u32 {
@@ -195,12 +219,13 @@ impl Document {
             swallow_char: None,
             tabbed_from_text: false,
             base,
+            password,
             compat,
             extent_cache: RefCell::new(HashMap::new()),
             _data: data,
         };
         // Adjuntos ya incrustados en el PDF.
-        match crate::xfa::attachments::load(&d.base) {
+        match crate::xfa::attachments::load(&d.base, d.password.as_deref()) {
             Ok(items) => d.host.attachments.borrow_mut().items = items,
             Err(e) => log::warn!("No se pudieron leer los adjuntos: {e:#}"),
         }
@@ -215,6 +240,11 @@ impl Document {
         // Descartar cambios "fantasma" producidos por los scripts de inicio.
         d.host.state.borrow_mut().form_changed = false;
         Ok(d)
+    }
+
+    /// Contraseña con la que se abrió el PDF, si la pedía.
+    pub fn password(&self) -> Option<&str> {
+        self.password.as_deref()
     }
 
     pub fn path(&self) -> &Path {
@@ -1093,7 +1123,7 @@ impl Document {
         if self.xfa_loaded && (self.compat.is_some() || self.kind == FormKind::XfaFull) {
             let st = self.host.attachments.borrow();
             let atts = st.dirty.then_some(st.items.as_slice());
-            xfa::build_save(&self.base, &pdfium_bytes, atts, state.as_deref())
+            xfa::build_save(&self.base, &pdfium_bytes, atts, state.as_deref(), self.password.as_deref())
         } else {
             Ok(pdfium_bytes)
         }

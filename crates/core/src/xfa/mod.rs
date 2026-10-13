@@ -21,8 +21,8 @@ pub struct Prepared {
 }
 
 /// Detecta XFA dinámico: /NeedsRendering true o AcroForm sin campos.
-fn is_dynamic(bytes: &[u8]) -> bool {
-    let Ok(doc) = lopdf::Document::load_mem(bytes) else { return false };
+fn is_dynamic(bytes: &[u8], password: Option<&str>) -> bool {
+    let Ok(doc) = pdfedit::load(bytes, password) else { return false };
     let Ok(cat) = doc.catalog() else { return false };
     if let Ok(lopdf::Object::Boolean(true)) = cat.get(b"NeedsRendering") {
         return true;
@@ -32,9 +32,9 @@ fn is_dynamic(bytes: &[u8]) -> bool {
 
 /// Prepara los bytes que verá PDFium. Si el PDF no es XFA o algo falla, se
 /// devuelven los bytes originales sin cambios (nunca se impide abrir el PDF).
-pub fn prepare(original: &[u8], continuous: bool) -> Prepared {
+pub fn prepare(original: &[u8], continuous: bool, password: Option<&str>) -> Prepared {
     let passthrough = |dynamic| Prepared { render_bytes: original.to_vec(), compat: None, dynamic };
-    let xfa = match XfaPdf::parse(original) {
+    let xfa = match XfaPdf::parse_with(original, password) {
         Ok(Some(x)) => x,
         Ok(None) => return passthrough(false),
         Err(e) => {
@@ -42,7 +42,7 @@ pub fn prepare(original: &[u8], continuous: bool) -> Prepared {
             return passthrough(false);
         }
     };
-    let dynamic = is_dynamic(original);
+    let dynamic = is_dynamic(original, password);
     let Some(tpl) = xfa.packet("template").cloned() else { return passthrough(dynamic) };
     let template = match xfa.packet_data("template") {
         Ok(d) => String::from_utf8_lossy(&d).into_owned(),
@@ -85,7 +85,12 @@ pub fn prepare(original: &[u8], continuous: bool) -> Prepared {
 
 /// Extrae el paquete `datasets` (los datos del formulario) de un PDF.
 pub fn read_datasets(pdf: &[u8]) -> Result<Vec<u8>> {
-    let x = XfaPdf::parse(pdf)?.ok_or_else(|| anyhow!("{}", crate::t!("err.no_xfa")))?;
+    read_datasets_with(pdf, None)
+}
+
+/// Como `read_datasets`, para un PDF que pide `password` para abrirlo.
+pub fn read_datasets_with(pdf: &[u8], password: Option<&str>) -> Result<Vec<u8>> {
+    let x = XfaPdf::parse_with(pdf, password)?.ok_or_else(|| anyhow!("{}", crate::t!("err.no_xfa")))?;
     x.packet_data("datasets")
 }
 
@@ -93,16 +98,16 @@ pub fn read_datasets(pdf: &[u8]) -> Result<Vec<u8>> {
 /// fichero original del usuario) como actualización incremental que solo
 /// sustituye el paquete `datasets`.
 pub fn merge_datasets(base: &[u8], filled: &[u8]) -> Result<Vec<u8>> {
-    build_save(base, filled, None, None)
+    build_save(base, filled, None, None, None)
 }
 
 /// Como `merge_datasets`, y además sustituye los adjuntos incrustados por
 /// `attachments` y guarda el estado del formulario (`state`, ver
 /// `formstate`) si se indican.
-pub fn build_save(base: &[u8], filled: &[u8], attachments: Option<&[attachments::Attachment]>, state: Option<&str>) -> Result<Vec<u8>> {
-    let raw = read_datasets(filled).context(crate::t!("err.read_data"))?;
+pub fn build_save(base: &[u8], filled: &[u8], attachments: Option<&[attachments::Attachment]>, state: Option<&str>, password: Option<&str>) -> Result<Vec<u8>> {
+    let raw = read_datasets_with(filled, password).context(crate::t!("err.read_data"))?;
     let data = breaks_like_adobe(&strip_pdfium_newlines(&raw));
-    let x = XfaPdf::parse(base)?.ok_or_else(|| anyhow!("{}", crate::t!("err.orig_no_xfa")))?;
+    let x = XfaPdf::parse_with(base, password)?.ok_or_else(|| anyhow!("{}", crate::t!("err.orig_no_xfa")))?;
     let ds = x.packet("datasets").ok_or_else(|| anyhow!("{}", crate::t!("err.orig_no_datasets")))?.id;
     let mut b = pdfedit::UpdateBuilder::new(base, &x);
     b.set_stream(ds, &lopdf::Dictionary::new(), &data)?;

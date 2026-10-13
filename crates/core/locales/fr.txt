@@ -151,3 +151,7 @@ err.read_pdf = impossible de lire le PDF
 err.no_root = PDF sans /Root
 err.bad_catalog = catalogue illisible
 err.rasterize = Impossible de rastériser la feuille {0}
+err.wrong_password = le mot de passe est incorrect
+dialog.password_title = Mot de passe
+dialog.password_prompt = « {0} » est protégé par un mot de passe. Saisissez-le pour ouvrir le document.
+dialog.password_wrong = Le mot de passe est incorrect. Réessayez.

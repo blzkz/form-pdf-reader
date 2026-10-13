@@ -151,3 +151,7 @@ err.read_pdf = no se pudo leer el PDF
 err.no_root = PDF sin /Root
 err.bad_catalog = catálogo ilegible
 err.rasterize = No se pudo rasterizar la hoja {0}
+err.wrong_password = la contraseña no es correcta
+dialog.password_title = Contraseña
+dialog.password_prompt = «{0}» está protegido con contraseña. Escríbela para abrir el documento.
+dialog.password_wrong = La contraseña no es correcta. Inténtalo de nuevo.
