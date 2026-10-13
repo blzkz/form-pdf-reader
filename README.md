@@ -40,9 +40,12 @@ stay in the form's own language.
   - *Form* (default): fill in fields and press form buttons.
   - *Text*: drag to select text and copy it with Ctrl+C.
   - *Hand*: drag to scroll.
-- **Forms:** AcroForm and XFA, static and dynamic. That covers text, dates,
-  dropdowns, checkboxes, add/remove row buttons, and the form's own
-  JavaScript, including validations and messages.
+- **Forms:** AcroForm and XFA, static and dynamic, also when the PDF is
+  protected with an owner password. That covers text, multi-line paragraphs,
+  dates, dropdowns, checkboxes, add/remove row buttons, and the form's own
+  JavaScript, including validations and messages. In a field, part of the
+  text can be selected (dragging the mouse, double click, or Shift + arrows)
+  and deleted or replaced, as in Adobe Reader.
 - **Attachments:** the form's own attachment section works (add, view,
   delete), with its size and type limits. Files are embedded in the PDF the
   same way Acrobat does it. "View" opens PDF attachments in a new tab.
@@ -235,7 +238,11 @@ bridge between Kotlin and Rust is generated with
 - open PDFs from the system file picker or from other apps;
 - scroll, and zoom with two fingers;
 - fill in forms, including dynamic XFA, by tapping fields and typing on the
-  on-screen keyboard;
+  on-screen keyboard; in the field being edited, a long press (then moving
+  the finger), a double tap or dragging with a mouse selects part of its
+  text, to cut, copy, paste or delete it;
+- keep unsaved changes if Android closes the app in the background (or it
+  is closed): they are offered again when it is opened;
 - keep several documents open as tabs (PDF attachments open in a new tab);
 - show pages continuously, one at a time or two side by side, with zoom and
   page controls in the toolbar on tablets;
