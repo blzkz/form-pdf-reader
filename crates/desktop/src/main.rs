@@ -53,6 +53,14 @@ fn main() -> eframe::Result<()> {
             .with_inner_size([1100.0, 900.0])
             .with_min_inner_size([480.0, 360.0])
             .with_drag_and_drop(true),
+        // Windows sin tarjeta gráfica (máquinas virtuales): con sincronía
+        // vertical, cada fotograma se mostraba un evento tarde y la ventana
+        // parecía ir a cámara lenta. Se presenta en cuanto está dibujado.
+        #[cfg(windows)]
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            surface: eframe::egui_wgpu::SurfaceConfig { present_mode: eframe::wgpu::PresentMode::AutoNoVsync, desired_maximum_frame_latency: Some(1) },
+            ..Default::default()
+        },
         ..Default::default()
     };
     eframe::run_native("form-pdf-reader", options, Box::new(move |cc| Ok(Box::new(app::PdfApp::new(cc, file)))))
