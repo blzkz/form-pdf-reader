@@ -365,6 +365,7 @@ class MainActivity : AppCompatActivity() {
                     t.loading = false
                     t.view.setDocument(d)
                     remember(item, if (draft == null) file.length() else item.size)
+                    if (!isTemporary(item)) Thumbnails.capture(this, item.key, d)
                     if (draft != null) Toast.makeText(this, R.string.draft_recovered, Toast.LENGTH_SHORT).show()
                     if (t === current) {
                         progress.visibility = View.GONE
@@ -532,8 +533,9 @@ class MainActivity : AppCompatActivity() {
                         // Changes made while it was being written are still unsaved.
                         t.modified = t.edits != edits
                         if (!t.modified) deleteDraft(t)
-                        Thumbnails.forget(target.key)
                         remember(target, bytes.size.toLong())
+                        // The thumbnail in Recents, with the data saved.
+                        if (!isTemporary(target)) t.doc?.let { Thumbnails.capture(this, target.key, it) }
                         updateTabLabel(t)
                         if (t === current) updateTitle()
                         Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
