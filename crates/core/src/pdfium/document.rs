@@ -29,6 +29,9 @@ pub enum FormKind {
 #[derive(Debug, Default)]
 pub struct Updates {
     pub invalidated: Vec<usize>,
+    /// Zonas cambiadas (página, rectángulo en coordenadas de página) de esas
+    /// páginas. Una página de `invalidated` sin zonas cambió entera.
+    pub invalid_rects: Vec<(usize, [f64; 4])>,
     pub invalidate_all: bool,
     pub form_changed: bool,
     pub layout_changed: bool,
@@ -1022,6 +1025,7 @@ impl Document {
         
         Updates {
             invalidated: std::mem::take(&mut st.invalidated).into_iter().collect(),
+            invalid_rects: std::mem::take(&mut st.invalid_rects),
             invalidate_all: std::mem::take(&mut st.invalidate_all),
             form_changed: std::mem::take(&mut st.form_changed),
             layout_changed: std::mem::take(&mut st.layout_changed),

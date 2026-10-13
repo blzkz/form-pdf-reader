@@ -291,8 +291,8 @@ unsafe extern "C" fn ffi_invalidate(p: *mut sys::FPDF_FORMFILLINFO, page: sys::F
     }
 }
 
-unsafe extern "C" fn ffi_output_selected_rect(p: *mut sys::FPDF_FORMFILLINFO, page: sys::FPDF_PAGE, _l: f64, _t: f64, _r: f64, _b: f64) {
-    unsafe { mark_invalid(host(p), page) }
+unsafe extern "C" fn ffi_output_selected_rect(p: *mut sys::FPDF_FORMFILLINFO, page: sys::FPDF_PAGE, l: f64, t: f64, r: f64, b: f64) {
+    unsafe { ffi_invalidate(p, page, l, t, r, b) }
 }
 
 unsafe extern "C" fn ffi_set_cursor(p: *mut sys::FPDF_FORMFILLINFO, t: c_int) {
@@ -419,6 +419,7 @@ unsafe extern "C" fn ffi_display_caret(p: *mut sys::FPDF_FORMFILLINFO, page: sys
         st.caret = if visible != 0 { Some((page, [l, t, r, b])) } else { None };
         if let Some(i) = st.index_of(page) {
             st.invalidated.insert(i);
+            st.invalid_rects.push((i, [l.min(r) - 1.0, t.min(b) - 1.0, l.max(r) + 1.0, t.max(b) + 1.0]));
         }
     }
 }

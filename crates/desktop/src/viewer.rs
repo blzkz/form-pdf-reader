@@ -74,6 +74,9 @@ pub struct DocView {
     pub zoom: f32,
     pub fit_width: bool,
     tiles: HashMap<(usize, i32), Tile>,
+    /// Zonas cambiadas por PDFium (página, rectángulo en coordenadas de
+    /// página) que hay que volver a dibujar en las teselas ya hechas.
+    pending_rects: Vec<(usize, [f64; 4])>,
     /// Rectángulos de página en pantalla del último fotograma.
     page_rects: Vec<(usize, Rect)>,
     scale_px: f32,
@@ -113,6 +116,7 @@ impl DocView {
             zoom: 1.0,
             fit_width: true,
             tiles: HashMap::new(),
+            pending_rects: Vec::new(),
             page_rects: Vec::new(),
             scale_px: 1.0,
             scroll_to: None,
@@ -377,8 +381,18 @@ impl DocView {
                 self.tiles.retain(|(p, _), _| *p < n);
             }
         }
+        // Solo se vuelve a dibujar lo que cambió (el cursor, el campo que se
+        // escribe): repintar la página entera en cada tecla es lento sin
+        // tarjeta gráfica.
         for p in &u.invalidated {
-            self.invalidate_page(*p);
+            let mut any = false;
+            for (_, r) in u.invalid_rects.iter().filter(|(i, _)| i == p) {
+                self.pending_rects.push((*p, *r));
+                any = true;
+            }
+            if !any {
+                self.invalidate_page(*p);
+            }
         }
         if u.form_changed {
             ev.modified = true;
@@ -871,6 +885,12 @@ impl DocView {
                 self.draw_search(&painter, i, pr);
                 self.draw_selection(&painter, i, pr);
             }
+            // Zonas de páginas que no se han dibujado: se repintan enteras
+            // cuando vuelvan a verse.
+            let lejos: Vec<usize> = self.pending_rects.drain(..).map(|(p, _)| p).collect();
+            for p in lejos {
+                self.invalidate_page(p);
+            }
             if let Some(c) = center_page.filter(|_| self.effective_layout() != PageLayout::Single) {
                 self.current_page = c;
                 self.doc.set_current_page(c);
@@ -969,6 +989,7 @@ impl DocView {
         let key = (self.scale_px * 1000.0) as u32;
         let ppp = ctx.pixels_per_point();
         let ntiles = (shown_h + TILE_PX - 1) / TILE_PX;
+        self.redraw_rects(i, page_w, page_h, shown_h, key, visible, pr);
         for t in 0..ntiles {
             let ty = t * TILE_PX;
             let th = TILE_PX.min(shown_h - ty);
@@ -999,6 +1020,50 @@ impl DocView {
             }
             if let Some(tile) = self.tiles.get(&(i, t)) {
                 painter.image(tile.tex.id(), tile_rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+            }
+        }
+    }
+
+    /// Vuelve a dibujar en sus teselas las zonas de la página `i` que cambió
+    /// PDFium. Las teselas lejos de la vista solo se marcan para más tarde.
+    #[allow(clippy::too_many_arguments)]
+    fn redraw_rects(&mut self, i: usize, page_w: i32, page_h: i32, shown_h: i32, key: u32, visible: Rect, pr: Rect) {
+        let rects: Vec<[f64; 4]> = self.pending_rects.iter().filter(|(p, _)| *p == i).map(|(_, r)| *r).collect();
+        if rects.is_empty() {
+            return;
+        }
+        self.pending_rects.retain(|(p, _)| *p != i);
+        let ppp = pr.width() as f64 / page_w as f64;
+        for r in rects {
+            let (ax, ay) = self.doc.page_to_device(i, page_w as f64, page_h as f64, r[0], r[1]);
+            let (bx, by) = self.doc.page_to_device(i, page_w as f64, page_h as f64, r[2], r[3]);
+            let x0 = (ax.min(bx).floor() as i32 - 2).clamp(0, page_w);
+            let x1 = (ax.max(bx).ceil() as i32 + 2).clamp(0, page_w);
+            let y0 = (ay.min(by).floor() as i32 - 2).clamp(0, shown_h);
+            let y1 = (ay.max(by).ceil() as i32 + 2).clamp(0, shown_h);
+            if x1 <= x0 || y1 <= y0 {
+                continue;
+            }
+            for t in y0 / TILE_PX..=(y1 - 1) / TILE_PX {
+                let ty = t * TILE_PX;
+                let th = TILE_PX.min(shown_h - ty);
+                let Some(tile) = self.tiles.get_mut(&(i, t)) else { continue };
+                if tile.dirty || tile.scale_key != key {
+                    continue;
+                }
+                let tile_rect = Rect::from_min_size(pr.min + Vec2::new(0.0, (ty as f64 * ppp) as f32), Vec2::new(pr.width(), (th as f64 * ppp) as f32));
+                if !tile_rect.intersects(visible.expand(300.0)) {
+                    tile.dirty = true;
+                    continue;
+                }
+                let (ry0, ry1) = (y0.max(ty), y1.min(ty + th));
+                match self.doc.render_region(i, page_w, page_h, x0, ry0, x1 - x0, ry1 - ry0) {
+                    Some(px) => {
+                        let img = egui::ColorImage::from_rgba_unmultiplied([(x1 - x0) as usize, (ry1 - ry0) as usize], &px);
+                        tile.tex.set_partial([x0 as usize, (ry0 - ty) as usize], img, TextureOptions::LINEAR);
+                    }
+                    None => tile.dirty = true,
+                }
             }
         }
     }
