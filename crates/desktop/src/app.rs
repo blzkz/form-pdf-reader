@@ -193,8 +193,8 @@ impl PdfApp {
             self.open(path);
             return;
         }
-        match std::process::Command::new("xdg-open").arg(path).spawn() {
-            Ok(_) => self.status = t!("status.opening_attachment", file_name(path)),
+        match crate::platform::open_external(&path.to_string_lossy()) {
+            Ok(()) => self.status = t!("status.opening_attachment", file_name(path)),
             Err(e) => self.error = Some(t!("error.open_short", path.display(), e)),
         }
     }
@@ -276,8 +276,8 @@ impl PdfApp {
         let stem = view.doc.path().file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| t!("file.default_stem"));
         let out = dir.join(format!("{stem}_{}.pdf", t!("file.print_suffix")));
         match view.doc.export_flat(&out, 200.0) {
-            Ok(()) => match std::process::Command::new("xdg-open").arg(&out).spawn() {
-                Ok(_) => self.status = t!("status.print_opened"),
+            Ok(()) => match crate::platform::open_external(&out.to_string_lossy()) {
+                Ok(()) => self.status = t!("status.print_opened"),
                 Err(e) => self.error = Some(t!("error.print_open", out.display(), e)),
             },
             Err(e) => self.error = Some(t!("error.print", format!("{e:#}"))),
@@ -878,7 +878,7 @@ impl eframe::App for PdfApp {
             }
             for u in ev.uris {
                 if u.starts_with("http://") || u.starts_with("https://") || u.starts_with("mailto:") {
-                    let _ = std::process::Command::new("xdg-open").arg(&u).spawn();
+                    let _ = crate::platform::open_external(&u);
                     self.status = t!("status.opening_link", u);
                 }
             }
@@ -985,17 +985,11 @@ fn install_handlers(doc: &Document) {
         }
     }));
     doc.set_browse_handler(Box::new(|| rfd::FileDialog::new().set_title(t!("dialog.pick_file")).pick_file().map(|p| p.to_string_lossy().into_owned())));
-    // app.response(): pregunta de texto. Se usa zenity (los diálogos de rfd no
-    // tienen campo de texto).
+    // app.response(): pregunta de texto, con un diálogo del sistema (los de
+    // rfd no tienen campo de texto).
     doc.set_response_handler(Box::new(|question: &str, title: &str, default: &str| {
-        let out = std::process::Command::new("zenity")
-            .arg("--entry")
-            .arg(format!("--title={}", if title.is_empty() { t!("dialog.form_title") } else { title.to_string() }))
-            .arg(format!("--text={question}"))
-            .arg(format!("--entry-text={default}"))
-            .output()
-            .ok()?;
-        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim_end_matches('\n').to_string())
+        let title = if title.is_empty() { t!("dialog.form_title") } else { title.to_string() };
+        crate::platform::ask_text(&title, question, default)
     }));
 }
 

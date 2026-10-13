@@ -147,6 +147,8 @@ def license_texts(p):
         return [read(os.path.join(STANDARD, "MPL-2.0.txt"))]
     if "Apache-2.0" in expr:
         return [read(os.path.join(STANDARD, "Apache-2.0.txt"))]
+    if "BSL-1.0" in expr:
+        return [read(os.path.join(STANDARD, "BSL-1.0.txt"))]
     sys.exit(f"{p['name']} {p['version']}: no licence file and no standard text for '{expr}'")
 
 

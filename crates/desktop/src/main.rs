@@ -1,8 +1,12 @@
 //! form-pdf-reader: visor de PDF y editor de formularios (AcroForm y XFA).
 
+// En Windows, sin ventana de consola (ver platform::attach_console).
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod app;
 use form_pdf_reader::t;
 mod autotest;
+mod platform;
 mod settings;
 mod viewer;
 
@@ -15,6 +19,9 @@ fn main() -> eframe::Result<()> {
     settings::Settings::load().apply_language();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a.starts_with('-')) {
+        platform::attach_console();
+    }
     if let Some(code) = cli(&args) {
         std::process::exit(code);
     }

@@ -315,6 +315,21 @@ unsafe extern "C" fn ffi_kill_timer(p: *mut sys::FPDF_FORMFILLINFO, id: c_int) {
     unsafe { host(p).state.borrow_mut().timers.retain(|t| t.id != id) }
 }
 
+#[cfg(windows)]
+unsafe extern "C" fn ffi_get_local_time(_p: *mut sys::FPDF_FORMFILLINFO) -> sys::FPDF_SYSTEMTIME {
+    // FPDF_SYSTEMTIME tiene la misma forma que el SYSTEMTIME de Windows.
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetLocalTime(t: *mut sys::FPDF_SYSTEMTIME);
+    }
+    unsafe {
+        let mut t: sys::FPDF_SYSTEMTIME = std::mem::zeroed();
+        GetLocalTime(&mut t);
+        t
+    }
+}
+
+#[cfg(not(windows))]
 unsafe extern "C" fn ffi_get_local_time(_p: *mut sys::FPDF_FORMFILLINFO) -> sys::FPDF_SYSTEMTIME {
     unsafe {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();

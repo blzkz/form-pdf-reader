@@ -1,6 +1,7 @@
 //! Ajustes del escritorio que se recuerdan entre sesiones, en
-//! `$XDG_CONFIG_HOME/form-pdf-reader/settings.conf` (o `~/.config/…`), con
-//! una línea `clave = valor` por ajuste.
+//! `$XDG_CONFIG_HOME/form-pdf-reader/settings.conf` (o `~/.config/…`; en
+//! Windows, `%APPDATA%\form-pdf-reader\settings.conf`), con una línea
+//! `clave = valor` por ajuste.
 
 use std::path::PathBuf;
 
@@ -11,11 +12,7 @@ pub struct Settings {
 }
 
 fn path() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
-    Some(base.join("form-pdf-reader").join("settings.conf"))
+    Some(crate::platform::config_dir()?.join("settings.conf"))
 }
 
 impl Settings {

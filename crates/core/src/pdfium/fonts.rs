@@ -93,7 +93,18 @@ fn installed(k: Kind) -> Option<&'static str> {
     })
 }
 
-#[cfg(not(target_os = "android"))]
+/// Windows trae siempre Arial, Times New Roman y Courier New (con las mismas
+/// medidas que Liberation).
+#[cfg(windows)]
+fn installed(k: Kind) -> Option<&'static str> {
+    Some(match k {
+        Kind::Sans => "Arial",
+        Kind::Serif => "Times New Roman",
+        Kind::Mono => "Courier New",
+    })
+}
+
+#[cfg(not(any(target_os = "android", windows)))]
 fn installed(k: Kind) -> Option<&'static str> {
     use std::sync::OnceLock;
     static FAMILIES: OnceLock<Vec<String>> = OnceLock::new();
