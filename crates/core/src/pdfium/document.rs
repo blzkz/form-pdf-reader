@@ -113,6 +113,9 @@ pub struct Document {
     /// Carácter que llegará tras una tecla ya resuelta aquí (el WM_CHAR de
     /// Retroceso cuando se borró la selección): se descarta.
     swallow_char: Option<u32>,
+    /// El foco pasó con Tab desde un campo de texto: casi siempre a otro de
+    /// texto, aunque no se sabe a cuál (ver `editing_text`).
+    tabbed_from_text: bool,
     /// Bytes del fichero tal como está en disco (base para guardar).
     base: Vec<u8>,
     compat: Option<CompatReport>,
@@ -190,6 +193,7 @@ impl Document {
             open_list: None,
             text_drag: None,
             swallow_char: None,
+            tabbed_from_text: false,
             base,
             compat,
             extent_cache: RefCell::new(HashMap::new()),
@@ -430,6 +434,7 @@ impl Document {
     pub fn left_down(&mut self, idx: usize, px: f64, py: f64, mods: i32) -> bool {
         self.button_held = true;
         self.text_drag = None;
+        self.tabbed_from_text = false;
         // Lista desplegable abierta y clic fuera de ella: PDFium la cierra mal
         // (sigue dibujando las opciones sin fondo). Se cierra antes con Escape,
         // que sí la cierra bien.
@@ -776,6 +781,7 @@ impl Document {
         }
         if vk == super::keys::VK_TAB {
             // El foco pasa a un campo que no conocemos.
+            self.tabbed_from_text = self.editing_text();
             self.last_focus = None;
         }
         if matches!(vk, super::keys::VK_TAB | super::keys::VK_RETURN | super::keys::VK_ESCAPE) {
@@ -831,6 +837,7 @@ impl Document {
             unsafe { sys::FORM_ForceToKillFocus(self.form) };
         }
         self.last_focus = None;
+        self.tabbed_from_text = false;
     }
 
     pub fn focused_text(&self) -> String {
@@ -922,6 +929,7 @@ impl Document {
             } else {
                 self.text_focus_lost = matches!(t, 6 | 15);
                 self.last_focus = None;
+                self.tabbed_from_text = false;
                 unsafe { sys::FORM_ForceToKillFocus(self.form) };
             }
         } else {
@@ -1301,6 +1309,14 @@ impl Document {
         })
         .unwrap_or_default()
         .replace('\r', "")
+    }
+
+    /// true si hay un campo de texto con el cursor: el teclado en pantalla
+    /// debe verse. En XFA PDFium no lo avisa (dibuja su propio cursor, sin
+    /// FFI_SetTextFieldFocus ni FFI_DisplayCaret): cuenta el último campo
+    /// pulsado, o que el foco haya pasado con Tab desde uno de texto.
+    pub fn editing_text(&self) -> bool {
+        self.host.state.borrow().text_field_focused || matches!(self.last_focus, Some((_, _, _, 6 | 15))) || self.tabbed_from_text
     }
 
     /// true si el usuario está editando un campo (texto con cursor, o un

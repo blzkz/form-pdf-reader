@@ -43,14 +43,20 @@ fn xfa_dinamico() {
     assert!(!doc.refresh_if_structure_changed());
 
     // Pulsar en la ETIQUETA de "Nombre", escribir, Tab, escribir.
+    // Con un campo de texto XFA enfocado la app debe mostrar el teclado
+    // (PDFium no lo avisa; ver Document::editing_text).
+    assert!(!doc.editing_text());
     click(&mut doc, 100.0, 788.0);
+    assert!(doc.editing_text(), "campo de texto pulsado");
     doc.type_text("Juan");
     doc.key_down(keys::VK_TAB, 0);
     doc.char_input(9, 0);
     doc.key_up(keys::VK_TAB, 0);
+    assert!(doc.editing_text(), "Tab desde un campo de texto");
     doc.type_text("Pérez");
     // Casilla "Hombre" pulsando en su texto.
     click(&mut doc, 286.0, 968.0);
+    assert!(!doc.editing_text(), "una casilla no es un campo de texto");
     doc.kill_focus();
     let ds = datasets(&mut doc);
     // Al salir de cada campo el formulario pasa el texto a mayúsculas (evento

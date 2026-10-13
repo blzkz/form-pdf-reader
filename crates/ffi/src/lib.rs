@@ -224,7 +224,7 @@ impl PdfDocument {
             redraw: true,
             modified: u.form_changed,
             restructured,
-            text_input: doc.editing_field() && u.caret.is_some() || u.text_field_focused,
+            text_input: doc.editing_text() || doc.editing_field() && u.caret.is_some(),
             open_files: u.open_files.into_iter().map(|p| p.display().to_string()).collect(),
             uris: u.uris,
             submit: u.submit_requested,
