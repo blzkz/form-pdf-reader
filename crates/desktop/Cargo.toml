@@ -18,7 +18,7 @@ log.workspace = true
 env_logger.workspace = true
 png.workspace = true
 rfd = "0.17"
-eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 
 [features]
 # Solo para pruebas: EFRAME_SCREENSHOT_TO=/ruta.png guarda una captura y sale.

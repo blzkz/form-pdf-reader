@@ -92,4 +92,5 @@
     <string name="password_title">Password</string>
     <string name="password_prompt">«%1$s» è protetto da password. Inseriscila per aprire il documento.</string>
     <string name="password_wrong">La password non è corretta. Riprova.</string>
+    <string name="a11y_document">Documento, pagina %1$d di %2$d</string>
 </resources>

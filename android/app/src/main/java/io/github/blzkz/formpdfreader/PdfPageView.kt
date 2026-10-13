@@ -248,6 +248,8 @@ class PdfPageView(context: Context) : View(context) {
         val s = "$currentPage/${pages.size}/$zoomPercent/$layoutMode/$fit"
         if (s != lastState) {
             lastState = s
+            // What TalkBack says about the view.
+            if (pages.isNotEmpty()) contentDescription = context.getString(R.string.a11y_document, currentPage + 1, pages.size)
             onStateChanged?.invoke()
         }
     }

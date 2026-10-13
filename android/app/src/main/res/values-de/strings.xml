@@ -92,4 +92,5 @@
     <string name="password_title">Kennwort</string>
     <string name="password_prompt">„%1$s“ ist kennwortgeschützt. Geben Sie das Kennwort ein, um das Dokument zu öffnen.</string>
     <string name="password_wrong">Das Kennwort ist nicht korrekt. Versuchen Sie es erneut.</string>
+    <string name="a11y_document">Dokument, Seite %1$d von %2$d</string>
 </resources>
