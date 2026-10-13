@@ -20,6 +20,7 @@
     <string name="form">Formulaire</string>
     <string name="no_attachments">Ce PDF ne contient aucun fichier joint.</string>
     <string name="copied">Texte copié</string>
+    <string name="delete">Supprimer</string>
     <string name="no_text">Cette page ne contient pas de texte sélectionnable.</string>
     <string name="submit_unsupported">Le formulaire a tenté de s’envoyer à « %1$s ». L’envoi n’est pas pris en charge : enregistrez le PDF et transmettez-le par le canal indiqué.</string>
     <string name="no_app">Aucune application ne permet d’ouvrir ce fichier.</string>
@@ -81,4 +82,11 @@
     <string name="share">Partager</string>
     <string name="share_title">Partager « %1$s »</string>
     <string name="share_error">Impossible de partager le document :\n%1$s</string>
+    <string name="drafts_title">Modifications non enregistrées</string>
+    <string name="drafts_message">L’application s’est fermée avant l’enregistrement de ces documents :\n\n%1$s</string>
+    <string name="draft_found">« %1$s » contient des modifications non enregistrées (%2$s). Les récupérer ?</string>
+    <string name="recover">Récupérer</string>
+    <string name="later">Plus tard</string>
+    <string name="draft_recovered">Modifications non enregistrées récupérées</string>
+    <string name="save_incomplete">Le document n’a pas été écrit en entier.</string>
 </resources>

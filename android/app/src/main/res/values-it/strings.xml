@@ -20,6 +20,7 @@
     <string name="form">Modulo</string>
     <string name="no_attachments">Questo PDF non contiene file allegati.</string>
     <string name="copied">Testo copiato</string>
+    <string name="delete">Elimina</string>
     <string name="no_text">Questa pagina non contiene testo selezionabile.</string>
     <string name="submit_unsupported">Il modulo ha tentato di inviarsi a «%1$s». L’invio non è supportato: salva il PDF e invialo tramite il canale indicato.</string>
     <string name="no_app">Nessuna app può aprire questo file.</string>
@@ -81,4 +82,11 @@
     <string name="share">Condividi</string>
     <string name="share_title">Condividi «%1$s»</string>
     <string name="share_error">Impossibile condividere il documento:\n%1$s</string>
+    <string name="drafts_title">Modifiche non salvate</string>
+    <string name="drafts_message">L’app si è chiusa prima di salvare questi documenti:\n\n%1$s</string>
+    <string name="draft_found">«%1$s» ha modifiche non salvate (%2$s). Recuperarle?</string>
+    <string name="recover">Recupera</string>
+    <string name="later">Più tardi</string>
+    <string name="draft_recovered">Modifiche non salvate recuperate</string>
+    <string name="save_incomplete">Il documento non è stato scritto per intero.</string>
 </resources>

@@ -109,6 +109,28 @@ class HomeActivity : AppCompatActivity() {
         super.onResume()
         // Back from the viewer, which adds what it opens.
         loadRecents()
+        offerDrafts()
+    }
+
+    private var draftsDialog: androidx.appcompat.app.AlertDialog? = null
+
+    /** "Later" was chosen: not asked again until the app starts again. */
+    private var draftsLater = false
+
+    /** The app was closed with unsaved changes: offers to recover them. */
+    private fun offerDrafts() {
+        if (draftsLater || draftsDialog?.isShowing == true) return
+        val drafts = Drafts.list(this, notOpen = true)
+        if (drafts.isEmpty()) return
+        draftsDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.drafts_title)
+            .setMessage(getString(R.string.drafts_message, drafts.joinToString("\n") { "• ${it.item.name}" }))
+            .setPositiveButton(R.string.recover) { _, _ ->
+                startActivity(Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_RECOVER, true))
+            }
+            .setNegativeButton(R.string.discard) { _, _ -> for (d in drafts) Drafts.delete(this, d.id) }
+            .setNeutralButton(R.string.later) { _, _ -> draftsLater = true }
+            .show()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
 import android.text.InputType
+import android.text.format.DateUtils
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -40,6 +41,8 @@ import com.google.android.material.tabs.TabLayout
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileNotFoundException
+import java.io.IOException
+import java.util.UUID
 import uniffi.form_pdf_reader_ffi.DocKind
 import uniffi.form_pdf_reader_ffi.InputResult
 import uniffi.form_pdf_reader_ffi.PdfDocument
@@ -64,6 +67,13 @@ class MainActivity : AppCompatActivity() {
         var modified = false
         var loading = true
         var kind: DocKind? = null
+        /** Where its unsaved changes are kept on the device (see [Drafts]). */
+        var draftId: String = UUID.randomUUID().toString()
+        /** A draft to open instead of the document (changes recovered). */
+        var recoverFrom: File? = null
+        /** Changes made so far, and how many of them the draft has. */
+        var edits = 0
+        var draftedEdits = 0
     }
 
     private lateinit var toolbar: MaterialToolbar
@@ -174,31 +184,54 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        // Changes left unsaved when the app was closed: the system closed it in
+        // the background (and now opens it again), or the user chose to
+        // recover them on the start screen.
+        if (savedInstanceState != null || intent.getBooleanExtra(EXTRA_RECOVER, false)) recoverDrafts()
         val item = itemFor(intent)
         if (item == null) {
-            finish()
+            if (docs.isEmpty()) finish()
             return
         }
-        open(item)
+        openOrRecover(item)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        itemFor(intent)?.let { open(it) }
+        if (intent.getBooleanExtra(EXTRA_RECOVER, false)) recoverDrafts()
+        itemFor(intent)?.let { openOrRecover(it) }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Android may close the app while it is in the background: the
+        // changes are kept on the device until they are saved or discarded.
+        for (t in docs) if (t.modified && t.edits != t.draftedEdits) writeDraft(t)
     }
 
     // -----------------------------------------------------------------------
     // Tabs
     // -----------------------------------------------------------------------
 
-    /** Opens [item] in a new tab, or shows its tab if it is already open. */
-    private fun open(item: DocItem) {
+    /**
+     * Opens [item] in a new tab, or shows its tab if it is already open. With
+     * [draft], the tab shows the changes kept in it, still to be saved.
+     */
+    private fun open(item: DocItem, draft: Drafts.Draft? = null) {
         docs.firstOrNull { it.item.key == item.key }?.let {
             selectTab(it)
             return
         }
         val view = PdfPageView(this).apply { visibility = View.GONE }
         val t = DocTab(view, item)
+        if (draft != null) {
+            t.draftId = draft.id
+            t.recoverFrom = draft.file
+            t.modified = true
+            t.edits = 1
+            t.draftedEdits = 1
+        }
+        Drafts.open += t.draftId
         view.onInput = { r -> onFormInput(t, r) }
         view.onStateChanged = {
             if (t === current) {
@@ -264,6 +297,9 @@ class MainActivity : AppCompatActivity() {
         container.removeView(t.view)
         t.view.setDocument(null)
         release(t)
+        Drafts.open -= t.draftId
+        // Saved or discarded: its changes are no longer kept.
+        if (!t.modified) deleteDraft(t)
         updateTabsVisibility()
         if (docs.isEmpty()) progress.visibility = View.GONE
     }
@@ -310,9 +346,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun load(t: DocTab) {
         val item = t.item
+        val draft = t.recoverFrom
         val continuous = Prefs.continuousXfa(this)
         // The core works with files: the document is copied to the cache.
-        Io.run({ copyToCache(item, "docs/${System.nanoTime()}") }) { copied ->
+        Io.run({ copyToCache(item, "docs/${System.nanoTime()}", from = draft) }) { copied ->
             val file = copied.getOrElse { e -> return@run openFailed(t, e) }
             PdfEngine.run({
                 PdfDocument.open(file.absolutePath, continuous).also { it.setHandler(formHandler) }
@@ -327,7 +364,8 @@ class MainActivity : AppCompatActivity() {
                     t.file = file
                     t.loading = false
                     t.view.setDocument(d)
-                    remember(item, file.length())
+                    remember(item, if (draft == null) file.length() else item.size)
+                    if (draft != null) Toast.makeText(this, R.string.draft_recovered, Toast.LENGTH_SHORT).show()
                     if (t === current) {
                         progress.visibility = View.GONE
                         updateTitle()
@@ -426,11 +464,15 @@ class MainActivity : AppCompatActivity() {
         Recents.add(this, item.copy(size = size, time = System.currentTimeMillis(), needsPick = !lasting))
     }
 
-    /** Copies a document into the cache: the core works with files. */
-    private fun copyToCache(item: DocItem, dir: String): File {
+    /** Copies a document (or [from], its draft) into the cache: the core works with files. */
+    private fun copyToCache(item: DocItem, dir: String, from: File? = null): File {
         val folder = File(cacheDir, dir).apply { mkdirs() }
         val out = File(folder, item.name.replace('/', '_'))
-        val input = if (item.path != null) FileInputStream(item.path) else contentResolver.openInputStream(requireNotNull(item.contentUri))
+        val input = when {
+            from != null -> FileInputStream(from)
+            item.path != null -> FileInputStream(item.path)
+            else -> contentResolver.openInputStream(requireNotNull(item.contentUri))
+        }
         requireNotNull(input) { item.key }.use { i -> out.outputStream().use { i.copyTo(it) } }
         return out
     }
@@ -482,30 +524,114 @@ class MainActivity : AppCompatActivity() {
         val d = t.doc ?: return
         t.view.commitField {
             PdfEngine.run({ d.saveBytes() }) { r ->
-                r.onSuccess { bytes ->
-                    try {
-                        if (target.path != null) {
-                            File(target.path).writeBytes(bytes)
-                        } else {
-                            contentResolver.openOutputStream(requireNotNull(target.contentUri), "wt").use { out ->
-                                requireNotNull(out) { target.key }
-                                out.write(bytes)
-                            }
-                        }
+                val bytes = r.getOrElse { e -> return@run saveFailed(t, e) }
+                val edits = t.edits
+                Io.run({ writeDocument(target, bytes) }) { w ->
+                    w.onSuccess {
                         t.item = target
-                        t.modified = false
+                        // Changes made while it was being written are still unsaved.
+                        t.modified = t.edits != edits
+                        if (!t.modified) deleteDraft(t)
                         Thumbnails.forget(target.key)
                         remember(target, bytes.size.toLong())
                         updateTabLabel(t)
                         if (t === current) updateTitle()
                         Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
                         afterSave?.invoke()
-                    } catch (e: Exception) {
-                        saveFailed(t, e)
-                    }
-                }.onFailure { e -> saveFailed(t, e) }
+                    }.onFailure { e -> saveFailed(t, e) }
+                }
             }
         }
+    }
+
+    /**
+     * Writes a saved document over [target]. A file on the device is replaced
+     * in one go. A document of another app (content URI) can only be
+     * overwritten: if writing fails half way, what it had before is written
+     * back, so it is never left empty or cut. Runs in the background.
+     */
+    private fun writeDocument(target: DocItem, bytes: ByteArray) {
+        target.path?.let { path ->
+            val f = File(path)
+            val tmp = File(f.parentFile, ".${f.name}.${System.nanoTime()}.tmp")
+            val replaced = runCatching {
+                tmp.outputStream().use {
+                    it.write(bytes)
+                    it.fd.sync()
+                }
+                tmp.renameTo(f)
+            }.getOrDefault(false)
+            tmp.delete()
+            // A folder where no other file can be created: written in place.
+            if (!replaced) f.writeBytes(bytes)
+            return
+        }
+        val uri = requireNotNull(target.contentUri)
+        val before = runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+        var overwritten = false
+        try {
+            val out = requireNotNull(contentResolver.openOutputStream(uri, "wt")) { target.key }
+            overwritten = true
+            out.use { it.write(bytes) }
+            // Some apps do not report errors while writing: check the size
+            // (-1 when the app does not know it).
+            val size = contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+            if (size >= 0 && size != bytes.size.toLong()) throw IOException(getString(R.string.save_incomplete))
+        } catch (e: Exception) {
+            if (overwritten && !before.isNullOrEmpty()) {
+                runCatching { contentResolver.openOutputStream(uri, "wt")?.use { it.write(before) } }
+            }
+            throw e
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Unsaved changes kept on the device
+    // -----------------------------------------------------------------------
+
+    /** Keeps the changes of [t] in its draft (see [Drafts]). */
+    private fun writeDraft(t: DocTab) {
+        val d = t.doc ?: return
+        val edits = t.edits
+        t.view.commitField {
+            PdfEngine.run({ d.saveBytes() }) { r ->
+                val bytes = r.getOrNull() ?: return@run
+                if (t !in docs || !t.modified) return@run
+                val id = t.draftId
+                val item = t.item
+                Io.run({ Drafts.write(this, id, item, bytes) }) { w ->
+                    if (w.isSuccess) t.draftedEdits = edits
+                }
+            }
+        }
+    }
+
+    private fun deleteDraft(t: DocTab) {
+        val id = t.draftId
+        t.draftedEdits = t.edits
+        Io.run({ Drafts.delete(this, id) }) {}
+    }
+
+    /** Opens every document with changes kept from a previous run. */
+    private fun recoverDrafts() {
+        for (draft in Drafts.list(this, notOpen = true)) open(draft.item, draft)
+    }
+
+    /** Opens [item]; if it has changes kept from a previous run, asks whether to recover them. */
+    private fun openOrRecover(item: DocItem) {
+        val draft = Drafts.find(this, item.key)
+        if (draft == null || docs.any { it.item.key == item.key }) return open(item)
+        val ago = DateUtils.getRelativeTimeSpanString(draft.time, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.drafts_title)
+            .setMessage(getString(R.string.draft_found, item.name, ago))
+            .setPositiveButton(R.string.recover) { _, _ -> open(item, draft) }
+            .setNegativeButton(R.string.discard) { _, _ ->
+                Drafts.delete(this, draft.id)
+                open(item)
+            }
+            .setCancelable(false)
+            .show()
     }
 
     /** Asks before losing the unsaved changes of [t]. */
@@ -518,6 +644,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.save) { _, _ -> save(t, afterSave = then) }
             .setNegativeButton(R.string.discard) { _, _ ->
                 t.modified = false
+                deleteDraft(t)
                 updateTabLabel(t)
                 then()
             }
@@ -746,6 +873,8 @@ class MainActivity : AppCompatActivity() {
     private fun handleShortcut(e: KeyEvent): Boolean {
         val v = current?.view
         val ch = e.getUnicodeChar(e.metaState and KeyEvent.META_CTRL_MASK.inv()).toChar().lowercaseChar()
+        // Editing a text field: Ctrl+A/C/X/V and Ctrl+arrows are for the field.
+        if (v?.fieldShortcut(e.keyCode, ch, e.isShiftPressed) == true) return true
         when {
             e.keyCode == KeyEvent.KEYCODE_TAB -> switchTab(if (e.isShiftPressed) -1 else 1)
             e.keyCode == KeyEvent.KEYCODE_PAGE_DOWN -> switchTab(1)
@@ -871,6 +1000,7 @@ class MainActivity : AppCompatActivity() {
     // -----------------------------------------------------------------------
 
     private fun onFormInput(t: DocTab, r: InputResult) {
+        if (r.modified) t.edits++
         if (r.modified && !t.modified) {
             t.modified = true
             updateTabLabel(t)
@@ -1017,6 +1147,9 @@ class MainActivity : AppCompatActivity() {
     companion object {
         /** Path of a file on the device to open. */
         const val EXTRA_PATH = "io.github.blzkz.formpdfreader.PATH"
+
+        /** Opens the documents with changes kept from a previous run (see [Drafts]). */
+        const val EXTRA_RECOVER = "io.github.blzkz.formpdfreader.RECOVER"
 
         private const val ZOOM_FIT_WIDTH = 1
         private const val ZOOM_FIT_PAGE = 2
