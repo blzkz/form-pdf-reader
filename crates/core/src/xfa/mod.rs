@@ -105,7 +105,7 @@ pub fn build_save(base: &[u8], filled: &[u8], attachments: Option<&[attachments:
     let x = XfaPdf::parse(base)?.ok_or_else(|| anyhow!("{}", crate::t!("err.orig_no_xfa")))?;
     let ds = x.packet("datasets").ok_or_else(|| anyhow!("{}", crate::t!("err.orig_no_datasets")))?.id;
     let mut b = pdfedit::UpdateBuilder::new(base, &x);
-    b.set_stream(ds, &lopdf::Dictionary::new(), &data);
+    b.set_stream(ds, &lopdf::Dictionary::new(), &data)?;
     if let Some(atts) = attachments {
         attachments::write(&mut b, x.document(), atts)?;
     }
