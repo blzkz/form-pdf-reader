@@ -103,7 +103,13 @@ made-up data and the public US Form I-9.
     has the national ID card (DNIe) and other smart cards with a reader; on
     Linux, Chrome's and Firefox's certificates (NSS) and smart cards and the
     DNIe through PKCS#11 (OpenSC or the official DNIe module); on Android,
-    the certificates installed on the device.
+    the certificates installed on the device and the DNIe over NFC (with
+    its CAN and PIN, holding it against the phone).
+
+  Smart cards and the DNIe (with a reader or over NFC) and the certificates
+  installed on Android are marked **beta**: they could not be tested with
+  every card and device. Certificate files, the browsers' certificates and
+  the Windows store's own certificates are tested.
 
   The private key never leaves where it is (the system or the card signs);
   the key of a file is only in memory while signing. The signature can be
@@ -202,8 +208,6 @@ as when Adobe Reader saves the form.
 ## Known limitations
 
 - Submitting the form by e-mail or web does not work.
-- The DNIe on Android (by NFC) is not supported; on Android use the
-  certificate installed on the device or its `.p12` file.
 - Non-embedded corporate fonts are replaced by Liberation Sans (Arial on
   Windows), so some text is slightly wider.
 - The date picker is in English (PDFium's choice) and opens on the current
@@ -477,8 +481,12 @@ It includes third-party software under its own licences: PDFium and its
 components (BSD-3-Clause, Apache-2.0 and others), the Rust crates it is built
 from (mostly MIT or Apache-2.0; uniffi is MPL-2.0) and, in the Android app,
 AndroidX, Material Components, the Kotlin standard library and JNA
-(Apache-2.0). `scripts/third_party_notices.py` writes their notices from the
-dependency tree:
+(Apache-2.0), Bouncy Castle (MIT) and jmulticard, the official library for
+the DNIe over NFC (GPL-2.0 / EUPL-1.1). Because of jmulticard, the Android
+app as a whole (the APK) is distributed under the EUPL 1.1, used for
+jmulticard; the source code in this repository keeps its MIT licence.
+`scripts/third_party_notices.py` writes the notices from the dependency
+tree:
 
 - Linux packages: `/usr/share/licenses/form-pdf-reader/` (`LICENSE` and
   `THIRD-PARTY-NOTICES.txt`); in the `.tar.gz`, next to the program.

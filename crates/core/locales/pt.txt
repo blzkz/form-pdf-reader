@@ -333,3 +333,6 @@ dsig.timestamp_note = Só se envia ao servidor um resumo da assinatura, não o d
 pades.tsa_failed = Não foi possível obter o carimbo temporal de {0}
 pades.tsa_rejected = O servidor de carimbo recusou o pedido (estado {0}).
 pades.tsa_http_only = Só são suportados servidores de carimbo http:// (o carimbo já vem assinado pelo servidor).
+dsig.origin_windows_card = Arquivo de certificados do Windows (cartão)
+dsig.beta = BETA
+dsig.beta_tip = Experimental: não foi possível testá-lo com todos os cartões. Se falhar, use o ficheiro do certificado.

@@ -24,7 +24,7 @@ import uniffi.form_pdf_reader_ffi.SignatureInfo
  * page, signing and saving the signed copy.
  */
 object DigitalSign {
-    enum class Source { DEVICE, FILE }
+    enum class Source { DEVICE, FILE, DNIE }
 
     class Options(
         val source: Source,
@@ -58,6 +58,7 @@ object DigitalSign {
         val source = RadioGroup(a).apply {
             addView(radio(R.string.dsig_device, 1))
             addView(radio(R.string.dsig_file, 2))
+            addView(radio(R.string.dsig_dnie, 3))
             check(1)
         }
         box.addView(source)
@@ -129,7 +130,11 @@ object DigitalSign {
                 val h = hand.selectedItemPosition
                 onDone(
                     Options(
-                        source = if (source.checkedRadioButtonId == 2) Source.FILE else Source.DEVICE,
+                        source = when (source.checkedRadioButtonId) {
+                            2 -> Source.FILE
+                            3 -> Source.DNIE
+                            else -> Source.DEVICE
+                        },
                         visible = visible,
                         field = if (visible && w > 0) empty[w - 1].name else null,
                         handwrittenId = if (visible && h > 0) saved[h - 1].id else null,

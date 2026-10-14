@@ -211,17 +211,51 @@ class MainActivity : AppCompatActivity() {
         // recover them on the start screen.
         if (savedInstanceState != null || intent.getBooleanExtra(EXTRA_RECOVER, false)) recoverDrafts()
         val item = itemFor(intent)
-        if (item == null) {
-            if (docs.isEmpty()) finish()
+        if (item == null || !shouldOpen(intent, item)) {
+            if (docs.isEmpty()) {
+                if (item != null) startActivity(Intent(this, HomeActivity::class.java))
+                finish()
+            }
             return
         }
         openOrRecover(item)
     }
 
+    /**
+     * Whether to open the document of [intent]. When Android recreates the
+     * viewer (after closing it in the background, or after an update) it
+     * gives it again the intent of its first launch: then the document is
+     * opened only if it can still be read, without an error otherwise (the
+     * permission of the app that shared it may have expired long ago).
+     */
+    private fun shouldOpen(intent: Intent, item: DocItem): Boolean {
+        // Without a launch id: shared by another app, or launched by an older
+        // version; either way it may be an old intent given again.
+        val repeated = intent.getStringExtra(EXTRA_LAUNCH) == null || alreadyHandled(intent)
+        return !repeated || canRead(item)
+    }
+
+    /** The launch of [intent] (see [EXTRA_LAUNCH]) was handled before; records it if not. */
+    private fun alreadyHandled(intent: Intent): Boolean {
+        val id = intent.getStringExtra(EXTRA_LAUNCH) ?: return false
+        val prefs = getSharedPreferences("launches", Context.MODE_PRIVATE)
+        val seen = prefs.getString("ids", "").orEmpty().split('\n').filter { it.isNotEmpty() }
+        if (id in seen) return true
+        prefs.edit().putString("ids", (seen.takeLast(49) + id).joinToString("\n")).apply()
+        return false
+    }
+
+    /** The document can still be read (its permission has not expired). */
+    private fun canRead(item: DocItem): Boolean {
+        item.path?.let { return File(it).canRead() }
+        val uri = item.contentUri ?: return false
+        return runCatching { contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false }.getOrDefault(false)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra(EXTRA_RECOVER, false)) recoverDrafts()
-        itemFor(intent)?.let { openOrRecover(it) }
+        itemFor(intent)?.takeIf { shouldOpen(intent, it) }?.let { openOrRecover(it) }
     }
 
     override fun onStop() {
@@ -357,7 +391,10 @@ class MainActivity : AppCompatActivity() {
     private fun itemFor(intent: Intent): DocItem? {
         intent.getStringExtra(EXTRA_PATH)?.let { return DocItem(File(it).name, path = it) }
         val uri = intent.data ?: return null
-        return itemFor(uri)
+        // The name the start screen knows: without permission the document's
+        // own name cannot be read.
+        val name = intent.getStringExtra(EXTRA_NAME)
+        return if (name != null && uri.scheme != "file") DocItem(name, uri = uri.toString()) else itemFor(uri)
     }
 
     private fun itemFor(uri: Uri): DocItem {
@@ -1136,7 +1173,11 @@ class MainActivity : AppCompatActivity() {
             PdfEngine.run({ Pair(d.signatureFields(), lib.list()) }) { r ->
                 val (fields, saved) = r.getOrElse { e -> return@run showError(e.message ?: "") }
                 DigitalSign.showOptions(this, fields, saved, dynamicXfa) { o ->
-                    chooseCertificate(o.source) { signer -> placeDigital(t, o, signer) }
+                    when (o.source) {
+                        // The DNIe is read at the end, while it is held against the phone.
+                        DigitalSign.Source.DNIE -> if (DnieReader.checkNfc(this)) placeDigital(t, o, null)
+                        else -> chooseCertificate(o.source) { signer -> placeDigital(t, o, signer) }
+                    }
                 }
             }
         }
@@ -1182,6 +1223,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 pickCertificate.launch(arrayOf("application/x-pkcs12", "application/pkcs12", "application/octet-stream", "*/*"))
             }
+            // Read at the end, while it is held against the phone (dnieSign).
+            DigitalSign.Source.DNIE -> Unit
         }
     }
 
@@ -1200,7 +1243,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Where the signature goes: a tap on the page if it is a new visible one. */
-    private fun placeDigital(t: DocTab, o: DigitalSign.Options, signer: CertSigner) {
+    /** [signer] null: the DNIe, read when signing. */
+    private fun placeDigital(t: DocTab, o: DigitalSign.Options, signer: CertSigner?) {
         when {
             !o.visible -> saveSigned(t, o, DigitalPlacement.Invisible, signer)
             o.field != null -> saveSigned(t, o, DigitalPlacement.Field(o.field), signer)
@@ -1215,8 +1259,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Asks where to save the signed copy, signs and opens it in place of the document. */
-    private fun saveSigned(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, signer: CertSigner) {
+    private fun saveSigned(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, signer: CertSigner?) {
         val d = t.doc ?: return
+        // The DNIe first (while it is held against the phone), then where to save.
+        if (signer == null) return dnieSign(t, o, placement, error = null)
         val stem = t.item.name.substringBeforeLast('.')
         signedCallback = cb@{ uri ->
             if (uri == null || t !in docs) return@cb
@@ -1232,18 +1278,62 @@ class MainActivity : AppCompatActivity() {
                     writeDocument(target, bytes)
                     bytes.size.toLong()
                 }) { w ->
-                    w.onSuccess { size ->
-                        remember(target, size)
-                        // The signed copy has the changes: the tab shows it now.
-                        t.modified = false
-                        removeTab(t)
-                        open(target)
-                        Toast.makeText(this, R.string.dsig_done, Toast.LENGTH_LONG).show()
-                    }.onFailure { e -> showError(getString(R.string.dsig_failed, e.message ?: "")) }
+                    w.onSuccess { size -> signedDone(t, target, size) }
+                        .onFailure { e -> showError(getString(R.string.dsig_failed, e.message ?: "")) }
                 }
             }
         }
         createSigned.launch(getString(R.string.dsig_signed_name, stem))
+    }
+
+    /** Asks where to save the signed PDF [bytes] and saves it. */
+    private fun saveSignedBytes(t: DocTab, bytes: ByteArray) {
+        signedCallback = cb@{ uri ->
+            if (uri == null || t !in docs) return@cb
+            val target = itemFor(uri)
+            Io.run({ writeDocument(target, bytes) }) { w ->
+                w.onSuccess { signedDone(t, target, bytes.size.toLong()) }
+                    .onFailure { e -> showError(getString(R.string.dsig_failed, e.message ?: "")) }
+            }
+        }
+        createSigned.launch(getString(R.string.dsig_signed_name, t.item.name.substringBeforeLast('.')))
+    }
+
+    /** The signed copy is saved: it has the changes, so the tab shows it now. */
+    private fun signedDone(t: DocTab, target: DocItem, size: Long) {
+        remember(target, size)
+        t.modified = false
+        removeTab(t)
+        open(target)
+        Toast.makeText(this, R.string.dsig_done, Toast.LENGTH_LONG).show()
+    }
+
+    /**
+     * Signs with the DNIe over NFC: asks the CAN and the PIN, the card does
+     * the rest, and then where to save the signed copy.
+     */
+    private fun dnieSign(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, error: String?) {
+        val d = t.doc ?: return
+        val lib = Signatures.library(this)
+        DnieReader.askCodes(this, error) { can, pin ->
+            DnieReader.sign(this, can, pin, { chain, sign ->
+                val pending = try {
+                    PdfEngine.submit { d.prepareDigitalSignature(placement, o.reason, o.location, lib, o.handwrittenId, chain) }.get()
+                } catch (e: java.util.concurrent.ExecutionException) {
+                    throw e.cause ?: e
+                }
+                pending.finish(sign(pending.dataToSign()))
+            }) { r, retry ->
+                if (r == null || t !in docs) return@sign
+                t.view.refreshSignatures()
+                val e = r.exceptionOrNull()
+                when {
+                    e == null -> saveSignedBytes(t, r.getOrThrow())
+                    retry -> dnieSign(t, o, placement, e.message)
+                    else -> showError(getString(R.string.dsig_failed, e.message ?: ""))
+                }
+            }
+        }
     }
 
     private fun onFormInput(t: DocTab, r: InputResult) {
@@ -1398,17 +1488,28 @@ class MainActivity : AppCompatActivity() {
         /** Opens the documents with changes kept from a previous run (see [Drafts]). */
         const val EXTRA_RECOVER = "io.github.blzkz.formpdfreader.RECOVER"
 
+        /**
+         * A unique id of each launch from this app: Android may give the same
+         * intent again when it recreates the viewer, and then it is not a new
+         * request to open the document.
+         */
+        const val EXTRA_LAUNCH = "io.github.blzkz.formpdfreader.LAUNCH"
+
+        /** Name of the document (for a content URI that can no longer be read). */
+        const val EXTRA_NAME = "io.github.blzkz.formpdfreader.NAME"
+
         private const val ZOOM_FIT_WIDTH = 1
         private const val ZOOM_FIT_PAGE = 2
         private const val ZOOM_PERCENT = 1000
 
         fun intentFor(c: Context, item: DocItem): Intent =
             if (item.path != null) {
-                Intent(c, MainActivity::class.java).putExtra(EXTRA_PATH, item.path)
+                Intent(c, MainActivity::class.java).putExtra(EXTRA_PATH, item.path).putExtra(EXTRA_LAUNCH, UUID.randomUUID().toString())
             } else {
-                intentFor(c, requireNotNull(item.contentUri))
+                intentFor(c, requireNotNull(item.contentUri)).putExtra(EXTRA_NAME, item.name)
             }
 
-        fun intentFor(c: Context, uri: Uri): Intent = Intent(Intent.ACTION_VIEW, uri, c, MainActivity::class.java)
+        fun intentFor(c: Context, uri: Uri): Intent =
+            Intent(Intent.ACTION_VIEW, uri, c, MainActivity::class.java).putExtra(EXTRA_LAUNCH, UUID.randomUUID().toString())
     }
 }

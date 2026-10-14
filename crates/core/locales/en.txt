@@ -333,3 +333,6 @@ dsig.timestamp_note = Only a digest of the signature is sent to the server, not 
 pades.tsa_failed = Could not get the timestamp from {0}
 pades.tsa_rejected = The timestamp server rejected the request (status {0}).
 pades.tsa_http_only = Only http:// timestamp servers are supported (the timestamp is already signed by the server).
+dsig.origin_windows_card = Windows certificate store (card)
+dsig.beta = BETA
+dsig.beta_tip = Experimental: it could not be tested with every card. If it fails, use the certificate file.

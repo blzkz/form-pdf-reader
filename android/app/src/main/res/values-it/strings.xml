@@ -136,7 +136,7 @@
     <string name="dsig_menu">Firma con certificato…</string>
     <string name="dsig_title">Firma con certificato</string>
     <string name="dsig_certificate">Certificato</string>
-    <string name="dsig_device">Installato sul dispositivo</string>
+    <string name="dsig_device">Installato sul dispositivo (beta)</string>
     <string name="dsig_file">File di certificato (.p12, .pfx)</string>
     <string name="dsig_appearance">Aspetto</string>
     <string name="dsig_visible">Visibile</string>
@@ -165,4 +165,22 @@
     <string name="dsig_no_device_title">Nessun certificato sul dispositivo</string>
     <string name="dsig_no_device">Non hai scelto nessun certificato o non ce n’è nessuno installato. Puoi installare il tuo in Impostazioni › Sicurezza › Crittografia e credenziali › Installa un certificato, oppure usare il file del certificato (.p12, .pfx).</string>
     <string name="dsig_use_file">Usa un file</string>
+    <string name="dsig_dnie">DNIe (carta d’identità spagnola) via NFC (beta)</string>
+    <string name="dnie_title">DNIe via NFC</string>
+    <string name="dnie_no_nfc">Questo dispositivo non ha NFC.</string>
+    <string name="dnie_nfc_off">L’NFC è disattivato. Attivalo per leggere il DNIe.</string>
+    <string name="dnie_nfc_settings">Impostazioni NFC</string>
+    <string name="dnie_can_label">CAN (le 6 cifre sul fronte, in basso a destra)</string>
+    <string name="dnie_can_remember">Ricorda il CAN su questo dispositivo</string>
+    <string name="dnie_pin_label">PIN del DNIe</string>
+    <string name="dnie_can_invalid">Il CAN ha 6 cifre.</string>
+    <string name="dnie_pin_invalid">Il PIN ha almeno 8 caratteri.</string>
+    <string name="dnie_hold">Avvicina il DNIe al retro del telefono e non muoverlo fino alla fine.</string>
+    <string name="dnie_reading">Lettura del DNIe e firma… Non muoverlo.</string>
+    <string name="dnie_can_wrong">Il CAN non è corretto. Controlla le 6 cifre sul fronte.</string>
+    <string name="dnie_pin_wrong">Il PIN non è corretto (restano %1$d tentativi).</string>
+    <string name="dnie_pin_locked">Il PIN del DNIe è bloccato. Sbloccalo in un punto DNIe della Policía Nacional.</string>
+    <string name="dnie_lost">La connessione con il DNIe si è interrotta. Riprova senza muoverlo dal telefono.</string>
+    <string name="dnie_error">Errore del DNIe: %1$s</string>
+    <string name="dnie_cert_expired">Il certificato di firma del DNIe è scaduto il %1$s. Rinnovalo in un punto DNIe della Policía Nacional.</string>
 </resources>

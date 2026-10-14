@@ -47,6 +47,8 @@ pub struct CertEntry {
     pub secret: Secret,
     /// De dónde viene, para enseñarlo ("Almacén de Windows", "DNIe"...).
     pub origin: String,
+    /// En pruebas: tarjetas y DNIe (no se ha podido probar con todas).
+    pub beta: bool,
 }
 
 /// Los certificados del sistema (puede tardar: tarjetas, bases de datos).
@@ -63,7 +65,7 @@ pub fn open_file(path: &Path, password: &str) -> Result<CertEntry> {
     let chain = key.chain();
     let info = pades::cert_info(&chain[0]).ok_or_else(|| anyhow::anyhow!("{}", t!("pades.bad_cert")))?;
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    Ok(CertEntry { info, chain, source: Source::File(path.to_path_buf()), secret: Secret::Password, origin: t!("dsig.origin_file", name) })
+    Ok(CertEntry { info, chain, source: Source::File(path.to_path_buf()), secret: Secret::Password, origin: t!("dsig.origin_file", name), beta: false })
 }
 
 /// Quien firma con este certificado; `secret` es el PIN o la contraseña.

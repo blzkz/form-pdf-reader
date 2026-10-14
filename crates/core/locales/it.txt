@@ -333,3 +333,6 @@ dsig.timestamp_note = Al server si invia solo un’impronta della firma, non il 
 pades.tsa_failed = Impossibile ottenere la marca temporale da {0}
 pades.tsa_rejected = Il server di marcatura ha rifiutato la richiesta (stato {0}).
 pades.tsa_http_only = Sono supportati solo server di marcatura http:// (la marca è già firmata dal server).
+dsig.origin_windows_card = Archivio certificati di Windows (carta)
+dsig.beta = BETA
+dsig.beta_tip = Sperimentale: non è stato possibile provarlo con tutte le carte. Se non funziona, usa il file del certificato.
