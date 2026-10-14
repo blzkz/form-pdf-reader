@@ -19,3 +19,5 @@
 /android/build/
 /android/app/build/
 /android/local.properties
+# Ajustes locales de Claude Code (permisos de esta máquina)
+/.claude/
