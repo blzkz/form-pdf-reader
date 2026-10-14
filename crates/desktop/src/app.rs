@@ -171,18 +171,18 @@ impl PdfApp {
                 ui.colored_label(ui.visuals().error_fg_color, t!("dialog.password_wrong"));
             }
             ui.add_space(4.0);
-            let field = ui.add(egui::TextEdit::singleline(&mut p.text).password(true).desired_width(f32::INFINITY));
+            let field = ui.add(egui::TextEdit::singleline(&mut p.text).password(true).desired_width(f32::INFINITY).margin(egui::Margin::symmetric(8, 5)));
             if std::mem::take(&mut p.focus) {
                 field.request_focus();
             }
             if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 submit = true;
             }
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                submit |= theme::primary_button(ui, t!("toolbar.open")).clicked();
-                cancel |= ui.button(t!("dialog.cancel")).clicked();
-            });
+            match theme::dialog_footer(ui, &[(t!("toolbar.open"), true, true), (t!("dialog.cancel"), false, true)]) {
+                Some(0) => submit = true,
+                Some(_) => cancel = true,
+                None => {}
+            }
         });
         if submit {
             let p = self.password_prompt.take().unwrap();
@@ -716,8 +716,7 @@ impl PdfApp {
                 ui.set_max_width(480.0);
                 ui.heading(t!("dialog.error"));
                 ui.label(err);
-                ui.add_space(8.0);
-                if ui.button(t!("dialog.ok")).clicked() {
+                if theme::dialog_footer(ui, &[(t!("dialog.ok"), true, true)]).is_some() {
                     self.error = None;
                 }
             });
@@ -729,24 +728,24 @@ impl PdfApp {
                 ui.heading(t!("status.unsaved"));
                 let name = self.view().map(|v| file_name(v.doc.path())).unwrap_or_default();
                 ui.label(t!("dialog.unsaved_question", name));
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if theme::primary_button(ui, t!("dialog.save")).clicked()
-                        && self.save(None) {
+                let buttons = [(t!("dialog.save"), true, true), (t!("dialog.discard"), false, true), (t!("dialog.cancel"), false, true)];
+                match theme::dialog_footer(ui, &buttons) {
+                    Some(0) => {
+                        if self.save(None) {
                             close = true;
                             self.perform(action.clone());
                         }
-                    if ui.button(t!("dialog.discard")).clicked() {
+                    }
+                    Some(1) => {
                         close = true;
                         if let Some(t) = self.cur_mut() {
                             t.dirty = false;
                         }
                         self.perform(action.clone());
                     }
-                    if ui.button(t!("dialog.cancel")).clicked() {
-                        close = true;
-                    }
-                });
+                    Some(_) => close = true,
+                    None => {}
+                }
             });
             if close {
                 self.confirm = None;
@@ -777,8 +776,7 @@ impl PdfApp {
                 ui.heading(format!("Form PDF Reader {}", env!("CARGO_PKG_VERSION")));
                 ui.label(t!("about.desc"));
                 ui.label(t!("about.engine"));
-                ui.add_space(8.0);
-                if ui.button(t!("dialog.close")).clicked() {
+                if theme::dialog_footer(ui, &[(t!("dialog.close"), false, true)]).is_some() {
                     self.show_about = false;
                 }
             });
@@ -817,8 +815,7 @@ impl PdfApp {
                 if dirty {
                     ui.label(RichText::new(t!("attach.unsaved")).color(Color32::from_rgb(200, 120, 0)));
                 }
-                ui.add_space(6.0);
-                if ui.button(t!("dialog.close")).clicked() {
+                if theme::dialog_footer(ui, &[(t!("dialog.close"), false, true)]).is_some() {
                     close = true;
                 }
             });
@@ -857,8 +854,7 @@ impl PdfApp {
                 ui.label(format!("• {}", t!("xfa.attachments")));
                 ui.label(format!("• {}", t!("xfa.not_supported")));
                 ui.label(format!("• {}", t!("xfa.print")));
-                ui.add_space(8.0);
-                if ui.button(t!("xfa.ok")).clicked() {
+                if theme::dialog_footer(ui, &[(t!("xfa.ok"), true, true)]).is_some() {
                     self.show_xfa_info = false;
                 }
             });
@@ -919,8 +915,7 @@ impl PdfApp {
             if !sigs.is_empty() {
                 ui.label(RichText::new(t!("digital.trust_note")).size(12.0).color(p.text_weak));
             }
-            ui.add_space(8.0);
-            ui.button(t!("dialog.close")).clicked()
+            theme::dialog_footer(ui, &[(t!("dialog.close"), false, true)]).is_some()
         });
         if r.inner || r.should_close() {
             self.show_digital = false;
@@ -972,8 +967,7 @@ impl PdfApp {
                 self.settings.apply_theme(ui.ctx());
                 self.settings.save();
             }
-            ui.add_space(12.0);
-            if ui.button(t!("dialog.close")).clicked() {
+            if theme::dialog_footer(ui, &[(t!("dialog.close"), false, true)]).is_some() {
                 self.show_settings = false;
             }
         });

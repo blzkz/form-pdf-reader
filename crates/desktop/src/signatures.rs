@@ -68,8 +68,14 @@ impl Signatures {
 
     /// Contenido del menú del botón de firmar.
     pub fn menu(&mut self, ui: &mut egui::Ui) -> Option<Action> {
+        // Más aire que los demás menús: aquí hay imágenes.
+        egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 8)).show(ui, |ui| self.menu_contents(ui)).inner
+    }
+
+    fn menu_contents(&mut self, ui: &mut egui::Ui) -> Option<Action> {
         let p = theme::palette(ui);
-        ui.set_min_width(280.0);
+        ui.set_min_width(300.0);
+        ui.spacing_mut().item_spacing.y = 8.0;
         let mut action = None;
         if self.items.is_empty() {
             ui.label(RichText::new(t!("sign.none")).color(p.text_weak));
@@ -81,7 +87,9 @@ impl Signatures {
                 let size = tex.size_vec2() * (36.0 / tex.size_vec2().y);
                 let size = if size.x > 220.0 { size * (220.0 / size.x) } else { size };
                 let img = egui::Image::new((tex.id(), size));
-                let b = egui::Button::image(img).frame_when_inactive(false).min_size(Vec2::new(228.0, 44.0));
+                // Sobre una tarjeta blanca, como en el papel (en tema oscuro la
+                // tinta no se vería).
+                let b = egui::Button::image(img).fill(Color32::WHITE).stroke(Stroke::new(1.0, p.border)).corner_radius(8).min_size(Vec2::new(240.0, 48.0));
                 if ui.add(b).on_hover_text(t!("sign.place_tip")).clicked() {
                     action = Some(Action::Place(sig.clone()));
                     ui.close();
@@ -146,10 +154,10 @@ impl Signatures {
                     let initials = d.mode == Mode::Initials;
                     ui.label(if initials { t!("sign.initials") } else { t!("sign.name") });
                     if initials {
-                        if ui.add(egui::TextEdit::singleline(&mut d.initials).desired_width(160.0)).changed() {
+                        if ui.add(egui::TextEdit::singleline(&mut d.initials).desired_width(160.0).margin(egui::Margin::symmetric(8, 5))).changed() {
                             d.initials_edited = true;
                         }
-                    } else if ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(f32::INFINITY)).changed() && !d.initials_edited {
+                    } else if ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(f32::INFINITY).margin(egui::Margin::symmetric(8, 5))).changed() && !d.initials_edited {
                         d.initials = initials_of(&d.name);
                     }
                     ui.add_space(8.0);
@@ -206,6 +214,7 @@ impl Signatures {
                     let c = Color32::from_rgb(ink[0], ink[1], ink[2]);
                     let (r, resp) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::click());
                     ui.painter().circle_filled(r.center(), 9.0, c);
+                    ui.painter().circle_stroke(r.center(), 9.0, Stroke::new(1.0, p.border));
                     if d.color == ink {
                         ui.painter().circle_stroke(r.center(), 11.0, Stroke::new(2.0, p.accent));
                     }
@@ -214,18 +223,16 @@ impl Signatures {
                     }
                 }
             });
-            ui.add_space(12.0);
             let valid = match d.mode {
                 Mode::Typed => !d.name.trim().is_empty(),
                 Mode::Initials => !d.initials.trim().is_empty(),
                 Mode::Drawn => d.strokes.iter().any(|s| !s.is_empty()),
             };
-            ui.horizontal(|ui| {
-                ui.add_enabled_ui(valid, |ui| {
-                    save = theme::primary_button(ui, t!("sign.save")).clicked();
-                });
-                cancel = ui.button(t!("dialog.cancel")).clicked();
-            });
+            match theme::dialog_footer(ui, &[(t!("sign.save"), true, valid), (t!("dialog.cancel"), false, true)]) {
+                Some(0) => save = true,
+                Some(_) => cancel = true,
+                None => {}
+            }
         });
         if cancel || resp.should_close() {
             self.dialog = None;
