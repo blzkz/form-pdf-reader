@@ -22,7 +22,12 @@ pub struct Palette {
     pub border: Color32,
     pub text: Color32,
     pub text_weak: Color32,
+    /// Acento: amarillo yema, como la app de Android. Para rellenos y
+    /// contornos; el texto encima va en `on_accent`, y el texto o los iconos
+    /// de color acento sobre el fondo, en `accent_text` (más legible).
     pub accent: Color32,
+    pub on_accent: Color32,
+    pub accent_text: Color32,
     pub hover: Color32,
     pub pressed: Color32,
     /// Botón de cerrar la ventana al pasar el ratón.
@@ -40,7 +45,9 @@ const LIGHT: Palette = Palette {
     border: Color32::from_rgb(0xD5, 0xD9, 0xDE),
     text: Color32::from_rgb(0x1B, 0x1C, 0x1F),
     text_weak: Color32::from_rgb(0x5C, 0x61, 0x68),
-    accent: Color32::from_rgb(0x0F, 0x6C, 0xBD),
+    accent: Color32::from_rgb(0xF4, 0xB4, 0x00),
+    on_accent: Color32::from_rgb(0x26, 0x1A, 0x00),
+    accent_text: Color32::from_rgb(0x8A, 0x65, 0x00),
     hover: Color32::from_rgba_premultiplied(0, 0, 0, 12),
     pressed: Color32::from_rgba_premultiplied(0, 0, 0, 22),
     close_hover: Color32::from_rgb(0xC4, 0x2B, 0x1C),
@@ -56,7 +63,9 @@ const DARK: Palette = Palette {
     border: Color32::from_rgb(0x3D, 0x3D, 0x41),
     text: Color32::from_rgb(0xEC, 0xEC, 0xEE),
     text_weak: Color32::from_rgb(0xA4, 0xA6, 0xAB),
-    accent: Color32::from_rgb(0x4C, 0xA8, 0xF5),
+    accent: Color32::from_rgb(0xF8, 0xC5, 0x4A),
+    on_accent: Color32::from_rgb(0x3F, 0x2E, 0x00),
+    accent_text: Color32::from_rgb(0xF8, 0xC5, 0x4A),
     hover: Color32::from_rgba_premultiplied(15, 15, 15, 15),
     pressed: Color32::from_rgba_premultiplied(26, 26, 26, 26),
     close_hover: Color32::from_rgb(0xC4, 0x2B, 0x1C),
@@ -64,6 +73,10 @@ const DARK: Palette = Palette {
     ok: Color32::from_rgb(0x6C, 0xCB, 0x5F),
     danger: Color32::from_rgb(0xFF, 0x99, 0xA4),
 };
+
+/// El acento para contornos sobre blanco (campos en el tema claro, el papel
+/// de las páginas): algo más oscuro, para que se vea.
+pub const ACCENT_ON_WHITE: Color32 = Color32::from_rgb(0xD4, 0x9A, 0x00);
 
 pub fn palette(ui: &Ui) -> Palette {
     palette_of(ui.visuals().dark_mode)
@@ -124,9 +137,11 @@ fn style(dark: bool) -> egui::Style {
     v.menu_corner_radius = CornerRadius::same(8);
     v.window_shadow = Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(if dark { 120 } else { 40 }) };
     v.popup_shadow = Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(if dark { 110 } else { 30 }) };
-    v.hyperlink_color = p.accent;
-    v.selection.bg_fill = p.accent.gamma_multiply(if dark { 0.45 } else { 0.22 });
-    v.selection.stroke = Stroke::new(1.0, p.accent);
+    v.hyperlink_color = p.accent_text;
+    v.selection.bg_fill = p.accent.gamma_multiply(if dark { 0.40 } else { 0.35 });
+    // El contorno de foco, algo más oscuro en el tema claro: el amarillo
+    // sobre blanco apenas se ve.
+    v.selection.stroke = Stroke::new(1.0, if dark { p.accent } else { ACCENT_ON_WHITE });
     v.warn_fg_color = p.warn;
 
     let w = &mut v.widgets;
@@ -185,10 +200,10 @@ pub fn icon_button(ui: &mut Ui, glyph: &str, tip: impl Into<WidgetText>) -> Resp
 pub fn icon_toggle(ui: &mut Ui, on: bool, glyph: &str, tip: impl Into<WidgetText>) -> Response {
     let p = palette(ui);
     flat(ui, |ui| {
-        let text = RichText::new(glyph).size(18.0).color(if on { p.accent } else { p.text });
+        let text = RichText::new(glyph).size(18.0).color(if on { p.accent_text } else { p.text });
         let mut b = egui::Button::new(text).frame_when_inactive(true).min_size(Vec2::splat(32.0));
         if on {
-            b = b.fill(p.accent.gamma_multiply(0.16));
+            b = b.fill(p.accent.gamma_multiply(0.22));
         }
         ui.add(b).on_hover_text(tip)
     })
@@ -203,7 +218,7 @@ pub fn dialog_button(ui: &mut Ui, text: impl Into<WidgetText>, primary: bool, en
     ui.scope(|ui| {
         ui.spacing_mut().button_padding = Vec2::new(18.0, 6.0);
         let (base, ink, stroke) = if primary {
-            (p.accent, if dark { Color32::from_rgb(0x0B, 0x1E, 0x33) } else { Color32::WHITE }, Stroke::NONE)
+            (p.accent, p.on_accent, Stroke::NONE)
         } else {
             (if dark { Color32::from_rgb(0x37, 0x37, 0x3A) } else { Color32::WHITE }, p.text, Stroke::new(1.0, p.border))
         };
@@ -224,6 +239,23 @@ pub fn dialog_button(ui: &mut Ui, text: impl Into<WidgetText>, primary: bool, en
     })
     .inner
 }
+
+/// Diálogo modal con el marco de una ventana: más margen que los menús
+/// (el marco por defecto de egui es el de un menú emergente).
+pub fn modal(ctx: &egui::Context, id: &str) -> egui::Modal {
+    let style = ctx.global_style();
+    let v = &style.visuals;
+    let frame = egui::Frame::new()
+        .fill(v.window_fill)
+        .stroke(v.window_stroke)
+        .corner_radius(v.window_corner_radius)
+        .shadow(v.window_shadow)
+        .inner_margin(Margin::same(DIALOG_MARGIN));
+    egui::Modal::new(egui::Id::new(id)).frame(frame)
+}
+
+/// Margen interior de los diálogos.
+pub const DIALOG_MARGIN: i8 = 22;
 
 /// Botón principal suelto (p. ej. "Abrir" en la ventana vacía).
 pub fn primary_button(ui: &mut Ui, text: impl Into<String>) -> Response {

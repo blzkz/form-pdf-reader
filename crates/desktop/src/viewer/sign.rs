@@ -216,7 +216,9 @@ impl DocView {
 
     /// Las firmas puestas, la que sigue al ratón y el marco de la seleccionada.
     pub(super) fn draw_signatures(&mut self, ctx: &egui::Context, painter: &egui::Painter) {
-        let accent = crate::theme::palette_of(ctx.global_style().visuals.dark_mode).accent;
+        // Sobre el papel, que siempre es blanco.
+        let accent = crate::theme::ACCENT_ON_WHITE;
+        let on_accent = crate::theme::palette_of(false).on_accent;
         let image = |tex: &TextureHandle, r: Rect, alpha: f32| {
             painter.image(tex.id(), r, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE.gamma_multiply(alpha));
         };
@@ -257,7 +259,7 @@ impl DocView {
         if self.sig_drag.is_none() {
             let c = sr.right_top() + Vec2::new(10.0, -10.0);
             painter.circle(c, 10.0, accent, Stroke::new(1.5, Color32::WHITE));
-            painter.text(c, egui::Align2::CENTER_CENTER, crate::theme::icon::X, egui::FontId::proportional(12.0), Color32::WHITE);
+            painter.text(c, egui::Align2::CENTER_CENTER, crate::theme::icon::X, egui::FontId::proportional(12.0), on_accent);
         }
     }
 }

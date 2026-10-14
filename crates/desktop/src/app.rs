@@ -171,7 +171,7 @@ impl PdfApp {
         let Some(p) = self.password_prompt.as_mut() else { return };
         let mut submit = false;
         let mut cancel = false;
-        let r = egui::Modal::new(egui::Id::new("contraseña")).show(ctx, |ui| {
+        let r = theme::modal(ctx, "contraseña").show(ctx, |ui| {
             ui.set_max_width(420.0);
             ui.heading(t!("dialog.password_title"));
             ui.add_space(4.0);
@@ -569,6 +569,10 @@ impl PdfApp {
             };
             let fit = ToolbarFit::new(ui.available_width(), !v.doc.is_continuous(), &widths);
 
+            if !fit.search {
+                *search_focus = false;
+            }
+
             // Herramienta del ratón.
             let mut t = v.tool;
             theme::segmented(
@@ -633,53 +637,55 @@ impl PdfApp {
             // A la derecha: búsqueda y zoom.
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                if !v.search_hits.is_empty() {
-                    ui.label(RichText::new(format!("{}/{}", v.search_index + 1, v.search_hits.len())).color(p.text_weak));
-                    if theme::icon_button(ui, icon::CARET_DOWN, t!("toolbar.next_result")).clicked() {
-                        v.search_step(true);
-                    }
-                    if theme::icon_button(ui, icon::CARET_UP, t!("toolbar.prev_result")).clicked() {
-                        v.search_step(false);
-                    }
-                }
-                let field = egui::Frame::new()
-                    .fill(ui.visuals().text_edit_bg_color())
-                    .stroke(egui::Stroke::new(1.0, p.border))
-                    .corner_radius(8)
-                    .inner_margin(egui::Margin::symmetric(8, 3));
-                let resp = field
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(icon::MAGNIFYING_GLASS).color(p.text_weak));
-                            ui.add(egui::TextEdit::singleline(search).hint_text(t!("toolbar.search_hint")).frame(egui::Frame::NONE).desired_width(fit.search_width))
-                        })
-                        .inner
-                    })
-                    .inner;
-                if *search_focus {
-                    resp.request_focus();
-                    *search_focus = false;
-                }
-                if resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                    let q = search.clone();
-                    let n = v.search(&q);
-                    *status = if n == 0 {
-                        if v.doc.is_dynamic_xfa() {
-                            t!("search.none_xfa")
-                        } else {
-                            t!("search.none")
+                if fit.search {
+                    if !v.search_hits.is_empty() {
+                        ui.label(RichText::new(format!("{}/{}", v.search_index + 1, v.search_hits.len())).color(p.text_weak));
+                        if theme::icon_button(ui, icon::CARET_DOWN, t!("toolbar.next_result")).clicked() {
+                            v.search_step(true);
                         }
-                    } else {
-                        t!("search.results", n)
-                    };
+                        if theme::icon_button(ui, icon::CARET_UP, t!("toolbar.prev_result")).clicked() {
+                            v.search_step(false);
+                        }
+                    }
+                    let field = egui::Frame::new()
+                        .fill(ui.visuals().text_edit_bg_color())
+                        .stroke(egui::Stroke::new(1.0, p.border))
+                        .corner_radius(8)
+                        .inner_margin(egui::Margin::symmetric(8, 3));
+                    let resp = field
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(icon::MAGNIFYING_GLASS).color(p.text_weak));
+                                ui.add(egui::TextEdit::singleline(search).hint_text(t!("toolbar.search_hint")).frame(egui::Frame::NONE).desired_width(fit.search_width))
+                            })
+                            .inner
+                        })
+                        .inner;
+                    if *search_focus {
+                        resp.request_focus();
+                        *search_focus = false;
+                    }
+                    if resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                        let q = search.clone();
+                        let n = v.search(&q);
+                        *status = if n == 0 {
+                            if v.doc.is_dynamic_xfa() {
+                                t!("search.none_xfa")
+                            } else {
+                                t!("search.none")
+                            }
+                        } else {
+                            t!("search.results", n)
+                        };
+                    }
+                    separator(ui);
                 }
-                separator(ui);
                 let (fit_icon, fit_tip) = if v.effective_layout() == PageLayout::Single {
                     (icon::CORNERS_OUT, t!("toolbar.fit_page"))
                 } else {
                     (icon::ARROWS_OUT_LINE_HORIZONTAL, t!("toolbar.fit_width"))
                 };
-                if theme::icon_toggle(ui, v.fit_width, fit_icon, fit_tip).clicked() {
+                if fit.fit && theme::icon_toggle(ui, v.fit_width, fit_icon, fit_tip).clicked() {
                     v.fit_width = !v.fit_width;
                 }
                 if fit.zoom {
@@ -724,7 +730,7 @@ impl PdfApp {
 
     fn dialogs(&mut self, ctx: &egui::Context) {
         if let Some(err) = self.error.clone() {
-            egui::Modal::new(egui::Id::new("error")).show(ctx, |ui| {
+            theme::modal(ctx, "error").show(ctx, |ui| {
                 ui.set_max_width(480.0);
                 ui.heading(t!("dialog.error"));
                 ui.label(err);
@@ -735,7 +741,7 @@ impl PdfApp {
         }
         if let Some(action) = self.confirm.clone() {
             let mut close = false;
-            egui::Modal::new(egui::Id::new("confirmar")).show(ctx, |ui| {
+            theme::modal(ctx, "confirmar").show(ctx, |ui| {
                 ui.set_max_width(420.0);
                 ui.heading(t!("status.unsaved"));
                 let name = self.view().map(|v| file_name(v.doc.path())).unwrap_or_default();
@@ -783,7 +789,7 @@ impl PdfApp {
         }
         self.password_window(ctx);
         if self.show_about {
-            egui::Modal::new(egui::Id::new("acerca")).show(ctx, |ui| {
+            theme::modal(ctx, "acerca").show(ctx, |ui| {
                 ui.set_max_width(440.0);
                 ui.heading(format!("Form PDF Reader {}", env!("CARGO_PKG_VERSION")));
                 ui.label(t!("about.desc"));
@@ -801,7 +807,7 @@ impl PdfApp {
                 Some(v) => (v.doc.attachments(), v.doc.has_attachment_bridge(), v.doc.attachments_dirty()),
                 None => (Vec::new(), false, false),
             };
-            egui::Modal::new(egui::Id::new("adjuntos")).show(ctx, |ui| {
+            theme::modal(ctx, "adjuntos").show(ctx, |ui| {
                 ui.set_min_width(460.0);
                 ui.heading(t!("attach.title"));
                 if items.is_empty() {
@@ -855,7 +861,7 @@ impl PdfApp {
             }
         }
         if self.show_xfa_info {
-            egui::Modal::new(egui::Id::new("xfa")).show(ctx, |ui| {
+            theme::modal(ctx, "xfa").show(ctx, |ui| {
                 ui.set_max_width(560.0);
                 ui.heading(t!("xfa.title"));
                 ui.label(t!("xfa.intro"));
@@ -879,7 +885,7 @@ impl PdfApp {
             Some(t) => (t.digital.clone(), t.usage_rights),
             None => (Vec::new(), false),
         };
-        let r = egui::Modal::new(egui::Id::new("firmas_digitales")).show(ctx, |ui| {
+        let r = theme::modal(ctx, "firmas_digitales").show(ctx, |ui| {
             let p = theme::palette(ui);
             ui.set_width(480.0);
             ui.heading(t!("digital.title"));
@@ -937,7 +943,7 @@ impl PdfApp {
     /// Ajustes: el idioma de la interfaz, que cambia en el acto y se recuerda.
     fn settings_window(&mut self, ctx: &egui::Context) {
         use form_pdf_reader::i18n;
-        egui::Modal::new(egui::Id::new("ajustes")).show(ctx, |ui| {
+        theme::modal(ctx, "ajustes").show(ctx, |ui| {
             ui.set_min_width(320.0);
             ui.heading(t!("settings.title"));
             ui.add_space(8.0);
@@ -1171,6 +1177,9 @@ struct ToolbarFit {
     layouts: bool,
     page_nav: bool,
     zoom: bool,
+    /// Ajustar al ancho (también en ☰ > Ver).
+    fit: bool,
+    search: bool,
 }
 
 /// Anchos de las partes de la barra que dependen del texto.
@@ -1186,7 +1195,7 @@ impl ToolbarFit {
     /// `avail`: ancho tras ☰, abrir, guardar e imprimir; `paged`: el
     /// documento tiene páginas (no es una XFA continua).
     fn new(avail: f32, paged: bool, w: &ToolbarWidths) -> Self {
-        let mut f = ToolbarFit { tool_labels: true, page_long: true, search_width: 170.0, layouts: true, page_nav: true, zoom: true };
+        let mut f = ToolbarFit { tool_labels: true, page_long: true, search_width: 170.0, layouts: true, page_nav: true, zoom: true, fit: true, search: true };
         const BUTTON: f32 = 36.0;
         const SEP: f32 = 13.0;
         let need = |f: &ToolbarFit| {
@@ -1198,13 +1207,16 @@ impl ToolbarFit {
                     n += 3.0 * BUTTON;
                 }
             }
-            // Ajustar, separador y, si caben, alejar, porcentaje y acercar.
-            n += BUTTON + SEP + if f.zoom { 2.0 * BUTTON + 48.0 } else { 0.0 };
-            // Búsqueda: marco, lupa y resultados.
+            // Ajustar, alejar, porcentaje y acercar, si caben.
+            n += if f.fit { BUTTON } else { 0.0 } + if f.zoom { 2.0 * BUTTON + 48.0 } else { 0.0 };
+            // Búsqueda: separador, marco, lupa y resultados.
+            if f.search {
+                n += SEP + f.search_width + 50.0 + w.search_results;
+            }
             // Y un hueco entre la parte izquierda y la derecha.
-            n + f.search_width + 50.0 + w.search_results + 24.0
+            n + 24.0
         };
-        let steps: [fn(&mut ToolbarFit); 7] = [
+        let steps: [fn(&mut ToolbarFit); 9] = [
             |f| f.tool_labels = false,
             |f| f.page_long = false,
             |f| f.search_width = 120.0,
@@ -1212,6 +1224,8 @@ impl ToolbarFit {
             |f| f.page_nav = false,
             |f| f.zoom = false,
             |f| f.search_width = 70.0,
+            |f| f.fit = false,
+            |f| f.search = false,
         ];
         for step in steps {
             if need(&f) <= avail {

@@ -29,6 +29,8 @@ enum Mode {
 const BLACK_INK: [u8; 3] = [0x14, 0x14, 0x14];
 const PAD_SIZE: Vec2 = Vec2::new(480.0, 170.0);
 const PEN_WIDTH: f32 = 2.6;
+/// Tinta de los ejemplos, antes de escribir el nombre.
+const SAMPLE_INK: [u8; 3] = [0xB4, 0xB6, 0xBC];
 
 struct CreateDialog {
     mode: Mode,
@@ -78,7 +80,22 @@ impl Signatures {
         ui.spacing_mut().item_spacing.y = 8.0;
         let mut action = None;
         if self.items.is_empty() {
-            ui.label(RichText::new(t!("sign.none")).color(p.text_weak));
+            // Sin firmas: una tarjeta vacía que explica qué hacer.
+            egui::Frame::new().stroke(Stroke::new(1.0, p.border)).corner_radius(8).inner_margin(egui::Margin::symmetric(16, 14)).show(ui, |ui| {
+                ui.set_width(268.0);
+                ui.vertical_centered(|ui| {
+                    ui.spacing_mut().item_spacing.y = 4.0;
+                    ui.label(RichText::new(icon::SIGNATURE).size(30.0).color(p.text_weak));
+                    ui.label(RichText::new(t!("sign.none")).color(p.text));
+                    ui.label(RichText::new(t!("sign.none_hint")).small().color(p.text_weak));
+                    ui.add_space(8.0);
+                    if theme::primary_button(ui, format!("{}  {}", icon::PLUS, t!("sign.create"))).clicked() {
+                        action = Some(Action::Create);
+                        ui.close();
+                    }
+                });
+            });
+            return action;
         }
         let mut remove = None;
         for sig in self.items.clone() {
@@ -133,11 +150,11 @@ impl Signatures {
         let d = self.dialog.as_mut()?;
         let mut save = false;
         let mut cancel = false;
-        let resp = egui::Modal::new(egui::Id::new("crear_firma")).show(ctx, |ui| {
+        let resp = theme::modal(ctx, "crear_firma").show(ctx, |ui| {
             let p = theme::palette(ui);
             ui.set_width(PAD_SIZE.x + 8.0);
             ui.heading(t!("sign.create_title"));
-            ui.add_space(6.0);
+            ui.add_space(10.0);
             theme::segmented(
                 ui,
                 &mut d.mode,
@@ -148,21 +165,34 @@ impl Signatures {
                 ],
                 true,
             );
-            ui.add_space(10.0);
+            ui.add_space(14.0);
             match d.mode {
                 Mode::Typed | Mode::Initials => {
                     let initials = d.mode == Mode::Initials;
                     ui.label(if initials { t!("sign.initials") } else { t!("sign.name") });
                     if initials {
-                        if ui.add(egui::TextEdit::singleline(&mut d.initials).desired_width(160.0).margin(egui::Margin::symmetric(8, 5))).changed() {
+                        let field = egui::TextEdit::singleline(&mut d.initials).hint_text(initials_of(&t!("sign.sample_name"))).desired_width(160.0).margin(egui::Margin::symmetric(8, 5));
+                        if ui.add(field).changed() {
                             d.initials_edited = true;
                         }
-                    } else if ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(f32::INFINITY).margin(egui::Margin::symmetric(8, 5))).changed() && !d.initials_edited {
+                    } else if ui
+                        .add(egui::TextEdit::singleline(&mut d.name).hint_text(t!("sign.name_hint")).desired_width(f32::INFINITY).margin(egui::Margin::symmetric(8, 5)))
+                        .changed()
+                        && !d.initials_edited
+                    {
                         d.initials = initials_of(&d.name);
                     }
                     ui.add_space(8.0);
                     ui.label(RichText::new(t!("sign.style")).color(p.text_weak));
                     let text = if initials { d.initials.trim().to_string() } else { d.name.trim().to_string() };
+                    // Sin texto todavía, cada estilo se ve con un nombre de
+                    // ejemplo en gris, para saber cómo quedará.
+                    let (text, ink) = if text.is_empty() {
+                        let sample = t!("sign.sample_name");
+                        (if initials { initials_of(&sample) } else { sample }, SAMPLE_INK)
+                    } else {
+                        (text, d.color)
+                    };
                     if d.previews.len() > 40 {
                         d.previews.clear();
                     }
@@ -170,19 +200,16 @@ impl Signatures {
                         let selected = d.style == style;
                         let frame = egui::Frame::new()
                             .fill(Color32::WHITE)
-                            .stroke(Stroke::new(if selected { 2.0 } else { 1.0 }, if selected { p.accent } else { p.border }))
+                            .stroke(Stroke::new(if selected { 2.0 } else { 1.0 }, if selected { theme::ACCENT_ON_WHITE } else { p.border }))
                             .corner_radius(8)
                             .inner_margin(8);
                         let r = frame
                             .show(ui, |ui| {
                                 ui.set_width(PAD_SIZE.x - 16.0);
                                 ui.set_height(56.0);
-                                if text.is_empty() {
-                                    return;
-                                }
-                                let key = (text.clone(), style, d.color);
+                                let key = (text.clone(), style, ink);
                                 if !d.previews.contains_key(&key) {
-                                    let sig = typed(&text, style, d.color, initials);
+                                    let sig = typed(&text, style, ink, initials);
                                     if let Some(tex) = signature_texture(ui.ctx(), &sig, 96) {
                                         d.previews.insert(key.clone(), tex);
                                     }
@@ -216,7 +243,8 @@ impl Signatures {
                     ui.painter().circle_filled(r.center(), 9.0, c);
                     ui.painter().circle_stroke(r.center(), 9.0, Stroke::new(1.0, p.border));
                     if d.color == ink {
-                        ui.painter().circle_stroke(r.center(), 11.0, Stroke::new(2.0, p.accent));
+                        let ring = if ui.visuals().dark_mode { p.accent } else { theme::ACCENT_ON_WHITE };
+                        ui.painter().circle_stroke(r.center(), 11.0, Stroke::new(2.0, ring));
                     }
                     if resp.on_hover_text(name).clicked() {
                         d.color = ink;
@@ -283,6 +311,16 @@ fn draw_pad(ui: &mut egui::Ui, strokes: &mut Vec<Vec<Pos2>>, color: [u8; 3]) {
     let base = rect.bottom() - 40.0;
     painter.line_segment([Pos2::new(rect.left() + 24.0, base), Pos2::new(rect.right() - 24.0, base)], Stroke::new(1.0, Color32::from_gray(200)));
     painter.text(Pos2::new(rect.left() + 26.0, base - 4.0), egui::Align2::LEFT_BOTTOM, "×", egui::FontId::proportional(18.0), Color32::from_gray(170));
+    if strokes.iter().all(|s| s.is_empty()) {
+        // Vacío: qué hacer aquí.
+        painter.text(
+            Pos2::new(rect.center().x, rect.top() + (base - rect.top()) / 2.0),
+            egui::Align2::CENTER_CENTER,
+            format!("{}  {}", icon::SCRIBBLE, t!("sign.pad_hint")),
+            egui::FontId::proportional(15.0),
+            Color32::from_gray(160),
+        );
+    }
     if resp.drag_started() {
         strokes.push(Vec::new());
     }
