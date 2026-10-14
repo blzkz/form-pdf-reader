@@ -1,5 +1,7 @@
 //! Aplicación de escritorio (egui/eframe).
 
+use crate::chrome::{self, TabAction, TabInfo};
+use crate::theme::{self, icon};
 use crate::viewer::{DocView, PageLayout, Tool};
 use eframe::egui::{self, Align, Color32, Key, KeyboardShortcut, Layout, Modifiers, RichText};
 use form_pdf_reader::pdfium::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, Document, FormKind, OpenOptions, PasswordRequired};
@@ -53,7 +55,9 @@ pub struct PdfApp {
 
 impl PdfApp {
     pub fn new(ctx: &egui::Context, initial: Option<PathBuf>) -> PdfApp {
-        ctx.set_visuals(egui::Visuals::light());
+        theme::install(ctx);
+        let settings = crate::settings::Settings::load();
+        settings.apply_theme(ctx);
         let mut app = PdfApp {
             tabs: Vec::new(),
             active: 0,
@@ -65,7 +69,7 @@ impl PdfApp {
             show_about: false,
             show_settings: false,
             password_prompt: None,
-            settings: crate::settings::Settings::load(),
+            settings,
             show_xfa_info: false,
             show_attachments: false,
             continuous_xfa: true,
@@ -155,7 +159,7 @@ impl PdfApp {
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                submit |= ui.button(t!("toolbar.open")).clicked();
+                submit |= theme::primary_button(ui, t!("toolbar.open")).clicked();
                 cancel |= ui.button(t!("dialog.cancel")).clicked();
             });
         });
@@ -328,31 +332,21 @@ impl PdfApp {
     }
 
     /// Barra de pestañas (solo con algún documento abierto).
-    fn tab_bar(&mut self, ui: &mut egui::Ui) {
-        let mut select = None;
-        let mut close = None;
-        ui.horizontal_wrapped(|ui| {
-            for (i, t) in self.tabs.iter().enumerate() {
-                let name = format!("{}{}", if t.dirty { "● " } else { "" }, file_name(t.view.doc.path()));
-                let r = ui.selectable_label(i == self.active, name).on_hover_text(t.view.doc.path().display().to_string());
-                if r.clicked() {
-                    select = Some(i);
-                }
-                if r.middle_clicked() {
-                    close = Some(i);
-                }
-                if ui.small_button("×").on_hover_text(t!("tab.close")).clicked() {
-                    close = Some(i);
-                }
-                ui.separator();
+    /// Pestañas de la barra de título (chrome.rs).
+    fn title_bar(&mut self, ui: &mut egui::Ui) {
+        let infos: Vec<TabInfo> = self
+            .tabs
+            .iter()
+            .map(|t| TabInfo { name: file_name(t.view.doc.path()), tooltip: t.view.doc.path().display().to_string(), dirty: t.dirty })
+            .collect();
+        match chrome::title_bar(ui, &infos, self.active) {
+            Some(TabAction::Select(i)) => self.active = i,
+            Some(TabAction::Close(i)) => {
+                self.active = i;
+                self.request(Pending::Close);
             }
-        });
-        if let Some(i) = select {
-            self.active = i;
-        }
-        if let Some(i) = close {
-            self.active = i;
-            self.request(Pending::Close);
+            Some(TabAction::Open) => self.open_dialog(),
+            None => {}
         }
     }
 
@@ -400,51 +394,50 @@ impl PdfApp {
         }
     }
 
-    fn menu(&mut self, ui: &mut egui::Ui) {
-        egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button(t!("menu.file"), |ui| {
-                if ui.add(egui::Button::new(t!("menu.open")).shortcut_text("Ctrl+O")).clicked() {
+    /// Menú principal (botón ☰): lo que antes eran Archivo, Ver y Ayuda.
+    fn main_menu(&mut self, ui: &mut egui::Ui) {
+        ui.set_min_width(240.0);
+        {
+            {
+                if ui.add(egui::Button::new(mi(icon::FOLDER_OPEN, t!("menu.open"))).shortcut_text("Ctrl+O")).clicked() {
                     ui.close();
                     self.open_dialog();
                 }
                 let has = !self.tabs.is_empty();
-                if ui.add_enabled(has, egui::Button::new(t!("menu.save")).shortcut_text("Ctrl+S")).clicked() {
+                if ui.add_enabled(has, egui::Button::new(mi(icon::FLOPPY_DISK, t!("menu.save"))).shortcut_text("Ctrl+S")).clicked() {
                     ui.close();
                     self.save(None);
                 }
-                if ui.add_enabled(has, egui::Button::new(t!("menu.save_as")).shortcut_text(t!("menu.save_as_shortcut"))).clicked() {
+                if ui.add_enabled(has, egui::Button::new(mi(icon::FLOPPY_DISK_BACK, t!("menu.save_as"))).shortcut_text(t!("menu.save_as_shortcut"))).clicked() {
                     ui.close();
                     self.save_as_dialog();
                 }
-                if ui.add_enabled(has, egui::Button::new(t!("menu.attachments"))).clicked() {
+                if ui.add_enabled(has, egui::Button::new(mi(icon::PAPERCLIP, t!("menu.attachments")))).clicked() {
                     ui.close();
                     self.show_attachments = true;
                 }
                 ui.separator();
-                if ui.add_enabled(has, egui::Button::new(t!("menu.export_flat"))).clicked() {
+                if ui.add_enabled(has, egui::Button::new(mi(icon::EXPORT, t!("menu.export_flat")))).clicked() {
                     ui.close();
                     self.export_flat_dialog();
                 }
-                if ui.add_enabled(has, egui::Button::new(t!("menu.print")).shortcut_text("Ctrl+P")).clicked() {
+                if ui.add_enabled(has, egui::Button::new(mi(icon::PRINTER, t!("menu.print"))).shortcut_text("Ctrl+P")).clicked() {
                     ui.close();
                     self.print();
                 }
                 ui.separator();
-                if ui.button(t!("menu.settings")).clicked() {
+                if ui.add(egui::Button::new(mi(icon::GEAR, t!("menu.settings")))).clicked() {
                     ui.close();
                     self.show_settings = true;
                 }
                 ui.separator();
-                if ui.add_enabled(has, egui::Button::new(t!("menu.close")).shortcut_text("Ctrl+W")).clicked() {
+                if ui.add_enabled(has, egui::Button::new(mi(icon::X, t!("menu.close"))).shortcut_text("Ctrl+W")).clicked() {
                     ui.close();
                     self.request(Pending::Close);
                 }
-                if ui.add(egui::Button::new(t!("menu.quit")).shortcut_text("Ctrl+Q")).clicked() {
-                    ui.close();
-                    self.request(Pending::Quit);
-                }
-            });
-            ui.menu_button(t!("menu.view"), |ui| {
+            }
+            ui.separator();
+            ui.menu_button(mi(icon::EYE, t!("menu.view")), |ui| {
                 let has = !self.tabs.is_empty();
                 if let Some(v) = self.view_mut() {
                     if ui.button(t!("menu.zoom_in")).clicked() {
@@ -488,77 +481,108 @@ impl PdfApp {
                         }
                 }
             });
-            ui.menu_button(t!("menu.help"), |ui| {
-                if ui.button(t!("menu.xfa_info")).clicked() {
+            ui.menu_button(mi(icon::QUESTION, t!("menu.help")), |ui| {
+                if ui.add(egui::Button::new(mi(icon::FILE_TEXT, t!("menu.xfa_info")))).clicked() {
                     ui.close();
                     self.show_xfa_info = true;
                 }
-                if ui.button(t!("menu.about")).clicked() {
+                if ui.add(egui::Button::new(mi(icon::INFO, t!("menu.about")))).clicked() {
                     ui.close();
                     self.show_about = true;
                 }
             });
-        });
+            ui.separator();
+            if ui.add(egui::Button::new(mi(icon::SIGN_OUT, t!("menu.quit"))).shortcut_text("Ctrl+Q")).clicked() {
+                ui.close();
+                self.request(Pending::Quit);
+            }
+        }
     }
 
     fn toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            if ui.button(format!("📂 {}", t!("toolbar.open"))).clicked() {
+        let p = theme::palette(ui);
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            let menu = egui::Button::new(RichText::new(icon::LIST).size(18.0)).frame_when_inactive(false).min_size(egui::Vec2::splat(32.0));
+            egui::containers::menu::MenuButton::from_button(menu).ui(ui, |ui| self.main_menu(ui)).0.on_hover_text(t!("menu.main"));
+            if theme::icon_button(ui, icon::FOLDER_OPEN, format!("{} (Ctrl+O)", t!("toolbar.open"))).clicked() {
                 self.open_dialog();
             }
             let has = !self.tabs.is_empty();
-            if ui.add_enabled(has, egui::Button::new(format!("💾 {}", t!("toolbar.save")))).clicked() {
-                self.save(None);
-            }
-            if ui.add_enabled(has, egui::Button::new(format!("🖶 {}", t!("toolbar.print")))).clicked() {
-                self.print();
-            }
-            ui.separator();
+            ui.add_enabled_ui(has, |ui| {
+                if theme::icon_button(ui, icon::FLOPPY_DISK, format!("{} (Ctrl+S)", t!("toolbar.save"))).clicked() {
+                    self.save(None);
+                }
+                if theme::icon_button(ui, icon::PRINTER, format!("{} (Ctrl+P)", t!("toolbar.print"))).clicked() {
+                    self.print();
+                }
+            });
             let search_focus = &mut self.search_focus;
             let status = &mut self.status;
-            if let Some(Tab { view: v, search, .. }) = self.tabs.get_mut(self.active) {
-                // Herramienta del ratón.
-                let mut t = v.tool;
-                ui.selectable_value(&mut t, Tool::Form, format!("📝 {}", t!("toolbar.form"))).on_hover_text(t!("toolbar.form_tip"));
-                ui.selectable_value(&mut t, Tool::Text, format!("🔤 {}", t!("toolbar.text"))).on_hover_text(t!("toolbar.text_tip"));
-                ui.selectable_value(&mut t, Tool::Hand, format!("✋ {}", t!("toolbar.hand"))).on_hover_text(t!("toolbar.hand_tip"));
-                v.set_tool(t);
-                ui.separator();
-                if ui.button("−").on_hover_text(t!("toolbar.zoom_out")).clicked() {
-                    v.set_zoom(v.zoom / 1.2);
-                }
-                ui.label(format!("{:.0} %", v.zoom * 100.0));
-                if ui.button("+").on_hover_text(t!("toolbar.zoom_in")).clicked() {
-                    v.set_zoom(v.zoom * 1.2);
-                }
-                let fit_label = if v.effective_layout() == PageLayout::Single { format!("⛶ {}", t!("toolbar.fit_page")) } else { format!("↔ {}", t!("toolbar.fit_width")) };
-                ui.toggle_value(&mut v.fit_width, fit_label);
-                ui.separator();
-                if !v.doc.is_continuous() {
-                    let mut l = v.layout;
-                    for opt in [PageLayout::Continuous, PageLayout::Single, PageLayout::TwoColumns] {
-                        if layout_button(ui, l == opt, opt).on_hover_text(layout_name(opt)).clicked() {
-                            l = opt;
-                        }
+            let Some(Tab { view: v, search, .. }) = self.tabs.get_mut(self.active) else { return };
+            separator(ui);
+
+            // Herramienta del ratón.
+            let mut t = v.tool;
+            theme::segmented(
+                ui,
+                &mut t,
+                &[
+                    (Tool::Form, icon::CURSOR_CLICK, t!("toolbar.form"), t!("toolbar.form_tip")),
+                    (Tool::Text, icon::CURSOR_TEXT, t!("toolbar.text"), t!("toolbar.text_tip")),
+                    (Tool::Hand, icon::HAND, t!("toolbar.hand"), t!("toolbar.hand_tip")),
+                ],
+            );
+            v.set_tool(t);
+
+            // Disposición y páginas (las XFA continuas son una sola página).
+            if !v.doc.is_continuous() {
+                separator(ui);
+                let mut l = v.layout;
+                for (opt, glyph) in [(PageLayout::Continuous, icon::ROWS), (PageLayout::Single, icon::FILE), (PageLayout::TwoColumns, icon::BOOK_OPEN)] {
+                    if theme::icon_toggle(ui, l == opt, glyph, layout_name(opt)).clicked() {
+                        l = opt;
                     }
-                    v.set_layout(l);
                 }
+                v.set_layout(l);
                 let n = v.page_count();
-                if v.doc.is_continuous() {
-                    ui.label(t!("toolbar.continuous"));
-                } else {
-                    if ui.button("◀").clicked() && v.current_page > 0 {
-                        let p = v.current_page - 1;
-                        v.go_to_page(p);
+                if theme::icon_button(ui, icon::CARET_LEFT, t!("toolbar.prev_page")).clicked() && v.current_page > 0 {
+                    let p = v.current_page - 1;
+                    v.go_to_page(p);
+                }
+                ui.label(RichText::new(t!("toolbar.page_of", (v.current_page + 1).min(n), n)).color(p.text_weak));
+                if theme::icon_button(ui, icon::CARET_RIGHT, t!("toolbar.next_page")).clicked() && v.current_page + 1 < n {
+                    let p = v.current_page + 1;
+                    v.go_to_page(p);
+                }
+            }
+
+            // A la derecha: búsqueda y zoom.
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                if !v.search_hits.is_empty() {
+                    ui.label(RichText::new(format!("{}/{}", v.search_index + 1, v.search_hits.len())).color(p.text_weak));
+                    if theme::icon_button(ui, icon::CARET_DOWN, t!("toolbar.next_result")).clicked() {
+                        v.search_step(true);
                     }
-                    ui.label(t!("toolbar.page_of", (v.current_page + 1).min(n), n));
-                    if ui.button("▶").clicked() && v.current_page + 1 < n {
-                        let p = v.current_page + 1;
-                        v.go_to_page(p);
+                    if theme::icon_button(ui, icon::CARET_UP, t!("toolbar.prev_result")).clicked() {
+                        v.search_step(false);
                     }
                 }
-                ui.separator();
-                let resp = ui.add(egui::TextEdit::singleline(search).hint_text(t!("toolbar.search_hint")).desired_width(180.0));
+                let field = egui::Frame::new()
+                    .fill(ui.visuals().text_edit_bg_color())
+                    .stroke(egui::Stroke::new(1.0, p.border))
+                    .corner_radius(8)
+                    .inner_margin(egui::Margin::symmetric(8, 3));
+                let resp = field
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(icon::MAGNIFYING_GLASS).color(p.text_weak));
+                            ui.add(egui::TextEdit::singleline(search).hint_text(t!("toolbar.search_hint")).frame(egui::Frame::NONE).desired_width(170.0))
+                        })
+                        .inner
+                    })
+                    .inner;
                 if *search_focus {
                     resp.request_focus();
                     *search_focus = false;
@@ -576,30 +600,38 @@ impl PdfApp {
                         t!("search.results", n)
                     };
                 }
-                if !v.search_hits.is_empty() {
-                    if ui.small_button("⏶").clicked() {
-                        v.search_step(false);
-                    }
-                    if ui.small_button("⏷").clicked() {
-                        v.search_step(true);
-                    }
-                    ui.label(format!("{}/{}", v.search_index + 1, v.search_hits.len()));
+                separator(ui);
+                let (fit_icon, fit_tip) = if v.effective_layout() == PageLayout::Single {
+                    (icon::CORNERS_OUT, t!("toolbar.fit_page"))
+                } else {
+                    (icon::ARROWS_OUT_LINE_HORIZONTAL, t!("toolbar.fit_width"))
+                };
+                if theme::icon_toggle(ui, v.fit_width, fit_icon, fit_tip).clicked() {
+                    v.fit_width = !v.fit_width;
                 }
-            }
+                if theme::icon_button(ui, icon::MAGNIFYING_GLASS_PLUS, format!("{} (Ctrl++)", t!("toolbar.zoom_in"))).clicked() {
+                    v.set_zoom(v.zoom * 1.2);
+                }
+                ui.add_sized([44.0, 20.0], egui::Label::new(RichText::new(format!("{:.0} %", v.zoom * 100.0)).color(p.text_weak)));
+                if theme::icon_button(ui, icon::MAGNIFYING_GLASS_MINUS, format!("{} (Ctrl+−)", t!("toolbar.zoom_out"))).clicked() {
+                    v.set_zoom(v.zoom / 1.2);
+                }
+            });
         });
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        let p = theme::palette(ui);
+        ui.horizontal_centered(|ui| {
+            let small = |s: String| RichText::new(s).size(12.0).color(p.text_weak);
             if let Some(t) = self.cur() {
-                ui.label(RichText::new(describe(&t.view.doc)).strong());
-                ui.separator();
+                ui.label(small(describe(&t.view.doc)));
                 if t.dirty {
-                    ui.label(RichText::new(format!("● {}", t!("status.unsaved"))).color(Color32::from_rgb(200, 120, 0)));
-                    ui.separator();
+                    ui.label(RichText::new(format!("●  {}", t!("status.unsaved"))).size(12.0).color(p.warn));
                 }
+                ui.label(small("·".into()));
             }
-            ui.label(&self.status);
+            ui.label(small(self.status.clone()));
         });
     }
 
@@ -624,7 +656,7 @@ impl PdfApp {
                 ui.label(t!("dialog.unsaved_question", name));
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    if ui.button(t!("dialog.save")).clicked()
+                    if theme::primary_button(ui, t!("dialog.save")).clicked()
                         && self.save(None) {
                             close = true;
                             self.perform(action.clone());
@@ -775,6 +807,19 @@ impl PdfApp {
                     self.status = t!("status.welcome");
                 }
             }
+            ui.add_space(6.0);
+            let mut theme = self.settings.theme.clone();
+            ui.horizontal(|ui| {
+                ui.label(t!("settings.theme"));
+                ui.selectable_value(&mut theme, None, t!("settings.theme_system"));
+                ui.selectable_value(&mut theme, Some("light".to_string()), t!("settings.theme_light"));
+                ui.selectable_value(&mut theme, Some("dark".to_string()), t!("settings.theme_dark"));
+            });
+            if theme != self.settings.theme {
+                self.settings.theme = theme;
+                self.settings.apply_theme(ui.ctx());
+                self.settings.save();
+            }
             ui.add_space(12.0);
             if ui.button(t!("dialog.close")).clicked() {
                 self.show_settings = false;
@@ -843,22 +888,30 @@ impl PdfApp {
             self.shortcuts(&ctx);
         }
 
-        egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
-        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
-        if !self.tabs.is_empty() {
-            egui::Panel::top("pestanas").show(ui, |ui| self.tab_bar(ui));
-        }
-        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        let p = theme::palette(ui);
+        self.title_bar(ui);
+        egui::Panel::top("toolbar")
+            .exact_size(46.0)
+            .frame(egui::Frame::new().fill(p.surface).inner_margin(egui::Margin::symmetric(8, 0)).stroke(egui::Stroke::new(1.0, p.border)))
+            .show(ui, |ui| self.toolbar(ui));
+        egui::Panel::bottom("status")
+            .exact_size(26.0)
+            .frame(egui::Frame::new().fill(p.surface).inner_margin(egui::Margin::symmetric(12, 0)))
+            .show(ui, |ui| self.status_bar(ui));
 
         let mut ev = None;
+        let mut open_requested = false;
         egui::CentralPanel::default_margins().frame(egui::Frame::NONE).show(ui, |ui| match self.view_mut() {
             Some(v) => ev = Some(v.ui(ui)),
             None => {
-                ui.with_layout(Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                    ui.label(RichText::new(t!("empty.hint")).size(18.0).color(Color32::GRAY));
-                });
+                if self.empty_state(ui) {
+                    open_requested = true;
+                }
             }
         });
+        if open_requested {
+            self.open_dialog();
+        }
 
         if let Some(ev) = ev {
             if ev.modified
@@ -900,42 +953,38 @@ impl PdfApp {
 
         self.dialogs(&ctx);
         self.update_title(&ctx);
+        chrome::window_border(&ctx);
+        chrome::resize_edges(&ctx);
+    }
+
+    /// Ventana sin documentos: una invitación a abrir uno. true si se pulsa.
+    fn empty_state(&self, ui: &mut egui::Ui) -> bool {
+        let p = theme::palette(ui);
+        ui.painter().rect_filled(ui.max_rect(), 0.0, p.canvas);
+        let mut open = false;
+        ui.with_layout(Layout::top_down(Align::Center), |ui| {
+            ui.add_space((ui.available_height() / 2.0 - 110.0).max(0.0));
+            ui.label(RichText::new(icon::FILE_PDF).size(64.0).color(p.text_weak));
+            ui.add_space(8.0);
+            ui.label(RichText::new(t!("empty.title")).size(20.0).color(p.text));
+            ui.label(RichText::new(t!("empty.hint")).color(p.text_weak));
+            ui.add_space(14.0);
+            open = theme::primary_button(ui, format!("{}  {}", icon::FOLDER_OPEN, t!("toolbar.open"))).clicked();
+        });
+        open
     }
 }
 
-/// Botón con icono (dibujado, sin texto) para elegir la disposición.
-fn layout_button(ui: &mut egui::Ui, selected: bool, l: PageLayout) -> egui::Response {
-    let size = egui::vec2(26.0, 20.0);
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    if ui.is_rect_visible(rect) {
-        let v = ui.visuals();
-        let w = if selected { &v.widgets.active } else { v.widgets.style(&resp) };
-        let fill = if selected { v.selection.bg_fill } else if resp.hovered() { w.weak_bg_fill } else { Color32::TRANSPARENT };
-        let p = ui.painter();
-        p.rect_filled(rect, 3.0, fill);
-        let ink = if selected { v.selection.stroke.color } else { w.fg_stroke.color };
-        let stroke = egui::Stroke::new(1.2, ink);
-        let c = rect.center();
-        let page = |r: egui::Rect| {
-            p.rect_filled(r, 1.0, Color32::WHITE);
-            p.rect_stroke(r, 1.0, stroke, egui::StrokeKind::Inside);
-        };
-        match l {
-            PageLayout::Continuous => {
-                // Dos páginas una debajo de otra, cortadas por los bordes.
-                page(egui::Rect::from_min_max(egui::pos2(c.x - 5.0, rect.top() + 2.0), egui::pos2(c.x + 5.0, c.y - 1.0)));
-                page(egui::Rect::from_min_max(egui::pos2(c.x - 5.0, c.y + 1.0), egui::pos2(c.x + 5.0, rect.bottom() - 2.0)));
-            }
-            PageLayout::Single => {
-                page(egui::Rect::from_center_size(c, egui::vec2(11.0, 14.0)));
-            }
-            PageLayout::TwoColumns => {
-                page(egui::Rect::from_center_size(c - egui::vec2(6.0, 0.0), egui::vec2(10.0, 14.0)));
-                page(egui::Rect::from_center_size(c + egui::vec2(6.0, 0.0), egui::vec2(10.0, 14.0)));
-            }
-        }
-    }
-    resp
+/// Entrada del menú principal con su icono.
+fn mi(glyph: &str, text: String) -> String {
+    format!("{glyph}   {text}")
+}
+
+/// Separador vertical de la barra de herramientas.
+fn separator(ui: &mut egui::Ui) {
+    let p = theme::palette(ui);
+    let (r, _) = ui.allocate_exact_size(egui::vec2(9.0, 22.0), egui::Sense::hover());
+    ui.painter().vline(r.center().x, r.y_range(), egui::Stroke::new(1.0, p.border));
 }
 
 fn layout_name(l: PageLayout) -> String {

@@ -4,11 +4,13 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod app;
+mod chrome;
 use form_pdf_reader::t;
 mod autotest;
 mod platform;
 mod settings;
 mod soft;
+mod theme;
 mod viewer;
 
 use std::path::PathBuf;
@@ -52,7 +54,9 @@ fn main() -> anyhow::Result<()> {
         .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icons/256/form-pdf-reader.png")).unwrap_or_default())
         .with_inner_size([1100.0, 900.0])
         .with_min_inner_size([480.0, 360.0])
-        .with_drag_and_drop(true);
+        .with_drag_and_drop(true)
+        // La barra de título la dibuja la app, con las pestañas (chrome.rs).
+        .with_decorations(false);
 
     // Sin tarjeta gráfica, la interfaz se dibuja con la CPU (ver soft.rs).
     // FORM_PDF_READER_SOFTWARE=1 lo fuerza en cualquier sistema.

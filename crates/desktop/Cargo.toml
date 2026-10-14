@@ -18,6 +18,8 @@ log.workspace = true
 env_logger.workspace = true
 png.workspace = true
 rfd = "0.17"
+# Iconos de la interfaz (Phosphor, MIT).
+egui-phosphor = "0.14"
 # Dibujo por CPU cuando no hay tarjeta gráfica (soft.rs).
 bytemuck = "1"
 egui-winit = { version = "0.36", default-features = false, features = ["accesskit", "clipboard", "links"] }
