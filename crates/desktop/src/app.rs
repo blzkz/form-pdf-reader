@@ -51,6 +51,7 @@ pub struct PdfApp {
     continuous_xfa: bool,
     title: String,
     autotest: Option<crate::autotest::AutoTest>,
+    signatures: crate::signatures::Signatures,
 }
 
 impl PdfApp {
@@ -75,6 +76,7 @@ impl PdfApp {
             continuous_xfa: true,
             title: String::new(),
             autotest: crate::autotest::AutoTest::from_env(),
+            signatures: crate::signatures::Signatures::new(),
         };
         if let Some(p) = initial {
             app.open(&p);
@@ -548,6 +550,26 @@ impl PdfApp {
             );
             v.set_tool(t);
 
+            // Firmar: las firmas guardadas en este equipo, o crear una.
+            let can_sign = v.doc.can_sign();
+            let sign_button = egui::Button::new(RichText::new(icon::SIGNATURE).size(18.0)).frame_when_inactive(v.is_placing()).min_size(egui::Vec2::splat(32.0));
+            let mut action = None;
+            ui.add_enabled_ui(can_sign, |ui| {
+                let (r, inner) = egui::containers::menu::MenuButton::from_button(sign_button).ui(ui, |ui| self.signatures.menu(ui));
+                r.on_hover_text(t!("sign.button_tip")).on_disabled_hover_text(t!("sign.cannot"));
+                action = inner.and_then(|i| i.inner);
+            });
+            match action {
+                Some(crate::signatures::Action::Place(sig)) => {
+                    v.start_placing(ui.ctx(), sig);
+                    *status = t!("sign.placing_status");
+                }
+                Some(crate::signatures::Action::Create) => {
+                    self.signatures.open_create(self.settings.signer_name.as_deref().unwrap_or(""));
+                }
+                None => {}
+            }
+
             // Disposición y páginas (las XFA continuas son una sola página).
             if !v.doc.is_continuous() && fit.page_nav {
                 separator(ui);
@@ -696,6 +718,18 @@ impl PdfApp {
         }
         if self.show_settings {
             self.settings_window(ctx);
+        }
+        if let Some((sig, name)) = self.signatures.create_window(ctx) {
+            if !name.is_empty() && self.settings.signer_name.as_deref() != Some(&name) {
+                self.settings.signer_name = Some(name);
+                self.settings.save();
+            }
+            if let Some(v) = self.view_mut()
+                && v.doc.can_sign()
+            {
+                v.start_placing(ctx, sig);
+                self.status = t!("sign.placing_status");
+            }
         }
         self.password_window(ctx);
         if self.show_about {
@@ -944,6 +978,9 @@ impl PdfApp {
             if ev.print_requested {
                 self.print();
             }
+            if let Some(e) = ev.sign_error {
+                self.error = Some(t!("sign.error", e));
+            }
             if let Some(url) = ev.submit_requested {
                 self.status = t!("status.submit", url);
             }
@@ -1021,7 +1058,8 @@ impl ToolbarFit {
         const BUTTON: f32 = 36.0;
         const SEP: f32 = 13.0;
         let need = |f: &ToolbarFit| {
-            let mut n = SEP + if f.tool_labels { w.tools_labels } else { w.tools_icons };
+            // Herramientas y el botón de firmar.
+            let mut n = SEP + BUTTON + if f.tool_labels { w.tools_labels } else { w.tools_icons };
             if paged && f.page_nav {
                 n += SEP + 2.0 * BUTTON + if f.page_long { w.page_long } else { w.page_short };
                 if f.layouts {

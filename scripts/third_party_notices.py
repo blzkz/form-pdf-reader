@@ -188,6 +188,15 @@ def main():
             out.append(f"\n{THIN}\n{name}\n{THIN}\n\n{read(os.path.join(lic, f))}")
         out.append(f"\n{THIN}\npdfium-binaries (build scripts)\n{THIN}\n\n{read(os.path.join(args.pdfium, 'LICENSE'))}")
 
+    # Letras de las firmas escritas (crates/core/assets/signature-fonts),
+    # incluidas en el programa: el escritorio y Android.
+    fonts = os.path.join(ROOT, "crates", "core", "assets", "signature-fonts")
+    section(out, "Signature fonts")
+    for f in sorted(os.listdir(fonts)):
+        if f.endswith(".txt"):
+            name = f.rsplit("-", 1)[0]
+            out.append(f"\n{THIN}\n{name}\n{THIN}\n\n{read(os.path.join(fonts, f))}")
+
     if args.android:
         section(out, "Android libraries")
         out.append(ANDROID_LIBRARIES)

@@ -19,6 +19,8 @@ lopdf.workspace = true
 libc = "0.2"
 flate2 = "1"
 regex = "1"
+# Contornos de las letras de las firmas escritas (sign::shape).
+ttf-parser = "0.25"
 
 [dev-dependencies]
 env_logger.workspace = true

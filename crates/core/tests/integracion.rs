@@ -634,8 +634,89 @@ fn datasets_con(doc: &mut Document, contraseña: &str) -> String {
     String::from_utf8_lossy(&xfa::read_datasets_with(&b, Some(contraseña)).unwrap()).into_owned()
 }
 
+/// Píxeles de tinta azul de firma en un rectángulo de página (izquierda,
+/// abajo, derecha, arriba), renderizando a 1 píxel por punto.
+fn tinta(doc: &Document, page: usize, r: [f32; 4]) -> usize {
+    let (w, h) = doc.page_size(page);
+    let px = doc.render_region(page, w as i32, h as i32, 0, 0, w as i32, h as i32).unwrap();
+    let mut n = 0;
+    for y in (h - r[3]) as usize..(h - r[1]) as usize {
+        for x in r[0] as usize..r[2] as usize {
+            let i = (y * w as usize + x) * 4;
+            let (cr, cb) = (px[i] as i32, px[i + 2] as i32);
+            if cb > cr + 20 && cr < 140 {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+fn firmas_manuscritas() {
+    use form_pdf_reader::pdfium::{render_signature, signature_size};
+    use form_pdf_reader::sign::{Library, SignatureKind, Stroke, TypeStyle, library::DEFAULT_INK};
+    let lib = Library::new(tmp("firmas"));
+    let escrita = lib.add(SignatureKind::Typed { text: "Juan Pérez".into(), style: TypeStyle::GreatVibes }, DEFAULT_INK).unwrap();
+    let dibujada = lib
+        .add(SignatureKind::Drawn { strokes: vec![Stroke { width: 4.0, points: vec![(0.0, 30.0), (40.0, 0.0), (80.0, 30.0), (120.0, 0.0)] }] }, DEFAULT_INK)
+        .unwrap();
+
+    // Vista previa con fondo transparente.
+    let (w, h, px) = render_signature(&escrita, 40).unwrap();
+    assert_eq!(px.len(), (w * h * 4) as usize);
+    assert!(w > 3 * h);
+    assert!(px.chunks(4).any(|c| c[3] == 0) && px.chunks(4).any(|c| c[3] > 200), "fondo transparente y trazo opaco");
+
+    // PDF normal: poner, mover, guardar y volver a abrir.
+    let mut doc = Document::open(Path::new("tests/fixtures/normal.pdf")).unwrap();
+    assert!(doc.can_sign());
+    let (sw, sh) = signature_size(&escrita);
+    let a = [60.0, 40.0, 60.0 + sw, 40.0 + sh];
+    let b = [300.0, 40.0, 300.0 + sw, 40.0 + sh];
+    assert_eq!(tinta(&doc, 0, a), 0);
+    let i = doc.add_signature(0, a, &escrita).unwrap();
+    doc.move_signature(i, b).unwrap();
+    let c = [100.0, 120.0, 260.0, 160.0];
+    let j = doc.add_signature(1, c, &dibujada).unwrap();
+    doc.remove_signature(j);
+    let d = [100.0, 220.0, 260.0, 260.0];
+    doc.add_signature(2, d, &dibujada).unwrap();
+    assert_eq!(doc.placed_signatures().len(), 2);
+    let out = tmp("firmado.pdf");
+    doc.save(&out).unwrap();
+    assert!(doc.placed_signatures().is_empty(), "al guardar pasan al PDF");
+    assert!(tinta(&doc, 0, b) > 200);
+    drop(doc);
+    // Una anotación por firma que queda, sin copias de las movidas o quitadas.
+    let bytes = std::fs::read(&out).unwrap();
+    let cuenta = |n: &[u8]| bytes.windows(n.len()).filter(|w| *w == n).count();
+    assert_eq!(cuenta(b"/Subtype/Stamp") + cuenta(b"/Subtype /Stamp"), 2);
+    let doc = Document::open(&out).unwrap();
+    assert!(tinta(&doc, 0, b) > 200, "la firma se guarda en el PDF");
+    assert_eq!(tinta(&doc, 0, a), 0, "en el sitio al que se movió");
+    assert_eq!(tinta(&doc, 1, c), 0, "la quitada no está");
+    assert!(tinta(&doc, 2, d) > 100);
+    drop(doc);
+
+    // AcroForm: igual.
+    let mut doc = Document::open(Path::new("tests/fixtures/acroform.pdf")).unwrap();
+    doc.add_signature(0, [60.0, 40.0, 60.0 + sw, 40.0 + sh], &escrita).unwrap();
+    let out = tmp("acro-firmado.pdf");
+    doc.save(&out).unwrap();
+    drop(doc);
+    let doc = Document::open(&out).unwrap();
+    assert!(tinta(&doc, 0, [60.0, 40.0, 60.0 + sw, 40.0 + sh]) > 200);
+    drop(doc);
+
+    // XFA dinámico: no se puede.
+    let mut doc = Document::open(Path::new(XFA)).unwrap();
+    assert!(!doc.can_sign());
+    assert!(doc.add_signature(0, a, &escrita).is_err());
+}
+
 #[test]
 fn pdfium_completo() {
+    firmas_manuscritas();
     normal();
     acroform();
     xfa_dinamico();

@@ -11,6 +11,8 @@ pub struct Settings {
     pub language: Option<String>,
     /// Tema: "light", "dark"; None: el del sistema.
     pub theme: Option<String>,
+    /// Nombre con que se crearon firmas (se propone para la siguiente).
+    pub signer_name: Option<String>,
 }
 
 fn path() -> Option<PathBuf> {
@@ -31,6 +33,7 @@ impl Settings {
                 match k.trim() {
                     "language" if !v.is_empty() => s.language = Some(v.to_string()),
                     "theme" if v == "light" || v == "dark" => s.theme = Some(v.to_string()),
+                    "signer_name" if !v.is_empty() => s.signer_name = Some(v.to_string()),
                     _ => {}
                 }
             }
@@ -46,6 +49,9 @@ impl Settings {
         }
         if let Some(t) = &self.theme {
             text.push_str(&format!("theme = {t}\n"));
+        }
+        if let Some(n) = &self.signer_name {
+            text.push_str(&format!("signer_name = {n}\n"));
         }
         let ok = p.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&p, text).is_ok();
         if !ok {

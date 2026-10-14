@@ -9,6 +9,7 @@ use form_pdf_reader::t;
 mod autotest;
 mod platform;
 mod settings;
+mod signatures;
 #[cfg(windows)]
 mod snap;
 mod soft;

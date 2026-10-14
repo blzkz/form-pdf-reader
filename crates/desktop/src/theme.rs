@@ -138,6 +138,9 @@ fn style(dark: bool) -> egui::Style {
     w.inactive.weak_bg_fill = if dark { Color32::from_rgba_premultiplied(10, 10, 10, 10) } else { Color32::from_rgba_premultiplied(0, 0, 0, 6) };
     w.inactive.bg_fill = if dark { Color32::from_rgb(0x3A, 0x3A, 0x3D) } else { Color32::from_rgb(0xD5, 0xD9, 0xDE) };
     w.inactive.fg_stroke = Stroke::new(1.0, p.text);
+    // Borde fino en campos de texto y botones normales, como Fluent (los de
+    // solo icono no tienen marco en reposo).
+    w.inactive.bg_stroke = Stroke::new(1.0, p.border);
     w.hovered.bg_stroke = Stroke::new(1.0, p.border);
     s
 }
