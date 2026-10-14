@@ -28,6 +28,9 @@ pub struct Palette {
     /// Botón de cerrar la ventana al pasar el ratón.
     pub close_hover: Color32,
     pub warn: Color32,
+    /// Estados: correcto y error.
+    pub ok: Color32,
+    pub danger: Color32,
 }
 
 const LIGHT: Palette = Palette {
@@ -42,6 +45,8 @@ const LIGHT: Palette = Palette {
     pressed: Color32::from_rgba_premultiplied(0, 0, 0, 22),
     close_hover: Color32::from_rgb(0xC4, 0x2B, 0x1C),
     warn: Color32::from_rgb(0xB2, 0x5E, 0x00),
+    ok: Color32::from_rgb(0x10, 0x7C, 0x10),
+    danger: Color32::from_rgb(0xC4, 0x2B, 0x1C),
 };
 
 const DARK: Palette = Palette {
@@ -56,6 +61,8 @@ const DARK: Palette = Palette {
     pressed: Color32::from_rgba_premultiplied(26, 26, 26, 26),
     close_hover: Color32::from_rgb(0xC4, 0x2B, 0x1C),
     warn: Color32::from_rgb(0xF0, 0xA0, 0x3C),
+    ok: Color32::from_rgb(0x6C, 0xCB, 0x5F),
+    danger: Color32::from_rgb(0xFF, 0x99, 0xA4),
 };
 
 pub fn palette(ui: &Ui) -> Palette {
@@ -138,6 +145,9 @@ fn style(dark: bool) -> egui::Style {
     w.inactive.weak_bg_fill = if dark { Color32::from_rgba_premultiplied(10, 10, 10, 10) } else { Color32::from_rgba_premultiplied(0, 0, 0, 6) };
     w.inactive.bg_fill = if dark { Color32::from_rgb(0x3A, 0x3A, 0x3D) } else { Color32::from_rgb(0xD5, 0xD9, 0xDE) };
     w.inactive.fg_stroke = Stroke::new(1.0, p.text);
+    // Borde fino en campos de texto y botones normales, como Fluent (los de
+    // solo icono no tienen marco en reposo).
+    w.inactive.bg_stroke = Stroke::new(1.0, p.border);
     w.hovered.bg_stroke = Stroke::new(1.0, p.border);
     s
 }

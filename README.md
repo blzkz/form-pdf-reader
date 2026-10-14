@@ -57,6 +57,18 @@ stay in the form's own language.
   "Archivo > Adjuntos del PDF…" lists the embedded files of any PDF.
 - **Protected PDFs:** a PDF that needs a password to open asks for it, and
   stays protected with the same password when saved.
+- **Signatures, as in DocuSign:** your name or initials in handwriting
+  (three styles) or a signature drawn with the mouse, a pen tablet, a
+  finger or a stylus. They are kept on each device to use again (the Sign
+  button), and go where you click or tap on the page; until you save they
+  can be moved, resized or removed. Saving writes them into the PDF as
+  vector drawings, without touching what was there. Not on dynamic XFA
+  forms, which Adobe Reader shows without annotations.
+- **Digital signatures:** the ones a PDF already has are listed (☰ > Digital
+  signatures…), with the signer, the certificate's issuer and validity, the
+  date and reason, and whether the signed content is unchanged, had changes
+  added afterwards or was altered. Whether the certificate comes from a
+  trusted authority is not checked yet.
 - **Saving:** Ctrl+S and Save As, with a warning about unsaved changes.
   Saving keeps the original file intact (see below).
 - **Export and print:** a "flat" (image) PDF on A4 pages. Printing opens that
@@ -369,7 +381,10 @@ user interface: the desktop app and the Android app both use it.
 
 ```
 crates/core/      form-pdf-reader-core: the library (imported as form_pdf_reader)
-  src/pdfium/       PDFium layer: bindings (bindgen), callbacks, document, fonts
+  src/pdfium/       PDFium layer: bindings (bindgen), callbacks, document, fonts,
+                    handwritten signatures on the page, digital signatures
+  src/sign/         saved handwritten signatures and their vector shapes
+  assets/signature-fonts/  handwriting fonts (OFL and Apache 2.0)
   src/xfa/          XFA compatibility fixes, incremental PDF editing, form state
   src/i18n.rs       translations (catalogs in locales/)
   tests/            integration test and sample PDFs
@@ -381,6 +396,7 @@ crates/desktop/   form-pdf-reader: the desktop application (egui)
   src/chrome.rs     title bar: tabs, window buttons, moving and resizing
   src/theme.rs      fonts, icons and light/dark colours
   src/snap.rs       Windows: system frame and snap layouts
+  src/signatures.rs saved signatures menu and "Create signature" dialog
   src/soft.rs       window drawn with the CPU when there is no graphics card
   src/autotest.rs   UI test driver
 crates/egui_software_backend/   CPU renderer for egui (a copy of the crate

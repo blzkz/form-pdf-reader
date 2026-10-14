@@ -93,4 +93,43 @@
     <string name="password_prompt">«%1$s» está protegido por palavra-passe. Introduza-a para abrir o documento.</string>
     <string name="password_wrong">A palavra-passe não está correta. Tente novamente.</string>
     <string name="a11y_document">Documento, página %1$d de %2$d</string>
+    <!-- Firmas manuscritas -->
+    <string name="sign">Assinar</string>
+    <string name="sign_none">Ainda não tem assinaturas guardadas neste dispositivo.</string>
+    <string name="sign_create">Criar assinatura</string>
+    <string name="sign_create_title">Criar assinatura</string>
+    <string name="sign_mode_typed">Escrever</string>
+    <string name="sign_mode_initials">Iniciais</string>
+    <string name="sign_mode_drawn">Desenhar</string>
+    <string name="sign_name">Nome completo</string>
+    <string name="sign_initials">Iniciais</string>
+    <string name="sign_style">Escolha um estilo</string>
+    <string name="sign_draw_hint">Assine na caixa com o dedo ou uma caneta</string>
+    <string name="sign_clear">Apagar</string>
+    <string name="sign_ink_blue">Azul</string>
+    <string name="sign_ink_black">Preto</string>
+    <string name="sign_save">Guardar e usar</string>
+    <string name="sign_delete">Apagar esta assinatura do dispositivo</string>
+    <string name="sign_cannot">Este documento não aceita assinaturas na página (formulário XFA dinâmico).</string>
+    <string name="sign_error">Não foi possível colocar a assinatura: %1$s</string>
+    <string name="sign_place_hint">Toque na página onde quer a assinatura. Depois pode movê-la, redimensioná-la ou retirá-la até guardar.</string>
+    <!-- Firmas digitales del documento -->
+    <string name="digital_title">Assinaturas digitais</string>
+    <string name="digital_none">Este documento não tem assinaturas digitais.</string>
+    <string name="digital_unknown_signer">Signatário desconhecido</string>
+    <string name="digital_intact">O documento não mudou desde que foi assinado</string>
+    <string name="digital_changed_after">O conteúdo assinado está intacto, mas depois foram adicionadas alterações</string>
+    <string name="digital_broken">O conteúdo não corresponde à assinatura: o documento foi alterado</string>
+    <string name="digital_unknown">Não foi possível verificar esta assinatura</string>
+    <string name="digital_kind">Tipo:</string>
+    <string name="digital_approval">Assinatura de aprovação</string>
+    <string name="digital_cert_none">Certificação: não são permitidas alterações</string>
+    <string name="digital_cert_fill">Certificação: é permitido preencher formulários e assinar</string>
+    <string name="digital_cert_annots">Certificação: é permitido preencher, assinar e comentar</string>
+    <string name="digital_date">Data:</string>
+    <string name="digital_reason">Motivo:</string>
+    <string name="digital_issuer">Emissor do certificado:</string>
+    <string name="digital_validity">Certificado válido:</string>
+    <string name="digital_usage_rights">Tem os direitos de utilização do Adobe Reader (permitem preenchê-lo e guardá-lo no Reader).</string>
+    <string name="digital_trust_note">Verifica-se que o conteúdo assinado não mudou, não se o certificado vem de uma entidade de confiança.</string>
 </resources>

@@ -93,4 +93,43 @@
     <string name="password_prompt">„%1$s“ ist kennwortgeschützt. Geben Sie das Kennwort ein, um das Dokument zu öffnen.</string>
     <string name="password_wrong">Das Kennwort ist nicht korrekt. Versuchen Sie es erneut.</string>
     <string name="a11y_document">Dokument, Seite %1$d von %2$d</string>
+    <!-- Firmas manuscritas -->
+    <string name="sign">Unterschreiben</string>
+    <string name="sign_none">Auf diesem Gerät sind noch keine Unterschriften gespeichert.</string>
+    <string name="sign_create">Unterschrift erstellen</string>
+    <string name="sign_create_title">Unterschrift erstellen</string>
+    <string name="sign_mode_typed">Tippen</string>
+    <string name="sign_mode_initials">Initialen</string>
+    <string name="sign_mode_drawn">Zeichnen</string>
+    <string name="sign_name">Vor- und Nachname</string>
+    <string name="sign_initials">Initialen</string>
+    <string name="sign_style">Stil wählen</string>
+    <string name="sign_draw_hint">Mit dem Finger oder einem Stift im Feld unterschreiben</string>
+    <string name="sign_clear">Löschen</string>
+    <string name="sign_ink_blue">Blau</string>
+    <string name="sign_ink_black">Schwarz</string>
+    <string name="sign_save">Speichern und verwenden</string>
+    <string name="sign_delete">Diese Unterschrift vom Gerät löschen</string>
+    <string name="sign_cannot">Dieses Dokument erlaubt keine Unterschriften auf der Seite (dynamisches XFA-Formular).</string>
+    <string name="sign_error">Die Unterschrift konnte nicht eingefügt werden: %1$s</string>
+    <string name="sign_place_hint">Tippen Sie auf die Stelle der Seite für die Unterschrift. Bis zum Speichern können Sie sie verschieben, die Größe ändern oder sie entfernen.</string>
+    <!-- Firmas digitales del documento -->
+    <string name="digital_title">Digitale Signaturen</string>
+    <string name="digital_none">Dieses Dokument hat keine digitalen Signaturen.</string>
+    <string name="digital_unknown_signer">Unbekannter Unterzeichner</string>
+    <string name="digital_intact">Das Dokument wurde seit der Signatur nicht geändert</string>
+    <string name="digital_changed_after">Der signierte Inhalt ist unverändert, danach wurden aber Änderungen hinzugefügt</string>
+    <string name="digital_broken">Der Inhalt stimmt nicht mit der Signatur überein: das Dokument wurde verändert</string>
+    <string name="digital_unknown">Diese Signatur konnte nicht geprüft werden</string>
+    <string name="digital_kind">Art:</string>
+    <string name="digital_approval">Genehmigungssignatur</string>
+    <string name="digital_cert_none">Zertifizierung: keine Änderungen erlaubt</string>
+    <string name="digital_cert_fill">Zertifizierung: Ausfüllen von Formularen und Signieren erlaubt</string>
+    <string name="digital_cert_annots">Zertifizierung: Ausfüllen, Signieren und Kommentieren erlaubt</string>
+    <string name="digital_date">Datum:</string>
+    <string name="digital_reason">Grund:</string>
+    <string name="digital_issuer">Aussteller des Zertifikats:</string>
+    <string name="digital_validity">Zertifikat gültig:</string>
+    <string name="digital_usage_rights">Es hat die Nutzungsrechte von Adobe Reader (sie erlauben, es in Reader auszufüllen und zu speichern).</string>
+    <string name="digital_trust_note">Geprüft wird, dass sich der signierte Inhalt nicht geändert hat, nicht, ob das Zertifikat von einer vertrauenswürdigen Stelle stammt.</string>
 </resources>

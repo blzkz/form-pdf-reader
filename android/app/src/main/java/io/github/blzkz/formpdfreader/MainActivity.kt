@@ -235,6 +235,8 @@ class MainActivity : AppCompatActivity() {
         }
         Drafts.open += t.draftId
         view.onInput = { r -> onFormInput(t, r) }
+        view.onSignaturesChanged = { markModified(t) }
+        view.onSignatureError = { e -> showError(getString(R.string.sign_error, e.message ?: "")) }
         view.onStateChanged = {
             if (t === current) {
                 updateTools()
@@ -579,6 +581,7 @@ class MainActivity : AppCompatActivity() {
                 val edits = t.edits
                 Io.run({ writeDocument(target, bytes) }) { w ->
                     w.onSuccess {
+                        t.view.refreshSignatures()
                         t.item = target
                         // Changes made while it was being written are still unsaved.
                         t.modified = t.edits != edits
@@ -651,6 +654,8 @@ class MainActivity : AppCompatActivity() {
                 if (t !in docs || !t.modified) return@run
                 val id = t.draftId
                 val item = t.item
+                // Guardar escribe en el PDF las firmas puestas.
+                t.view.refreshSignatures()
                 Io.run({ Drafts.write(this, id, item, bytes) }) { w ->
                     if (w.isSuccess) t.draftedEdits = edits
                 }
@@ -721,7 +726,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         val has = current?.doc != null
-        for (id in intArrayOf(R.id.action_search, R.id.action_share, R.id.action_save, R.id.action_save_as, R.id.action_attachments, R.id.action_copy_text, R.id.action_go_to_page, R.id.action_view)) {
+        for (id in intArrayOf(R.id.action_search, R.id.action_share, R.id.action_save, R.id.action_sign, R.id.action_digital, R.id.action_save_as, R.id.action_attachments, R.id.action_copy_text, R.id.action_go_to_page, R.id.action_view)) {
             menu.findItem(id)?.isEnabled = has
         }
         // Tablets have these in the toolbar.
@@ -749,7 +754,7 @@ class MainActivity : AppCompatActivity() {
         // Room on the right half, minus the overflow button (48 dp each).
         val room = resources.configuration.screenWidthDp / 2f - toolsDp / 2f - 16f
         val slots = (room / 48f).toInt() - 1
-        for ((i, id) in intArrayOf(R.id.action_search, R.id.action_save, R.id.action_share, R.id.action_attachments, R.id.action_open).withIndex()) {
+        for ((i, id) in intArrayOf(R.id.action_search, R.id.action_save, R.id.action_sign, R.id.action_share, R.id.action_attachments, R.id.action_open).withIndex()) {
             menu.findItem(id)?.setShowAsAction(
                 if (i < slots) MenuItem.SHOW_AS_ACTION_ALWAYS else MenuItem.SHOW_AS_ACTION_NEVER,
             )
@@ -768,6 +773,8 @@ class MainActivity : AppCompatActivity() {
             R.id.action_share -> share()
             R.id.action_open -> openDocument.launch(arrayOf("application/pdf"))
             R.id.action_save -> save()
+            R.id.action_sign -> sign()
+            R.id.action_digital -> showDigitalSignatures()
             R.id.action_save_as -> saveAs()
             R.id.action_attachments -> showAttachments()
             R.id.action_copy_text -> copyPageText()
@@ -1050,6 +1057,38 @@ class MainActivity : AppCompatActivity() {
     // -----------------------------------------------------------------------
     // Form events
     // -----------------------------------------------------------------------
+
+    /** A change that is not an input on the form (a signature placed). */
+    private fun markModified(t: DocTab) {
+        t.edits++
+        if (!t.modified) {
+            t.modified = true
+            updateTabLabel(t)
+            if (t === current) updateTitle()
+        }
+    }
+
+    /** The digital signatures the document has, and whether they still match. */
+    private fun showDigitalSignatures() {
+        val d = current?.doc ?: return
+        PdfEngine.run({ Pair(d.digitalSignatures(), d.hasUsageRights()) }) { r ->
+            val (list, rights) = r.getOrNull() ?: return@run
+            Signatures.showDigital(this, list, rights)
+        }
+    }
+
+    /** Signing: the saved signatures, or create one; then a tap places it. */
+    private fun sign() {
+        val t = current ?: return
+        val d = t.doc ?: return
+        PdfEngine.run({ d.canSign() }) { r ->
+            if (r.getOrNull() != true) return@run showError(getString(R.string.sign_cannot))
+            Signatures.showMenu(this) { id ->
+                t.view.startPlacingSignature(Signatures.library(this), id)
+                Toast.makeText(this, R.string.sign_place_hint, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     private fun onFormInput(t: DocTab, r: InputResult) {
         if (r.modified) t.edits++

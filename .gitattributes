@@ -1,0 +1,4 @@
+# Los PDF son binarios: sin convertir finales de línea (en Windows rompía
+# las firmas digitales de los PDF de prueba).
+*.pdf binary
+*.ttf binary

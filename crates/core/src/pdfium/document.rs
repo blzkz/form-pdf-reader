@@ -14,6 +14,11 @@ use std::time::{Duration, Instant};
 
 pub use super::host::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest};
 
+mod digital;
+mod signatures;
+pub use digital::{DigitalSignature, SignedState};
+pub use signatures::{PlacedSignature, render_signature, signature_size};
+
 /// Tipo de formulario que contiene el documento.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormKind {
@@ -148,6 +153,9 @@ pub struct Document {
     password: Option<String>,
     compat: Option<CompatReport>,
     extent_cache: RefCell<HashMap<usize, f32>>,
+    /// Firmas manuscritas puestas en esta sesión (ver `signatures`).
+    signatures: Vec<PlacedSignature>,
+    sig_counter: u32,
     /// Bytes entregados a PDFium. PDFium los lee de forma perezosa: deben vivir tanto
     /// como `doc`. Se declara el último para que se libere después.
     _data: Box<[u8]>,
@@ -232,6 +240,8 @@ impl Document {
             password,
             compat,
             extent_cache: RefCell::new(HashMap::new()),
+            signatures: Vec::new(),
+            sig_counter: 0,
             _data: data,
         };
         // Adjuntos ya incrustados en el PDF.
@@ -1138,6 +1148,7 @@ impl Document {
         // Estado del formulario (accesos, secciones visibles, casillas sin
         // datos) para restaurarlo al reabrir. Capturarlo mueve el foco, así
         // que se hace antes de que PDFium serialice los datos.
+        self.commit_signatures()?;
         self.host.state.borrow_mut().form_state = None;
         self.run_command("@capture");
         let state = self.host.state.borrow_mut().form_state.take();
@@ -1214,6 +1225,7 @@ impl Document {
     /// imprimir o enviar el formulario a quien no tenga un visor XFA. En vista
     /// continua se trocea en hojas A4.
     pub fn export_flat(&mut self, path: &Path, dpi: f32) -> Result<()> {
+        self.commit_signatures()?;
         let sheets = self.flat_sheets();
         let k = dpi / 72.0;
         unsafe {

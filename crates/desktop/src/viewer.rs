@@ -9,6 +9,9 @@ use form_pdf_reader::pdfium::{Document, SearchHit, Updates, keys};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+mod sign;
+pub use sign::signature_texture;
+
 /// Puntos tipográficos -> píxeles lógicos al 100 %.
 const PT_TO_PX: f32 = 96.0 / 72.0;
 const PAGE_GAP: f32 = 16.0;
@@ -35,6 +38,8 @@ pub struct ViewEvents {
     pub uris: Vec<String>,
     /// Adjuntos que el formulario pide ver (ficheros temporales).
     pub open_files: Vec<std::path::PathBuf>,
+    /// No se pudo poner o mover una firma.
+    pub sign_error: Option<String>,
 }
 
 static NEXT_VIEW: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -77,6 +82,14 @@ pub struct DocView {
     /// Zonas cambiadas por PDFium (página, rectángulo en coordenadas de
     /// página) que hay que volver a dibujar en las teselas ya hechas.
     pending_rects: Vec<(usize, [f64; 4])>,
+    /// Firma manuscrita a punto de ponerse (sigue al ratón).
+    placing: Option<sign::Placing>,
+    /// Firma puesta (aún no escrita en el PDF) seleccionada, su arrastre y
+    /// la imagen de cada una con su alto en píxeles (por su posición en
+    /// `Document::placed_signatures`).
+    sig_selected: Option<usize>,
+    sig_drag: Option<sign::SigDrag>,
+    sig_tex: Vec<Option<(egui::TextureHandle, i32)>>,
     /// Cuándo repintar todo tras haber repintado solo el campo al escribir.
     reconcile_at: Option<Instant>,
     /// Rectángulos de página en pantalla del último fotograma.
@@ -119,6 +132,10 @@ impl DocView {
             fit_width: true,
             tiles: HashMap::new(),
             pending_rects: Vec::new(),
+            placing: None,
+            sig_selected: None,
+            sig_drag: None,
+            sig_tex: Vec::new(),
             reconcile_at: None,
             page_rects: Vec::new(),
             scale_px: 1.0,
@@ -978,13 +995,18 @@ impl DocView {
             })
             .cloned()
             .collect();
-        clicked |= self.handle_pointer(&pointer_events, &mut ev, area_rect);
+        // Firmas manuscritas: colocar, mover, quitar (antes que PDFium).
+        let signing = self.handle_signatures(&ctx, &pointer_events, &mut ev, area_rect);
+        self.draw_signatures(&ctx, &ui.painter_at(area_rect));
+        if !signing {
+            clicked |= self.handle_pointer(&pointer_events, &mut ev, area_rect);
+        }
         if clicked {
             ctx.memory_mut(|m| m.request_focus(self.area_id));
             self.has_focus = true;
         }
         let focused = ctx.memory(|m| m.focused());
-        if self.has_focus && (focused.is_none() || focused == Some(self.area_id)) {
+        if !signing && self.has_focus && (focused.is_none() || focused == Some(self.area_id)) {
             self.handle_keyboard(&ctx, &events, &mut ev);
         }
 
@@ -1007,8 +1029,10 @@ impl DocView {
             ctx.request_repaint();
         }
 
-        // Cursor según la herramienta y el tipo de campo bajo el puntero.
-        if self.tool == Tool::Hand && pointer_pos.is_some_and(|p| area_rect.contains(p)) {
+        // Cursor según la herramienta y el tipo de campo bajo el puntero
+        // (con una firma en marcha lo pone sign.rs).
+        if self.is_placing() || self.sig_selected.is_some() {
+        } else if self.tool == Tool::Hand && pointer_pos.is_some_and(|p| area_rect.contains(p)) {
             ctx.set_cursor_icon(if self.hand_last.is_some() { CursorIcon::Grabbing } else { CursorIcon::Grab });
         } else if self.tool == Tool::Text && pointer_pos.is_some_and(|p| area_rect.contains(p)) {
             ctx.set_cursor_icon(CursorIcon::Text);

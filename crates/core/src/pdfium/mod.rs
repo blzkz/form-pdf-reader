@@ -19,7 +19,10 @@ mod fonts;
 mod host;
 pub mod keys;
 
-pub use document::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, Document, FormKind, OpenOptions, PasswordRequired, SearchHit, Updates, write_atomic};
+pub use document::{
+    AlertAnswer, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FormKind, OpenOptions, PasswordRequired, PlacedSignature, SearchHit, SignedState, Updates, render_signature,
+    signature_size, write_atomic,
+};
 
 use std::sync::Once;
 
