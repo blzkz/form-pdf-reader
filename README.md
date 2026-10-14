@@ -19,7 +19,7 @@ free Linux viewer could handle.
 
 The interface is available in English, Spanish, French, Italian, Portuguese
 and German. On the desktop it follows the system language (`LANGUAGE`,
-`LC_ALL`, `LC_MESSAGES`, `LANG`), and **File > Settings** lets you choose
+`LC_ALL`, `LC_MESSAGES`, `LANG`), and **☰ > Settings** lets you choose
 another one, which applies at once and is remembered in
 `~/.config/form-pdf-reader/settings.conf` (on Windows,
 `%APPDATA%\form-pdf-reader\settings.conf`). `FORM_PDF_READER_LANG=fr` (or
@@ -37,6 +37,10 @@ stay in the form's own language.
 
 - **Reading:** normal PDFs with zoom, text search, tabs, and continuous,
   single page or two-column layouts.
+- **Desktop window:** its own title bar with the document tabs, as in
+  modern Windows apps (on Windows 11 the maximize button shows the snap
+  layouts); light or dark theme following the system, or chosen in
+  **☰ > Settings**. The toolbar compacts itself when the window is narrow.
 - **Tools:**
   - *Form* (default): fill in fields and press form buttons.
   - *Text*: drag to select text and copy it with Ctrl+C.
@@ -374,6 +378,9 @@ crates/ffi/       form-pdf-reader-ffi: UniFFI bridge used by the Android app
 crates/desktop/   form-pdf-reader: the desktop application (egui)
   src/viewer.rs     view: tiles, mouse and keyboard to PDFium, tools, layouts
   src/app.rs        application: tabs, menus, dialogs, saving, printing
+  src/chrome.rs     title bar: tabs, window buttons, moving and resizing
+  src/theme.rs      fonts, icons and light/dark colours
+  src/snap.rs       Windows: system frame and snap layouts
   src/soft.rs       window drawn with the CPU when there is no graphics card
   src/autotest.rs   UI test driver
 crates/egui_software_backend/   CPU renderer for egui (a copy of the crate
