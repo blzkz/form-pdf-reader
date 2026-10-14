@@ -165,4 +165,21 @@
     <string name="dsig_no_device_title">Não há certificados no dispositivo</string>
     <string name="dsig_no_device">Não escolheu nenhum certificado ou não há nenhum instalado. Pode instalar o seu em Definições › Segurança › Encriptação e credenciais › Instalar um certificado, ou usar o ficheiro do certificado (.p12, .pfx).</string>
     <string name="dsig_use_file">Usar um ficheiro</string>
+    <string name="dsig_dnie">DNIe (cartão de cidadão espanhol) por NFC</string>
+    <string name="dnie_title">DNIe por NFC</string>
+    <string name="dnie_no_nfc">Este dispositivo não tem NFC.</string>
+    <string name="dnie_nfc_off">O NFC está desligado. Ligue-o para ler o DNIe.</string>
+    <string name="dnie_nfc_settings">Definições de NFC</string>
+    <string name="dnie_can_label">CAN (os 6 dígitos na frente, em baixo à direita)</string>
+    <string name="dnie_can_remember">Lembrar o CAN neste dispositivo</string>
+    <string name="dnie_pin_label">PIN do DNIe</string>
+    <string name="dnie_can_invalid">O CAN tem 6 dígitos.</string>
+    <string name="dnie_pin_invalid">O PIN tem pelo menos 8 caracteres.</string>
+    <string name="dnie_hold">Aproxime o DNIe da parte de trás do telemóvel e não o mova até terminar.</string>
+    <string name="dnie_reading">A ler o DNIe e a assinar… Não o mova.</string>
+    <string name="dnie_can_wrong">O CAN não está correto. Verifique os 6 dígitos na frente.</string>
+    <string name="dnie_pin_wrong">O PIN não está correto (restam %1$d tentativas).</string>
+    <string name="dnie_pin_locked">O PIN do DNIe está bloqueado. Desbloqueie-o num ponto DNIe da Policía Nacional.</string>
+    <string name="dnie_lost">Perdeu-se a ligação com o DNIe. Tente outra vez sem o afastar do telemóvel.</string>
+    <string name="dnie_error">Erro do DNIe: %1$s</string>
 </resources>

@@ -56,6 +56,8 @@ android {
 
     packaging {
         jniLibs { useLegacyPackaging = true }
+        // BouncyCastle metadata repeated in its two jars.
+        resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/DEPENDENCIES", "META-INF/LICENSE.md", "META-INF/NOTICE.md")
     }
 }
 
@@ -70,4 +72,11 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    // DNIe over NFC: the official Spanish library (GPL-2.0 / EUPL-1.1) and
+    // the cryptography it uses (BouncyCastle, MIT).
+    implementation("es.gob.afirma.jmulticard:jmulticard:2.1")
+    implementation("es.gob.afirma.jmulticard:jmulticard-crypto:2.1")
+    implementation("es.gob.afirma.jmulticard:jmulticard-android:2.1")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.84")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.84")
 }

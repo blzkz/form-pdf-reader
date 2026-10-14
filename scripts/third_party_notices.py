@@ -74,8 +74,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-# Java/Kotlin libraries of the Android app (android/app/build.gradle.kts),
-# all under the Apache License 2.0.
+# Java/Kotlin libraries of the Android app (android/app/build.gradle.kts):
+# under the Apache License 2.0, except jmulticard and Bouncy Castle (below).
 ANDROID_LIBRARIES = """\
 - AndroidX libraries (androidx.*): The Android Open Source Project.
 - Material Components for Android (com.google.android.material): Google LLC.
@@ -83,6 +83,40 @@ ANDROID_LIBRARIES = """\
   Programming Language contributors.
 - JNA, Java Native Access (net.java.dev.jna), dual-licensed under the LGPL 2.1
   or later and the Apache License 2.0; used here under the Apache License 2.0.
+
+For the DNIe (Spanish national ID card) over NFC:
+
+- jmulticard (es.gob.afirma.jmulticard: jmulticard, jmulticard-crypto,
+  jmulticard-android) 2.1, by the Government of Spain (Secretaría General de
+  Administración Digital), dual-licensed under the GNU General Public License
+  version 2 and the European Union Public Licence (EUPL) version 1.1; used
+  here under the EUPL 1.1 (https://joinup.ec.europa.eu/collection/eupl).
+  Source code: https://github.com/ctt-gob-es/jmulticard
+  Because of this library, the Android app as a whole is distributed under
+  the EUPL 1.1; the source code of Form PDF Reader keeps its MIT licence.
+- Bouncy Castle (org.bouncycastle: bcprov-jdk18on, bcpkix-jdk18on) 1.84,
+  The Legion of the Bouncy Castle Inc., under the MIT licence:
+
+  Copyright (c) 2000-2026 The Legion of the Bouncy Castle Inc.
+  (https://www.bouncycastle.org)
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the "Software"),
+  to deal in the Software without restriction, including without limitation
+  the rights to use, copy, modify, merge, publish, distribute, sublicense,
+  and/or sell copies of the Software, and to permit persons to whom the
+  Software is furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+  DEALINGS IN THE SOFTWARE.
 """
 
 

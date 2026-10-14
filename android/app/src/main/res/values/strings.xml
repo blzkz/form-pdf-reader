@@ -166,4 +166,21 @@
     <string name="dsig_no_device_title">No certificates on the device</string>
     <string name="dsig_no_device">You did not choose a certificate, or there is none installed. You can install yours in Settings › Security › Encryption &amp; credentials › Install a certificate, or use the certificate file (.p12, .pfx).</string>
     <string name="dsig_use_file">Use a file</string>
+    <string name="dsig_dnie">DNIe (Spanish ID card) over NFC</string>
+    <string name="dnie_title">DNIe over NFC</string>
+    <string name="dnie_no_nfc">This device has no NFC.</string>
+    <string name="dnie_nfc_off">NFC is turned off. Turn it on to read the DNIe.</string>
+    <string name="dnie_nfc_settings">NFC settings</string>
+    <string name="dnie_can_label">CAN (the 6 digits on the front of the card, bottom right)</string>
+    <string name="dnie_can_remember">Remember the CAN on this device</string>
+    <string name="dnie_pin_label">PIN of the DNIe</string>
+    <string name="dnie_can_invalid">The CAN has 6 digits.</string>
+    <string name="dnie_pin_invalid">The PIN has at least 8 characters.</string>
+    <string name="dnie_hold">Hold the DNIe against the back of the phone and do not move it until it finishes.</string>
+    <string name="dnie_reading">Reading the DNIe and signing… Keep it still.</string>
+    <string name="dnie_can_wrong">The CAN is not correct. Check the 6 digits on the front of the card.</string>
+    <string name="dnie_pin_wrong">The PIN is not correct (%1$d attempts left).</string>
+    <string name="dnie_pin_locked">The PIN of the DNIe is blocked. Unblock it at a DNIe point of the Policía Nacional.</string>
+    <string name="dnie_lost">The connection with the DNIe was lost. Try again holding it still against the phone.</string>
+    <string name="dnie_error">DNIe error: %1$s</string>
 </resources>

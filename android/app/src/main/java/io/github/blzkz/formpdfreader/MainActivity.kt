@@ -211,17 +211,36 @@ class MainActivity : AppCompatActivity() {
         // recover them on the start screen.
         if (savedInstanceState != null || intent.getBooleanExtra(EXTRA_RECOVER, false)) recoverDrafts()
         val item = itemFor(intent)
-        if (item == null) {
-            if (docs.isEmpty()) finish()
+        if (item == null || staleGrant(intent, item)) {
+            if (docs.isEmpty()) {
+                if (item != null) startActivity(Intent(this, HomeActivity::class.java))
+                finish()
+            }
             return
         }
         openOrRecover(item)
     }
 
+    /**
+     * A document shared by another app whose permission has expired. When
+     * Android recreates the viewer (after closing it in the background, or
+     * after an update) it gives it the intent of its first launch again:
+     * that one is skipped without an error.
+     */
+    private fun staleGrant(intent: Intent, item: DocItem): Boolean =
+        (intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0 && item.contentUri != null && !canRead(item)
+
+    /** The document can still be read (its permission has not expired). */
+    private fun canRead(item: DocItem): Boolean {
+        item.path?.let { return File(it).canRead() }
+        val uri = item.contentUri ?: return false
+        return runCatching { contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false }.getOrDefault(false)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra(EXTRA_RECOVER, false)) recoverDrafts()
-        itemFor(intent)?.let { openOrRecover(it) }
+        itemFor(intent)?.takeUnless { staleGrant(intent, it) }?.let { openOrRecover(it) }
     }
 
     override fun onStop() {
@@ -1136,7 +1155,11 @@ class MainActivity : AppCompatActivity() {
             PdfEngine.run({ Pair(d.signatureFields(), lib.list()) }) { r ->
                 val (fields, saved) = r.getOrElse { e -> return@run showError(e.message ?: "") }
                 DigitalSign.showOptions(this, fields, saved, dynamicXfa) { o ->
-                    chooseCertificate(o.source) { signer -> placeDigital(t, o, signer) }
+                    when (o.source) {
+                        // The DNIe is read at the end, while it is held against the phone.
+                        DigitalSign.Source.DNIE -> if (DnieReader.checkNfc(this)) placeDigital(t, o, null)
+                        else -> chooseCertificate(o.source) { signer -> placeDigital(t, o, signer) }
+                    }
                 }
             }
         }
@@ -1200,7 +1223,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Where the signature goes: a tap on the page if it is a new visible one. */
-    private fun placeDigital(t: DocTab, o: DigitalSign.Options, signer: CertSigner) {
+    /** [signer] null: the DNIe, read when signing. */
+    private fun placeDigital(t: DocTab, o: DigitalSign.Options, signer: CertSigner?) {
         when {
             !o.visible -> saveSigned(t, o, DigitalPlacement.Invisible, signer)
             o.field != null -> saveSigned(t, o, DigitalPlacement.Field(o.field), signer)
@@ -1215,12 +1239,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Asks where to save the signed copy, signs and opens it in place of the document. */
-    private fun saveSigned(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, signer: CertSigner) {
+    private fun saveSigned(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, signer: CertSigner?) {
         val d = t.doc ?: return
         val stem = t.item.name.substringBeforeLast('.')
         signedCallback = cb@{ uri ->
             if (uri == null || t !in docs) return@cb
             val target = itemFor(uri)
+            if (signer == null) return@cb dnieSign(t, o, placement, target, error = null)
             val lib = Signatures.library(this)
             PdfEngine.run({
                 d.prepareDigitalSignature(placement, o.reason, o.location, lib, o.handwrittenId, signer.chain)
@@ -1232,18 +1257,48 @@ class MainActivity : AppCompatActivity() {
                     writeDocument(target, bytes)
                     bytes.size.toLong()
                 }) { w ->
-                    w.onSuccess { size ->
-                        remember(target, size)
-                        // The signed copy has the changes: the tab shows it now.
-                        t.modified = false
-                        removeTab(t)
-                        open(target)
-                        Toast.makeText(this, R.string.dsig_done, Toast.LENGTH_LONG).show()
-                    }.onFailure { e -> showError(getString(R.string.dsig_failed, e.message ?: "")) }
+                    w.onSuccess { size -> signedDone(t, target, size) }
+                        .onFailure { e -> showError(getString(R.string.dsig_failed, e.message ?: "")) }
                 }
             }
         }
         createSigned.launch(getString(R.string.dsig_signed_name, stem))
+    }
+
+    /** The signed copy is saved: it has the changes, so the tab shows it now. */
+    private fun signedDone(t: DocTab, target: DocItem, size: Long) {
+        remember(target, size)
+        t.modified = false
+        removeTab(t)
+        open(target)
+        Toast.makeText(this, R.string.dsig_done, Toast.LENGTH_LONG).show()
+    }
+
+    /** Signs with the DNIe over NFC: asks the CAN and the PIN, then the card does the rest. */
+    private fun dnieSign(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, target: DocItem, error: String?) {
+        val d = t.doc ?: return
+        val lib = Signatures.library(this)
+        DnieReader.askCodes(this, error) { can, pin ->
+            DnieReader.sign(this, can, pin, { chain, sign ->
+                val pending = try {
+                    PdfEngine.submit { d.prepareDigitalSignature(placement, o.reason, o.location, lib, o.handwrittenId, chain) }.get()
+                } catch (e: java.util.concurrent.ExecutionException) {
+                    throw e.cause ?: e
+                }
+                val bytes = pending.finish(sign(pending.dataToSign()))
+                writeDocument(target, bytes)
+                bytes
+            }) { r, retry ->
+                if (r == null || t !in docs) return@sign
+                t.view.refreshSignatures()
+                val e = r.exceptionOrNull()
+                when {
+                    e == null -> signedDone(t, target, r.getOrThrow().size.toLong())
+                    retry -> dnieSign(t, o, placement, target, e.message)
+                    else -> showError(getString(R.string.dsig_failed, e.message ?: ""))
+                }
+            }
+        }
     }
 
     private fun onFormInput(t: DocTab, r: InputResult) {
