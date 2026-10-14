@@ -211,7 +211,7 @@ class MainActivity : AppCompatActivity() {
         // recover them on the start screen.
         if (savedInstanceState != null || intent.getBooleanExtra(EXTRA_RECOVER, false)) recoverDrafts()
         val item = itemFor(intent)
-        if (item == null || staleGrant(intent, item)) {
+        if (item == null || !shouldOpen(intent, item)) {
             if (docs.isEmpty()) {
                 if (item != null) startActivity(Intent(this, HomeActivity::class.java))
                 finish()
@@ -222,13 +222,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * A document shared by another app whose permission has expired. When
-     * Android recreates the viewer (after closing it in the background, or
-     * after an update) it gives it the intent of its first launch again:
-     * that one is skipped without an error.
+     * Whether to open the document of [intent]. When Android recreates the
+     * viewer (after closing it in the background, or after an update) it
+     * gives it again the intent of its first launch: then the document is
+     * opened only if it can still be read, without an error otherwise (the
+     * permission of the app that shared it may have expired long ago).
      */
-    private fun staleGrant(intent: Intent, item: DocItem): Boolean =
-        (intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0 && item.contentUri != null && !canRead(item)
+    private fun shouldOpen(intent: Intent, item: DocItem): Boolean {
+        // Without a launch id: shared by another app, or launched by an older
+        // version; either way it may be an old intent given again.
+        val repeated = intent.getStringExtra(EXTRA_LAUNCH) == null || alreadyHandled(intent)
+        return !repeated || canRead(item)
+    }
+
+    /** The launch of [intent] (see [EXTRA_LAUNCH]) was handled before; records it if not. */
+    private fun alreadyHandled(intent: Intent): Boolean {
+        val id = intent.getStringExtra(EXTRA_LAUNCH) ?: return false
+        val prefs = getSharedPreferences("launches", Context.MODE_PRIVATE)
+        val seen = prefs.getString("ids", "").orEmpty().split('\n').filter { it.isNotEmpty() }
+        if (id in seen) return true
+        prefs.edit().putString("ids", (seen.takeLast(49) + id).joinToString("\n")).apply()
+        return false
+    }
 
     /** The document can still be read (its permission has not expired). */
     private fun canRead(item: DocItem): Boolean {
@@ -240,7 +255,7 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra(EXTRA_RECOVER, false)) recoverDrafts()
-        itemFor(intent)?.takeUnless { staleGrant(intent, it) }?.let { openOrRecover(it) }
+        itemFor(intent)?.takeIf { shouldOpen(intent, it) }?.let { openOrRecover(it) }
     }
 
     override fun onStop() {
@@ -376,7 +391,10 @@ class MainActivity : AppCompatActivity() {
     private fun itemFor(intent: Intent): DocItem? {
         intent.getStringExtra(EXTRA_PATH)?.let { return DocItem(File(it).name, path = it) }
         val uri = intent.data ?: return null
-        return itemFor(uri)
+        // The name the start screen knows: without permission the document's
+        // own name cannot be read.
+        val name = intent.getStringExtra(EXTRA_NAME)
+        return if (name != null && uri.scheme != "file") DocItem(name, uri = uri.toString()) else itemFor(uri)
     }
 
     private fun itemFor(uri: Uri): DocItem {
@@ -1455,17 +1473,28 @@ class MainActivity : AppCompatActivity() {
         /** Opens the documents with changes kept from a previous run (see [Drafts]). */
         const val EXTRA_RECOVER = "io.github.blzkz.formpdfreader.RECOVER"
 
+        /**
+         * A unique id of each launch from this app: Android may give the same
+         * intent again when it recreates the viewer, and then it is not a new
+         * request to open the document.
+         */
+        const val EXTRA_LAUNCH = "io.github.blzkz.formpdfreader.LAUNCH"
+
+        /** Name of the document (for a content URI that can no longer be read). */
+        const val EXTRA_NAME = "io.github.blzkz.formpdfreader.NAME"
+
         private const val ZOOM_FIT_WIDTH = 1
         private const val ZOOM_FIT_PAGE = 2
         private const val ZOOM_PERCENT = 1000
 
         fun intentFor(c: Context, item: DocItem): Intent =
             if (item.path != null) {
-                Intent(c, MainActivity::class.java).putExtra(EXTRA_PATH, item.path)
+                Intent(c, MainActivity::class.java).putExtra(EXTRA_PATH, item.path).putExtra(EXTRA_LAUNCH, UUID.randomUUID().toString())
             } else {
-                intentFor(c, requireNotNull(item.contentUri))
+                intentFor(c, requireNotNull(item.contentUri)).putExtra(EXTRA_NAME, item.name)
             }
 
-        fun intentFor(c: Context, uri: Uri): Intent = Intent(Intent.ACTION_VIEW, uri, c, MainActivity::class.java)
+        fun intentFor(c: Context, uri: Uri): Intent =
+            Intent(Intent.ACTION_VIEW, uri, c, MainActivity::class.java).putExtra(EXTRA_LAUNCH, UUID.randomUUID().toString())
     }
 }
