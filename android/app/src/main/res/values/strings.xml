@@ -94,4 +94,24 @@
     <string name="password_prompt">“%1$s” is protected with a password. Enter it to open the document.</string>
     <string name="password_wrong">The password is not correct. Try again.</string>
     <string name="a11y_document">Document, page %1$d of %2$d</string>
+    <!-- Firmas manuscritas -->
+    <string name="sign">Sign</string>
+    <string name="sign_none">You have no signatures saved on this device yet.</string>
+    <string name="sign_create">Create signature</string>
+    <string name="sign_create_title">Create signature</string>
+    <string name="sign_mode_typed">Type</string>
+    <string name="sign_mode_initials">Initials</string>
+    <string name="sign_mode_drawn">Draw</string>
+    <string name="sign_name">Full name</string>
+    <string name="sign_initials">Initials</string>
+    <string name="sign_style">Choose a style</string>
+    <string name="sign_draw_hint">Sign in the box with your finger or a stylus</string>
+    <string name="sign_clear">Clear</string>
+    <string name="sign_ink_blue">Blue</string>
+    <string name="sign_ink_black">Black</string>
+    <string name="sign_save">Save and use</string>
+    <string name="sign_delete">Delete this signature from the device</string>
+    <string name="sign_cannot">This document does not accept signatures on the page (dynamic XFA form).</string>
+    <string name="sign_error">The signature could not be placed: %1$s</string>
+    <string name="sign_place_hint">Tap the page where you want the signature. Then you can move it, resize it or remove it until you save.</string>
 </resources>

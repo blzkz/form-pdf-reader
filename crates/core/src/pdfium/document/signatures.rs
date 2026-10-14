@@ -55,6 +55,22 @@ impl Document {
         Ok(self.signatures.len() - 1)
     }
 
+    /// Rectángulo para poner `sig` centrada en (x, y) de la página, sin
+    /// salirse de ella.
+    pub fn signature_rect_at(&self, page: usize, x: f32, y: f32, sig: &SavedSignature) -> [f32; 4] {
+        let (w, h) = signature_size(sig);
+        self.clamp_to_page(page, [x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0])
+    }
+
+    /// `r` movido para que quede dentro de la página.
+    pub fn clamp_to_page(&self, page: usize, r: [f32; 4]) -> [f32; 4] {
+        let (pw, ph) = self.page_size(page);
+        let (w, h) = (r[2] - r[0], r[3] - r[1]);
+        let dx = (-r[0]).max(0.0) - (r[2] - pw).max(0.0);
+        let dy = (-r[1]).max(0.0) - (r[3] - ph).max(0.0);
+        [r[0] + dx, r[1] + dy, r[0] + dx + w, r[1] + dy + h]
+    }
+
     /// Mueve o cambia de tamaño una firma aún no escrita.
     pub fn move_signature(&mut self, i: usize, rect: [f32; 4]) -> Result<()> {
         let Some(p) = self.signatures.get_mut(i) else { bail!("no hay esa firma") };

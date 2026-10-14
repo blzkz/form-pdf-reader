@@ -10,6 +10,7 @@
 //! single-thread executor). The `Mutex` only serialises calls; it does not
 //! make PDFium usable from several threads.
 
+use form_pdf_reader::sign::{self as core_sign, SavedSignature, SignatureKind, TypeStyle};
 use form_pdf_reader::pdfium::{self, AlertAnswer as CoreAnswer, AlertButtons as CoreButtons, Document, FormKind, OpenOptions, PasswordRequired, keys};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -30,12 +31,14 @@ pub enum PdfError {
     Password(String),
     /// The password given is not correct.
     WrongPassword(String),
+    /// A handwritten signature could not be saved or placed.
+    Sign(String),
 }
 
 impl std::fmt::Display for PdfError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PdfError::Open(m) | PdfError::Save(m) | PdfError::Password(m) | PdfError::WrongPassword(m) => f.write_str(m),
+            PdfError::Open(m) | PdfError::Save(m) | PdfError::Password(m) | PdfError::WrongPassword(m) | PdfError::Sign(m) => f.write_str(m),
         }
     }
 }
@@ -182,6 +185,133 @@ pub fn set_temp_dir(path: String) {
     // SAFETY: called once at start-up from the PDFium thread, before any
     // other code of this library reads the environment.
     unsafe { std::env::set_var("TMPDIR", path) };
+}
+
+// ---------------------------------------------------------------------------
+// Handwritten signatures
+// ---------------------------------------------------------------------------
+
+/// An image of a signature: RGBA, transparent background.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SignatureImage {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+/// A signature saved on the device.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SignatureInfo {
+    pub id: String,
+    pub initials: bool,
+}
+
+/// A drawn stroke: its width and points x0, y0, x1, y1… in the units of
+/// the pad it was drawn on (y downwards).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct InkStroke {
+    pub width: f32,
+    pub points: Vec<f32>,
+}
+
+/// A signature placed on the document and not yet written to the PDF
+/// (that happens when saving): it can still be moved or removed.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PlacedSignatureInfo {
+    pub index: u32,
+    pub page: u32,
+    /// In points of the page, from its top left corner.
+    pub rect: PageRect,
+    pub id: String,
+}
+
+fn image(sig: &SavedSignature, height: u32) -> Option<SignatureImage> {
+    let (w, h, rgba) = pdfium::render_signature(sig, height as i32)?;
+    Some(SignatureImage { width: w as u32, height: h as u32, rgba })
+}
+
+fn style_of(key: &str) -> TypeStyle {
+    TypeStyle::from_key(key).unwrap_or(TypeStyle::GreatVibes)
+}
+
+fn rgb(color: u32) -> [u8; 3] {
+    [(color >> 16) as u8, (color >> 8) as u8, color as u8]
+}
+
+/// Keys of the handwriting styles for typed signatures.
+#[uniffi::export]
+pub fn signature_styles() -> Vec<String> {
+    TypeStyle::ALL.iter().map(|s| s.key().to_string()).collect()
+}
+
+/// Image of a typed signature not saved yet (to choose the style).
+/// Uses PDFium: call it from the PDFium thread.
+#[uniffi::export]
+pub fn preview_typed(text: String, style: String, initials: bool, color: u32, height: u32) -> Option<SignatureImage> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return None;
+    }
+    let style = style_of(&style);
+    let kind = if initials { SignatureKind::Initials { text, style } } else { SignatureKind::Typed { text, style } };
+    image(&SavedSignature { id: "preview".into(), kind, color: rgb(color) }, height)
+}
+
+/// Initials of a name: "Juan Pérez García" → "JPG".
+#[uniffi::export]
+pub fn name_initials(name: String) -> String {
+    core_sign::library::initials_of(&name)
+}
+
+/// The signatures saved on this device, in a folder of the app.
+#[derive(uniffi::Object)]
+pub struct SignatureLibrary {
+    lib: core_sign::Library,
+}
+
+impl SignatureLibrary {
+    fn get(&self, id: &str) -> Option<SavedSignature> {
+        self.lib.get(id)
+    }
+}
+
+#[uniffi::export]
+impl SignatureLibrary {
+    #[uniffi::constructor]
+    pub fn new(dir: String) -> Arc<Self> {
+        Arc::new(SignatureLibrary { lib: core_sign::Library::new(dir) })
+    }
+
+    /// Oldest first.
+    pub fn list(&self) -> Vec<SignatureInfo> {
+        self.lib.list().into_iter().map(|s| SignatureInfo { initials: s.is_initials(), id: s.id }).collect()
+    }
+
+    /// Image of a saved signature, `height` pixels high. Uses PDFium: call
+    /// it from the PDFium thread.
+    pub fn preview(&self, id: String, height: u32) -> Option<SignatureImage> {
+        image(&self.get(&id)?, height)
+    }
+
+    /// Saves a typed signature (name or initials); returns its id.
+    pub fn add_typed(&self, text: String, style: String, initials: bool, color: u32) -> Result<String, PdfError> {
+        let style = style_of(&style);
+        let kind = if initials { SignatureKind::Initials { text, style } } else { SignatureKind::Typed { text, style } };
+        self.lib.add(kind, rgb(color)).map(|s| s.id).map_err(|e| PdfError::Sign(format!("{e:#}")))
+    }
+
+    /// Saves a drawn signature; returns its id.
+    pub fn add_drawn(&self, strokes: Vec<InkStroke>, color: u32) -> Result<String, PdfError> {
+        let strokes = strokes
+            .into_iter()
+            .map(|s| core_sign::Stroke { width: s.width, points: s.points.as_chunks::<2>().0.iter().map(|&[x, y]| (x, y)).collect() })
+            .collect();
+        self.lib.add(SignatureKind::Drawn { strokes }, rgb(color)).map(|s| s.id).map_err(|e| PdfError::Sign(format!("{e:#}")))
+    }
+
+    pub fn remove(&self, id: String) -> bool {
+        self.lib.remove(&id).is_ok()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +615,64 @@ impl PdfDocument {
     /// form data, its attachments and state.
     pub fn save_bytes(&self) -> Result<Vec<u8>, PdfError> {
         self.lock().bytes_for_save().map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// Handwritten signatures can be placed on the pages (not on dynamic
+    /// XFA forms).
+    pub fn can_sign(&self) -> bool {
+        self.lock().can_sign()
+    }
+
+    /// Places signature `id` of `library` centred at (x, y), in points of
+    /// the page from its top left corner. Returns its index.
+    pub fn add_signature(&self, library: Arc<SignatureLibrary>, id: String, page: u32, x: f32, y: f32) -> Result<u32, PdfError> {
+        let sig = library.get(&id).ok_or_else(|| PdfError::Sign("no such signature".into()))?;
+        let mut doc = self.lock();
+        let p = usize_page(page);
+        let (w, h) = doc.page_size(p);
+        let (px, py) = doc.device_to_page(p, w as f64, h as f64, x as f64, y as f64);
+        let r = doc.signature_rect_at(p, px as f32, py as f32, &sig);
+        doc.add_signature(p, r, &sig).map(|i| i as u32).map_err(|e| PdfError::Sign(format!("{e:#}")))
+    }
+
+    /// Moves or resizes a placed signature; `rect` in points of its page
+    /// from the top left corner.
+    pub fn move_signature(&self, index: u32, rect: PageRect) -> Result<(), PdfError> {
+        let mut doc = self.lock();
+        let Some(p) = doc.placed_signatures().get(index as usize).map(|s| s.page) else {
+            return Err(PdfError::Sign("no such signature".into()));
+        };
+        let (w, h) = doc.page_size(p);
+        let (x0, y0) = doc.device_to_page(p, w as f64, h as f64, rect.left as f64, rect.top as f64);
+        let (x1, y1) = doc.device_to_page(p, w as f64, h as f64, rect.right as f64, rect.bottom as f64);
+        let r = [x0.min(x1) as f32, y0.min(y1) as f32, x0.max(x1) as f32, y0.max(y1) as f32];
+        let r = doc.clamp_to_page(p, r);
+        doc.move_signature(index as usize, r).map_err(|e| PdfError::Sign(format!("{e:#}")))
+    }
+
+    pub fn remove_signature(&self, index: u32) {
+        self.lock().remove_signature(index as usize);
+    }
+
+    /// Signatures placed and not yet written (saving writes them).
+    pub fn placed_signatures(&self) -> Vec<PlacedSignatureInfo> {
+        let doc = self.lock();
+        doc.placed_signatures()
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                let (w, h) = doc.page_size(s.page);
+                let [l, b, r, t] = s.rect;
+                let (x0, y0) = doc.page_to_device(s.page, w as f64, h as f64, l as f64, t as f64);
+                let (x1, y1) = doc.page_to_device(s.page, w as f64, h as f64, r as f64, b as f64);
+                PlacedSignatureInfo {
+                    index: i as u32,
+                    page: s.page as u32,
+                    rect: PageRect { left: x0.min(x1) as f32, top: y0.min(y1) as f32, right: x0.max(x1) as f32, bottom: y0.max(y1) as f32 },
+                    id: s.signature.id.clone(),
+                }
+            })
+            .collect()
     }
 
     /// Saves to a file.

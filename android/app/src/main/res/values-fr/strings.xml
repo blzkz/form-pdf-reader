@@ -93,4 +93,24 @@
     <string name="password_prompt">« %1$s » est protégé par un mot de passe. Saisissez-le pour ouvrir le document.</string>
     <string name="password_wrong">Le mot de passe est incorrect. Réessayez.</string>
     <string name="a11y_document">Document, page %1$d sur %2$d</string>
+    <!-- Firmas manuscritas -->
+    <string name="sign">Signer</string>
+    <string name="sign_none">Vous n\'avez encore aucune signature enregistrée sur cet appareil.</string>
+    <string name="sign_create">Créer une signature</string>
+    <string name="sign_create_title">Créer une signature</string>
+    <string name="sign_mode_typed">Écrire</string>
+    <string name="sign_mode_initials">Initiales</string>
+    <string name="sign_mode_drawn">Dessiner</string>
+    <string name="sign_name">Nom et prénom</string>
+    <string name="sign_initials">Initiales</string>
+    <string name="sign_style">Choisissez un style</string>
+    <string name="sign_draw_hint">Signez dans le cadre avec le doigt ou un stylet</string>
+    <string name="sign_clear">Effacer</string>
+    <string name="sign_ink_blue">Bleu</string>
+    <string name="sign_ink_black">Noir</string>
+    <string name="sign_save">Enregistrer et utiliser</string>
+    <string name="sign_delete">Supprimer cette signature de l\'appareil</string>
+    <string name="sign_cannot">Ce document n\'accepte pas de signatures sur la page (formulaire XFA dynamique).</string>
+    <string name="sign_error">Impossible de placer la signature : %1$s</string>
+    <string name="sign_place_hint">Touchez la page à l\'endroit voulu. Ensuite, vous pouvez la déplacer, la redimensionner ou la retirer jusqu\'à l\'enregistrement.</string>
 </resources>

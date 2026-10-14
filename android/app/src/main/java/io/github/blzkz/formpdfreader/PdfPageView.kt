@@ -45,7 +45,10 @@ import kotlin.math.roundToInt
 import uniffi.form_pdf_reader_ffi.InputResult
 import uniffi.form_pdf_reader_ffi.Key
 import uniffi.form_pdf_reader_ffi.PdfDocument
+import uniffi.form_pdf_reader_ffi.PageRect
+import uniffi.form_pdf_reader_ffi.PlacedSignatureInfo
 import uniffi.form_pdf_reader_ffi.SearchHit
+import uniffi.form_pdf_reader_ffi.SignatureLibrary
 
 /**
  * Shows the pages of a [PdfDocument] and sends taps and typing to the form.
@@ -173,6 +176,10 @@ class PdfPageView(context: Context) : View(context) {
     /** Shows [document]. Page sizes are read on the PDFium thread. */
     fun setDocument(document: PdfDocument?) {
         clearSelection()
+        placed = emptyList()
+        selectedSig = null
+        placingId = null
+        sigDrag = null
         endFieldEditing()
         hits = emptyList()
         hitIndex = -1
@@ -482,6 +489,7 @@ class PdfPageView(context: Context) : View(context) {
             drawTiles(canvas, d, slot.page, r, s)
             drawHits(canvas, slot.page, r, s)
         }
+        drawSignatures(canvas)
         drawSelection(canvas)
     }
 
@@ -602,6 +610,218 @@ class PdfPageView(context: Context) : View(context) {
     }
 
     // -----------------------------------------------------------------------
+    // Handwritten signatures
+    // -----------------------------------------------------------------------
+
+    /**
+     * Placed signatures changed: an unsaved change. Until the document is
+     * saved they are only drawn here and can be moved, resized or removed;
+     * saving writes them into the PDF.
+     */
+    var onSignaturesChanged: (() -> Unit)? = null
+
+    /** A signature could not be placed. */
+    var onSignatureError: ((Throwable) -> Unit)? = null
+
+    private var signatureLibrary: SignatureLibrary? = null
+
+    /** The signature waiting for a tap on the page. */
+    private var placingId: String? = null
+    private var placed: List<PlacedSignatureInfo> = emptyList()
+    private var selectedSig: Int? = null
+
+    /** Images of the signatures by id, with their height in pixels. */
+    private val sigImages = HashMap<String, Pair<Bitmap, Int>>()
+    private val sigLoading = HashSet<String>()
+
+    /** Dragging a placed signature: rectangles in points of its page. */
+    private class SigDrag(val index: Int, val resize: Boolean, val startX: Float, val startY: Float, val rect0: RectF, var cur: RectF)
+
+    private var sigDrag: SigDrag? = null
+    private val sigFramePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2 * density; color = accent }
+    private val sigHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accent }
+    private val sigCrossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; strokeWidth = 2 * density; strokeCap = Paint.Cap.ROUND }
+    private val sigBitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+    private val handleRadius = 12 * density
+
+    val isPlacingSignature get() = placingId != null
+
+    /** The next tap on a page places signature [id]. */
+    fun startPlacingSignature(library: SignatureLibrary, id: String) {
+        signatureLibrary = library
+        placingId = id
+        selectedSig = null
+        invalidate()
+    }
+
+    fun cancelPlacingSignature() {
+        placingId = null
+    }
+
+    /** Reads the placed signatures again (after placing one, or saving). */
+    fun refreshSignatures(then: (() -> Unit)? = null) {
+        val d = doc ?: return
+        PdfEngine.run({ d.placedSignatures() }) { r ->
+            if (d !== doc) return@run
+            val list = r.getOrNull() ?: return@run
+            // Saved: they are part of the page now, and PDFium draws them.
+            if (list.isEmpty() && placed.isNotEmpty()) redraw()
+            placed = list
+            if ((selectedSig ?: -1) >= list.size) selectedSig = null
+            invalidate()
+            then?.invoke()
+        }
+    }
+
+    /** Where a placed signature is on the view. */
+    private fun sigViewRect(p: PlacedSignatureInfo, rect: RectF? = null): RectF? {
+        val slot = slotOf(p.page.toInt()) ?: return null
+        val r = rect ?: RectF(p.rect.left, p.rect.top, p.rect.right, p.rect.bottom)
+        val l = slot.x - offsetX
+        val t = slot.y - offsetY
+        return RectF(l + r.left * scale, t + r.top * scale, l + r.right * scale, t + r.bottom * scale)
+    }
+
+    private fun sigImage(id: String, heightPx: Int): Bitmap? {
+        val have = sigImages[id]
+        val want = heightPx.coerceIn(16, 900)
+        val lib = signatureLibrary
+        if ((have == null || abs(have.second - want) * 4 > want) && id !in sigLoading && lib != null) {
+            sigLoading += id
+            PdfEngine.run({ lib.preview(id, want.toUInt()) }) { r ->
+                sigLoading -= id
+                r.getOrNull()?.let { img ->
+                    sigImages[id] = Pair(Signatures.bitmapOf(img), want)
+                    invalidate()
+                }
+            }
+        }
+        return have?.first
+    }
+
+    private fun drawSignatures(canvas: Canvas) {
+        for (p in placed) {
+            val i = p.index.toInt()
+            val drag = sigDrag?.takeIf { it.index == i }
+            val vr = sigViewRect(p, drag?.cur) ?: continue
+            sigImage(p.id, vr.height().roundToInt())?.let {
+                sigBitmapPaint.alpha = if (drag != null) 180 else 255
+                canvas.drawBitmap(it, null, vr, sigBitmapPaint)
+            }
+            if (i != selectedSig) continue
+            val fr = RectF(vr).apply { inset(-4 * density, -4 * density) }
+            canvas.drawRoundRect(fr, 4 * density, 4 * density, sigFramePaint)
+            // Bottom right: resize. Top right: remove.
+            canvas.drawCircle(fr.right, fr.bottom, handleRadius * 0.75f, sigHandlePaint)
+            if (drag == null) {
+                canvas.drawCircle(fr.right, fr.top, handleRadius, sigHandlePaint)
+                val k = handleRadius * 0.4f
+                canvas.drawLine(fr.right - k, fr.top - k, fr.right + k, fr.top + k, sigCrossPaint)
+                canvas.drawLine(fr.right - k, fr.top + k, fr.right + k, fr.top - k, sigCrossPaint)
+            }
+        }
+    }
+
+    /** A tap: places the signature waiting, or selects a placed one. */
+    private fun placeOrSelectSignature(x: Float, y: Float): Boolean {
+        val id = placingId
+        if (id != null) {
+            val slot = slotAt(x, y) ?: return true
+            val lib = signatureLibrary ?: return true
+            val d = doc ?: return true
+            placingId = null
+            val px = (x + offsetX - slot.x) / scale
+            val py = (y + offsetY - slot.y) / scale
+            PdfEngine.run({ d.addSignature(lib, id, slot.page.toUInt(), px, py) }) { r ->
+                r.onSuccess { i ->
+                    refreshSignatures {
+                        selectedSig = i.toInt()
+                        invalidate()
+                    }
+                    onSignaturesChanged?.invoke()
+                }.onFailure { e -> onSignatureError?.invoke(e) }
+            }
+            return true
+        }
+        val hit = placed.lastOrNull { sigViewRect(it)?.contains(x, y) == true }
+        if (hit != null) {
+            selectedSig = hit.index.toInt()
+            invalidate()
+            return true
+        }
+        if (selectedSig != null) {
+            selectedSig = null
+            invalidate()
+        }
+        return false
+    }
+
+    /** Moving, resizing or removing the selected signature. true if the event was for it. */
+    private fun handleSignatureTouch(e: MotionEvent): Boolean {
+        // A mouse click places the signature waiting (taps go through the gestures).
+        if (placingId != null && e.isFromSource(InputDevice.SOURCE_MOUSE) && e.actionMasked == MotionEvent.ACTION_UP) {
+            placeOrSelectSignature(e.x, e.y)
+            return true
+        }
+        val drag = sigDrag
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val i = selectedSig ?: return false
+                val p = placed.getOrNull(i) ?: return false
+                val vr = sigViewRect(p) ?: return false
+                val fr = RectF(vr).apply { inset(-4 * density, -4 * density) }
+                val d = doc ?: return false
+                if (hypot(e.x - fr.right, e.y - fr.top) < handleRadius * 1.6f) {
+                    selectedSig = null
+                    PdfEngine.run({ d.removeSignature(i.toUInt()) }) {
+                        refreshSignatures()
+                        onSignaturesChanged?.invoke()
+                    }
+                    return true
+                }
+                val resize = hypot(e.x - fr.right, e.y - fr.bottom) < handleRadius * 1.6f
+                if (resize || fr.contains(e.x, e.y)) {
+                    val r = RectF(p.rect.left, p.rect.top, p.rect.right, p.rect.bottom)
+                    sigDrag = SigDrag(i, resize, e.x, e.y, r, RectF(r))
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    return true
+                }
+                return false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                drag ?: return false
+                val dx = (e.x - drag.startX) / scale
+                val dy = (e.y - drag.startY) / scale
+                val r = drag.rect0
+                drag.cur = if (drag.resize) {
+                    // The top left corner stays; the proportion too.
+                    val w = max(r.width() + dx, 20f)
+                    RectF(r.left, r.top, r.left + w, r.top + w * r.height() / r.width())
+                } else {
+                    RectF(r.left + dx, r.top + dy, r.right + dx, r.bottom + dy)
+                }
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                drag ?: return false
+                sigDrag = null
+                val d = doc ?: return true
+                val c = drag.cur
+                if (c != drag.rect0) {
+                    PdfEngine.run({ d.moveSignature(drag.index.toUInt(), PageRect(c.left, c.top, c.right, c.bottom)) }) {
+                        refreshSignatures()
+                        onSignaturesChanged?.invoke()
+                    }
+                }
+                invalidate()
+                return true
+            }
+        }
+        return drag != null
+    }
+
+    // -----------------------------------------------------------------------
     // Gestures
     // -----------------------------------------------------------------------
 
@@ -631,6 +851,7 @@ class PdfPageView(context: Context) : View(context) {
         }
 
         override fun onSingleTapUp(e: MotionEvent): Boolean {
+            if (placeOrSelectSignature(e.x, e.y)) return true
             if (selection != null) clearSelection() else tap(e.x, e.y)
             return true
         }
@@ -675,6 +896,7 @@ class PdfPageView(context: Context) : View(context) {
     private var fingerDown = false
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (handleSignatureTouch(event)) return true
         if (event.isFromSource(InputDevice.SOURCE_MOUSE) && !isTouchpadGesture(event)) return onMouseEvent(event)
         fingerDown = event.actionMasked != MotionEvent.ACTION_UP && event.actionMasked != MotionEvent.ACTION_CANCEL
         // Selecting in a text field after a long press.

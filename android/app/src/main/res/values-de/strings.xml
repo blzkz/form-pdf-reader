@@ -93,4 +93,24 @@
     <string name="password_prompt">„%1$s“ ist kennwortgeschützt. Geben Sie das Kennwort ein, um das Dokument zu öffnen.</string>
     <string name="password_wrong">Das Kennwort ist nicht korrekt. Versuchen Sie es erneut.</string>
     <string name="a11y_document">Dokument, Seite %1$d von %2$d</string>
+    <!-- Firmas manuscritas -->
+    <string name="sign">Unterschreiben</string>
+    <string name="sign_none">Auf diesem Gerät sind noch keine Unterschriften gespeichert.</string>
+    <string name="sign_create">Unterschrift erstellen</string>
+    <string name="sign_create_title">Unterschrift erstellen</string>
+    <string name="sign_mode_typed">Tippen</string>
+    <string name="sign_mode_initials">Initialen</string>
+    <string name="sign_mode_drawn">Zeichnen</string>
+    <string name="sign_name">Vor- und Nachname</string>
+    <string name="sign_initials">Initialen</string>
+    <string name="sign_style">Stil wählen</string>
+    <string name="sign_draw_hint">Mit dem Finger oder einem Stift im Feld unterschreiben</string>
+    <string name="sign_clear">Löschen</string>
+    <string name="sign_ink_blue">Blau</string>
+    <string name="sign_ink_black">Schwarz</string>
+    <string name="sign_save">Speichern und verwenden</string>
+    <string name="sign_delete">Diese Unterschrift vom Gerät löschen</string>
+    <string name="sign_cannot">Dieses Dokument erlaubt keine Unterschriften auf der Seite (dynamisches XFA-Formular).</string>
+    <string name="sign_error">Die Unterschrift konnte nicht eingefügt werden: %1$s</string>
+    <string name="sign_place_hint">Tippen Sie auf die Stelle der Seite für die Unterschrift. Bis zum Speichern können Sie sie verschieben, die Größe ändern oder sie entfernen.</string>
 </resources>

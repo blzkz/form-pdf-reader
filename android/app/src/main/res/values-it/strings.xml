@@ -93,4 +93,24 @@
     <string name="password_prompt">«%1$s» è protetto da password. Inseriscila per aprire il documento.</string>
     <string name="password_wrong">La password non è corretta. Riprova.</string>
     <string name="a11y_document">Documento, pagina %1$d di %2$d</string>
+    <!-- Firmas manuscritas -->
+    <string name="sign">Firma</string>
+    <string name="sign_none">Non hai ancora firme salvate su questo dispositivo.</string>
+    <string name="sign_create">Crea firma</string>
+    <string name="sign_create_title">Crea firma</string>
+    <string name="sign_mode_typed">Scrivi</string>
+    <string name="sign_mode_initials">Iniziali</string>
+    <string name="sign_mode_drawn">Disegna</string>
+    <string name="sign_name">Nome e cognome</string>
+    <string name="sign_initials">Iniziali</string>
+    <string name="sign_style">Scegli uno stile</string>
+    <string name="sign_draw_hint">Firma nel riquadro con il dito o una penna</string>
+    <string name="sign_clear">Cancella</string>
+    <string name="sign_ink_blue">Blu</string>
+    <string name="sign_ink_black">Nero</string>
+    <string name="sign_save">Salva e usa</string>
+    <string name="sign_delete">Elimina questa firma dal dispositivo</string>
+    <string name="sign_cannot">Questo documento non accetta firme sulla pagina (modulo XFA dinamico).</string>
+    <string name="sign_error">Impossibile inserire la firma: %1$s</string>
+    <string name="sign_place_hint">Tocca la pagina dove vuoi la firma. Poi puoi spostarla, ridimensionarla o toglierla finché non salvi.</string>
 </resources>

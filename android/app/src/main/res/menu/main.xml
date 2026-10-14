@@ -5,6 +5,7 @@
     <item android:id="@+id/action_share" android:icon="@drawable/ic_share" android:title="@string/share" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_open" android:icon="@drawable/ic_add" android:title="@string/open" android:alphabeticShortcut="o" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_save" android:icon="@drawable/ic_save" android:title="@string/save" android:alphabeticShortcut="s" app:showAsAction="ifRoom" />
+    <item android:id="@+id/action_sign" android:icon="@drawable/ic_signature" android:title="@string/sign" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_attachments" android:icon="@drawable/ic_attach" android:title="@string/attachments" app:showAsAction="ifRoom" />
     <item android:id="@+id/action_save_as" android:title="@string/save_as" app:showAsAction="never" />
     <item android:id="@+id/action_view" android:title="@string/view" app:showAsAction="never">
