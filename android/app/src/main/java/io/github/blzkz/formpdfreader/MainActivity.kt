@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.security.KeyChain
 import android.text.InputType
 import android.text.format.DateUtils
 import android.view.KeyEvent
@@ -43,6 +44,9 @@ import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.util.UUID
+import uniffi.form_pdf_reader_ffi.DigitalPlacement
+import uniffi.form_pdf_reader_ffi.P12Certificate
+import uniffi.form_pdf_reader_ffi.certificateIsRsa
 import uniffi.form_pdf_reader_ffi.DocKind
 import uniffi.form_pdf_reader_ffi.InputResult
 import uniffi.form_pdf_reader_ffi.PdfDocument
@@ -105,6 +109,22 @@ class MainActivity : AppCompatActivity() {
 
     /** The tab being saved with "Save as". */
     private var saveAsTab: DocTab? = null
+
+    /** Digital signature waiting for a certificate file or the signed copy's place. */
+    private var certificateCallback: ((Uri?) -> Unit)? = null
+    private var signedCallback: ((Uri?) -> Unit)? = null
+
+    private val pickCertificate = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val cb = certificateCallback
+        certificateCallback = null
+        cb?.invoke(uri)
+    }
+
+    private val createSigned = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val cb = signedCallback
+        signedCallback = null
+        cb?.invoke(uri)
+    }
 
     /** A recent document that has to be chosen again: replaced by the one chosen. */
     private var replacing: DocItem? = null
@@ -1093,12 +1113,126 @@ class MainActivity : AppCompatActivity() {
         val t = current ?: return
         val d = t.doc ?: return
         PdfEngine.run({ d.canSign() }) { r ->
-            if (r.getOrNull() != true) return@run showError(getString(R.string.sign_cannot))
-            Signatures.showMenu(this) { id ->
+            val handwritten = r.getOrNull() == true
+            Signatures.showMenu(this, handwritten, onPlace = { id ->
                 t.view.startPlacingSignature(Signatures.library(this), id)
                 Toast.makeText(this, R.string.sign_place_hint, Toast.LENGTH_LONG).show()
+            }, onDigital = { signDigital(t, dynamicXfa = !handwritten) })
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Digital signature with a certificate
+    // -----------------------------------------------------------------------
+
+    /** Who signs: the certificate chain (signer first) and the signing operation. */
+    private class CertSigner(val chain: List<ByteArray>, val sign: (ByteArray) -> ByteArray)
+
+    /** Options, then the certificate, the place on the page, where to save, and signing. */
+    private fun signDigital(t: DocTab, dynamicXfa: Boolean) {
+        val d = t.doc ?: return
+        val lib = Signatures.library(this)
+        t.view.commitField {
+            PdfEngine.run({ Pair(d.signatureFields(), lib.list()) }) { r ->
+                val (fields, saved) = r.getOrElse { e -> return@run showError(e.message ?: "") }
+                DigitalSign.showOptions(this, fields, saved, dynamicXfa) { o ->
+                    chooseCertificate(o.source) { signer -> placeDigital(t, o, signer) }
+                }
             }
         }
+    }
+
+    private fun chooseCertificate(source: DigitalSign.Source, then: (CertSigner) -> Unit) {
+        when (source) {
+            DigitalSign.Source.DEVICE -> KeyChain.choosePrivateKeyAlias(this, { alias ->
+                if (alias == null) return@choosePrivateKeyAlias
+                Io.run({
+                    val chain = KeyChain.getCertificateChain(this, alias)?.map { it.encoded } ?: error(getString(R.string.dsig_no_key))
+                    val key = KeyChain.getPrivateKey(this, alias) ?: error(getString(R.string.dsig_no_key))
+                    val alg = if (certificateIsRsa(chain[0])) "SHA256withRSA" else "SHA256withECDSA"
+                    CertSigner(chain) { data ->
+                        java.security.Signature.getInstance(alg).run {
+                            initSign(key)
+                            update(data)
+                            sign()
+                        }
+                    }
+                }) { s -> s.onSuccess(then).onFailure { e -> showError(getString(R.string.dsig_failed, e.message ?: "")) } }
+            }, arrayOf("RSA", "EC"), null, null, null)
+            DigitalSign.Source.FILE -> {
+                certificateCallback = { uri ->
+                    if (uri != null) {
+                        val name = displayName(uri)
+                        Io.run({ contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error(name) }) { r ->
+                            r.onSuccess { data -> openCertificateFile(name, data, wrong = false, then) }
+                                .onFailure { e -> showError(getString(R.string.dsig_failed, e.message ?: "")) }
+                        }
+                    }
+                }
+                pickCertificate.launch(arrayOf("application/x-pkcs12", "application/pkcs12", "application/octet-stream", "*/*"))
+            }
+        }
+    }
+
+    private fun openCertificateFile(name: String, data: ByteArray, wrong: Boolean, then: (CertSigner) -> Unit) {
+        DigitalSign.askPassword(this, name, wrong) { password ->
+            Io.run({ P12Certificate.open(data, password) }) { r ->
+                r.onSuccess { p12 -> then(CertSigner(p12.chain()) { p12.sign(it) }) }.onFailure { e ->
+                    if (e is PdfException.WrongPassword) {
+                        openCertificateFile(name, data, wrong = true, then)
+                    } else {
+                        showError(getString(R.string.dsig_failed, e.message ?: ""))
+                    }
+                }
+            }
+        }
+    }
+
+    /** Where the signature goes: a tap on the page if it is a new visible one. */
+    private fun placeDigital(t: DocTab, o: DigitalSign.Options, signer: CertSigner) {
+        when {
+            !o.visible -> saveSigned(t, o, DigitalPlacement.Invisible, signer)
+            o.field != null -> saveSigned(t, o, DigitalPlacement.Field(o.field), signer)
+            else -> {
+                Toast.makeText(this, R.string.dsig_place_hint, Toast.LENGTH_LONG).show()
+                t.view.startPlacingDigital { page, x, y ->
+                    val (w, h) = if (o.handwrittenId != null) Pair(240f, 66f) else Pair(200f, 54f)
+                    saveSigned(t, o, DigitalPlacement.New(page.toUInt(), x, y, w, h), signer)
+                }
+            }
+        }
+    }
+
+    /** Asks where to save the signed copy, signs and opens it in place of the document. */
+    private fun saveSigned(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, signer: CertSigner) {
+        val d = t.doc ?: return
+        val stem = t.item.name.substringBeforeLast('.')
+        signedCallback = cb@{ uri ->
+            if (uri == null || t !in docs) return@cb
+            val target = itemFor(uri)
+            val lib = Signatures.library(this)
+            PdfEngine.run({
+                d.prepareDigitalSignature(placement, o.reason, o.location, lib, o.handwrittenId, signer.chain)
+            }) { r ->
+                val pending = r.getOrElse { e -> return@run showError(getString(R.string.dsig_failed, e.message ?: "")) }
+                t.view.refreshSignatures()
+                Io.run({
+                    val bytes = pending.finish(signer.sign(pending.dataToSign()))
+                    writeDocument(target, bytes)
+                    bytes.size.toLong()
+                }) { w ->
+                    w.onSuccess { size ->
+                        remember(target, size)
+                        // The signed copy has the changes: the tab shows it now.
+                        t.modified = false
+                        removeTab(t)
+                        open(target)
+                        Toast.makeText(this, R.string.dsig_done, Toast.LENGTH_LONG).show()
+                    }.onFailure { e -> showError(getString(R.string.dsig_failed, e.message ?: "")) }
+                }
+            }
+        }
+        createSigned.launch(getString(R.string.dsig_signed_name, stem))
     }
 
     private fun onFormInput(t: DocTab, r: InputResult) {

@@ -18,6 +18,18 @@ enum Key {
     P384(p384::ecdsa::SigningKey),
 }
 
+/// La contraseña del fichero no es la buena.
+#[derive(Debug)]
+pub struct WrongPassword;
+
+impl std::fmt::Display for WrongPassword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&crate::t!("pades.p12_password"))
+    }
+}
+
+impl std::error::Error for WrongPassword {}
+
 /// La clave y los certificados de un PKCS#12.
 pub struct P12Key {
     key: Key,
@@ -30,7 +42,7 @@ impl P12Key {
         let store = KeyStore::from_pkcs12(data, password, Pkcs12ImportPolicy::Relaxed).map_err(|e| match e {
             // La contraseña no cuadra con el código de integridad (MAC) o el
             // descifrado da basura.
-            p12_keystore::error::Error::MacError(_) | p12_keystore::error::Error::UnpadError => anyhow!("{}", crate::t!("pades.p12_password")),
+            p12_keystore::error::Error::MacError(_) | p12_keystore::error::Error::UnpadError => anyhow::Error::new(WrongPassword),
             e => anyhow!("{}", crate::t!("pades.p12_invalid", e)),
         })?;
         let chain = store
