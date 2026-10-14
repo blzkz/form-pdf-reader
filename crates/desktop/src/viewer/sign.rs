@@ -131,6 +131,19 @@ impl DocView {
             return true;
         }
 
+        if self.sig_selected.is_none() {
+            // Pulsar sobre una firma puesta la selecciona (y ya se puede
+            // arrastrar); la de encima si se tapan.
+            let press = events.iter().find_map(|e| match e {
+                Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, .. } if area.contains(*pos) => Some(*pos),
+                _ => None,
+            });
+            let Some(pos) = press else { return false };
+            let hit = self.doc.placed_signatures().iter().rposition(|p| self.sig_screen_rect(p.page, p.rect).is_some_and(|r| r.contains(pos)));
+            let Some(i) = hit else { return false };
+            self.sig_selected = Some(i);
+            ctx.request_repaint();
+        }
         let Some(i) = self.sig_selected else { return false };
         let Some(placed) = self.doc.placed_signatures().get(i).cloned() else {
             self.sig_selected = None;
