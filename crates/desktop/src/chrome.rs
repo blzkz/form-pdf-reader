@@ -31,66 +31,88 @@ fn maximized(ctx: &egui::Context) -> bool {
 }
 
 /// La barra entera. Devuelve lo que se ha pulsado en las pestañas.
+///
+/// El panel solo le reserva el sitio: la barra va en una capa propia por
+/// encima de los diálogos, para que con uno abierto la ventana se pueda
+/// seguir moviendo, minimizar o cerrar, como con las ventanas del sistema.
 pub fn title_bar(ui: &mut Ui, tabs: &[TabInfo], active: usize) -> Option<TabAction> {
-    let p = theme::palette(ui);
-    let mut action = None;
-    egui::Panel::top("barra_titulo")
+    let bar = egui::Panel::top("barra_titulo")
         .exact_size(BAR_HEIGHT)
         .show_separator_line(false)
-        .frame(egui::Frame::new().fill(p.title_bar))
-        .show(ui, |ui| {
-            let bar = ui.max_rect();
-            let ctx = ui.ctx().clone();
-            let painter = ui.painter().clone();
-            let controls_left = bar.right() - 3.0 * BUTTON_W;
+        .frame(egui::Frame::NONE)
+        .show(ui, |ui| ui.max_rect())
+        .inner;
+    let ctx = ui.ctx().clone();
+    let mut action = None;
+    let layer = egui::Area::new(Id::new("capa_barra_titulo"))
+        .order(Order::Foreground)
+        .fixed_pos(bar.min)
+        .constrain(false)
+        .show(&ctx, |ui| {
+            ui.set_clip_rect(bar);
+            ui.allocate_rect(bar, Sense::hover());
+            action = bar_contents(ui, bar, tabs, active);
+        })
+        .response
+        .layer_id;
+    ctx.move_to_top(layer);
+    action
+}
 
-            // Icono de la aplicación.
-            let mut x = bar.left() + 12.0;
-            painter.text(Pos2::new(x, bar.center().y), Align2::LEFT_CENTER, icon::FILE_PDF, FontId::proportional(18.0), Color32::from_rgb(0xD9, 0x34, 0x2B));
-            x += 28.0;
+fn bar_contents(ui: &mut Ui, bar: Rect, tabs: &[TabInfo], active: usize) -> Option<TabAction> {
+    let p = theme::palette(ui);
+    let mut action = None;
+    let ctx = ui.ctx().clone();
+    let painter = ui.painter().clone();
+    painter.rect_filled(bar, 0.0, p.title_bar);
+    let controls_left = bar.right() - 3.0 * BUTTON_W;
 
-            // Pestañas: se encogen si no caben.
-            let plus_w = 34.0;
-            let room = (controls_left - x - plus_w - 48.0).max(0.0);
-            let tab_w = if tabs.is_empty() { 0.0 } else { (room / tabs.len() as f32).clamp(72.0, 230.0) };
-            let top = bar.top() + 6.0;
-            for (i, t) in tabs.iter().enumerate() {
-                let r = Rect::from_min_max(Pos2::new(x, top), Pos2::new(x + tab_w, bar.bottom()));
-                if let Some(a) = tab(ui, i, t, i == active, r) {
-                    action = Some(a);
-                }
-                x += tab_w + 2.0;
-            }
-            if tabs.is_empty() {
-                painter.text(Pos2::new(x, bar.center().y), Align2::LEFT_CENTER, "Form PDF Reader", FontId::proportional(13.0), p.text_weak);
-                x += 130.0;
-            }
+    // Icono de la aplicación.
+    let mut x = bar.left() + 12.0;
+    painter.text(Pos2::new(x, bar.center().y), Align2::LEFT_CENTER, icon::FILE_PDF, FontId::proportional(18.0), Color32::from_rgb(0xD9, 0x34, 0x2B));
+    x += 28.0;
 
-            // Abrir otro documento.
-            let plus = Rect::from_center_size(Pos2::new(x + plus_w / 2.0, top + (bar.bottom() - top) / 2.0 - 2.0), Vec2::splat(28.0));
-            let r = ui.interact(plus, Id::new("pestaña_nueva"), Sense::click()).on_hover_text(form_pdf_reader::t!("toolbar.open"));
-            if r.hovered() {
-                painter.rect_filled(plus, 6.0, p.hover);
-            }
-            painter.text(plus.center(), Align2::CENTER_CENTER, icon::PLUS, FontId::proportional(16.0), p.text);
-            if r.clicked() {
-                action = Some(TabAction::Open);
-            }
-            x = plus.right() + 4.0;
+    // Pestañas: se encogen si no caben.
+    let plus_w = 34.0;
+    let room = (controls_left - x - plus_w - 48.0).max(0.0);
+    let tab_w = if tabs.is_empty() { 0.0 } else { (room / tabs.len() as f32).clamp(72.0, 230.0) };
+    let top = bar.top() + 6.0;
+    for (i, t) in tabs.iter().enumerate() {
+        let r = Rect::from_min_max(Pos2::new(x, top), Pos2::new(x + tab_w, bar.bottom()));
+        if let Some(a) = tab(ui, i, t, i == active, r) {
+            action = Some(a);
+        }
+        x += tab_w + 2.0;
+    }
+    if tabs.is_empty() {
+        painter.text(Pos2::new(x, bar.center().y), Align2::LEFT_CENTER, "Form PDF Reader", FontId::proportional(13.0), p.text_weak);
+        x += 130.0;
+    }
 
-            // El resto de la barra mueve la ventana; doble clic, maximizar.
-            let drag = Rect::from_min_max(Pos2::new(x, bar.top()), Pos2::new(controls_left, bar.bottom()));
-            if drag.width() > 0.0 {
-                let r = ui.interact(drag, Id::new("mover_ventana"), Sense::click_and_drag());
-                if r.double_clicked() {
-                    ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized(&ctx)));
-                } else if r.drag_started_by(egui::PointerButton::Primary) {
-                    ctx.send_viewport_cmd(ViewportCommand::StartDrag);
-                }
-            }
+    // Abrir otro documento.
+    let plus = Rect::from_center_size(Pos2::new(x + plus_w / 2.0, top + (bar.bottom() - top) / 2.0 - 2.0), Vec2::splat(28.0));
+    let r = ui.interact(plus, Id::new("pestaña_nueva"), Sense::click()).on_hover_text(form_pdf_reader::t!("toolbar.open"));
+    if r.hovered() {
+        painter.rect_filled(plus, 6.0, p.hover);
+    }
+    painter.text(plus.center(), Align2::CENTER_CENTER, icon::PLUS, FontId::proportional(16.0), p.text);
+    if r.clicked() {
+        action = Some(TabAction::Open);
+    }
+    x = plus.right() + 4.0;
 
-            window_buttons(ui, Rect::from_min_max(Pos2::new(controls_left, bar.top()), bar.max));
-        });
+    // El resto de la barra mueve la ventana; doble clic, maximizar.
+    let drag = Rect::from_min_max(Pos2::new(x, bar.top()), Pos2::new(controls_left, bar.bottom()));
+    if drag.width() > 0.0 {
+        let r = ui.interact(drag, Id::new("mover_ventana"), Sense::click_and_drag());
+        if r.double_clicked() {
+            ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized(&ctx)));
+        } else if r.drag_started_by(egui::PointerButton::Primary) {
+            ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+        }
+    }
+
+    window_buttons(ui, Rect::from_min_max(Pos2::new(controls_left, bar.top()), bar.max));
     action
 }
 
