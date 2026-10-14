@@ -294,12 +294,18 @@ impl DigitalSignDialog {
         row(ui, t!("dsig.location"), &mut |ui| {
             ui.add(egui::TextEdit::singleline(&mut self.location).hint_text(t!("dsig.optional")).desired_width(330.0).margin(egui::Margin::symmetric(8, 5)));
         });
-        row(ui, t!("dsig.timestamp"), &mut |ui| {
-            ui.checkbox(&mut self.timestamp, "").on_hover_text(t!("dsig.timestamp_tip"));
-            ui.add_enabled(
-                self.timestamp,
-                egui::TextEdit::singleline(&mut self.timestamp_server).desired_width(300.0).margin(egui::Margin::symmetric(8, 5)),
-            );
+        // La casilla con su texto, en la columna de las etiquetas.
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(Vec2::new(label_w, 28.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.set_min_size(Vec2::new(label_w, 28.0));
+                // Esquinas menos redondeadas: con las de los botones, la
+                // casilla parecía un círculo.
+                ui.visuals_mut().widgets.inactive.corner_radius = egui::CornerRadius::same(3);
+                ui.visuals_mut().widgets.hovered.corner_radius = egui::CornerRadius::same(3);
+                ui.visuals_mut().widgets.active.corner_radius = egui::CornerRadius::same(3);
+                ui.checkbox(&mut self.timestamp, t!("dsig.timestamp")).on_hover_text(t!("dsig.timestamp_tip"));
+            });
+            ui.add_enabled(self.timestamp, egui::TextEdit::singleline(&mut self.timestamp_server).desired_width(330.0).margin(egui::Margin::symmetric(8, 5)));
         });
         if self.timestamp {
             ui.label(RichText::new(format!("{}  {}", icon::INFO, t!("dsig.timestamp_note"))).small().color(p.text_weak));
