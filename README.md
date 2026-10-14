@@ -47,9 +47,9 @@ stay in the form's own language.
 |---|---|
 | ![Create signature dialog: name in three handwriting styles](assets/screenshots/desktop-create-signature.png) | ![A handwritten signature placed on Form I-9, dark theme](assets/screenshots/desktop-dark-signature.png) |
 
-**Windows 11**
+**Windows 11, filling in and signing a form**
 
-![Form PDF Reader on Windows 11 with a dynamic XFA form](assets/screenshots/windows.jpg)
+![Form PDF Reader on Windows 11: Form I-9 filled in with made-up data and signed](assets/screenshots/windows.jpg)
 
 **Android**
 
