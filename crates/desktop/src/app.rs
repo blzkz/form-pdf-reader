@@ -73,6 +73,7 @@ pub struct PdfApp {
     /// Fichero por abrir en cuanto se haya dibujado la ventana.
     pending_open: Option<PathBuf>,
     frames: u32,
+    print_dialog: Option<crate::print::PrintDialog>,
 }
 
 impl PdfApp {
@@ -101,6 +102,7 @@ impl PdfApp {
             show_digital: false,
             pending_open: None,
             frames: 0,
+            print_dialog: None,
         };
         // El fichero de la línea de órdenes se abre tras el primer fotograma:
         // así la ventana sale enseguida aunque abrirlo tarde (formularios
@@ -303,7 +305,17 @@ impl PdfApp {
 
     /// Imprime: genera un PDF plano temporal y lo abre en el visor del sistema,
     /// desde el que se imprime con el diálogo habitual.
+    /// Abre el diálogo de imprimir.
     fn print(&mut self) {
+        let last = self.settings.printer.clone();
+        let Some(view) = self.view_mut() else { return };
+        view.commit_focus();
+        let dialog = crate::print::PrintDialog::new(&view.doc, view.current_page, last.as_deref());
+        self.print_dialog = Some(dialog);
+    }
+
+    /// Imprimir con el visor del sistema: el PDF plano, abierto fuera.
+    fn print_external(&mut self) {
         let Some(view) = self.view_mut() else { return };
         view.commit_focus();
         let dir = std::env::temp_dir().join("form-pdf-reader");
@@ -775,6 +787,7 @@ impl PdfApp {
         if self.show_digital {
             self.digital_window(ctx);
         }
+        self.print_window(ctx);
         if let Some((sig, name)) = self.signatures.create_window(ctx) {
             if !name.is_empty() && self.settings.signer_name.as_deref() != Some(&name) {
                 self.settings.signer_name = Some(name);
@@ -880,6 +893,30 @@ impl PdfApp {
     }
 
     /// Las firmas digitales del documento.
+    fn print_window(&mut self, ctx: &egui::Context) {
+        use crate::print::Outcome;
+        let Some(d) = self.print_dialog.as_mut() else { return };
+        let out = match self.tabs.get_mut(self.active) {
+            Some(tab) => d.show(ctx, &mut tab.view.doc),
+            None => Some(Outcome::Closed),
+        };
+        let Some(out) = out else { return };
+        let printer = d.printer_name();
+        self.print_dialog = None;
+        match out {
+            Outcome::Closed => {}
+            Outcome::Sent(msg) => {
+                self.status = msg;
+                if printer.is_some() && printer != self.settings.printer {
+                    self.settings.printer = printer;
+                    self.settings.save();
+                }
+            }
+            Outcome::Failed(e) => self.error = Some(t!("print.failed", e)),
+            Outcome::OpenExternal => self.print_external(),
+        }
+    }
+
     fn digital_window(&mut self, ctx: &egui::Context) {
         let (sigs, rights) = match self.cur() {
             Some(t) => (t.digital.clone(), t.usage_rights),

@@ -3,6 +3,7 @@
     <string name="open">Öffnen</string>
     <string name="save">Speichern</string>
     <string name="save_as">Speichern unter…</string>
+    <string name="print">Drucken</string>
     <string name="attachments">PDF-Anhänge</string>
     <string name="copy_page_text">Text der Seite kopieren</string>
     <string name="about">Über</string>

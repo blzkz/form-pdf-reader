@@ -4,6 +4,7 @@
     <string name="open">Open</string>
     <string name="save">Save</string>
     <string name="save_as">Save as…</string>
+    <string name="print">Print</string>
     <string name="attachments">PDF attachments</string>
     <string name="copy_page_text">Copy page text</string>
     <string name="about">About</string>

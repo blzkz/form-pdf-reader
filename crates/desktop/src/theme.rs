@@ -141,7 +141,9 @@ fn style(dark: bool) -> egui::Style {
     v.selection.bg_fill = p.accent.gamma_multiply(if dark { 0.40 } else { 0.35 });
     // El contorno de foco, algo más oscuro en el tema claro: el amarillo
     // sobre blanco apenas se ve.
-    v.selection.stroke = Stroke::new(1.0, if dark { p.accent } else { ACCENT_ON_WHITE });
+    // egui usa este color también para el texto de lo elegido (listas,
+    // menús): en el tema claro, un ámbar oscuro que se lea sobre el amarillo.
+    v.selection.stroke = Stroke::new(1.0, if dark { p.accent } else { p.accent_text });
     v.warn_fg_color = p.warn;
 
     let w = &mut v.widgets;

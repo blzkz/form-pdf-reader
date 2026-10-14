@@ -20,7 +20,7 @@ mod host;
 pub mod keys;
 
 pub use document::{
-    AlertAnswer, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FormKind, OpenOptions, PasswordRequired, PlacedSignature, SearchHit, SignedState, Updates, render_signature,
+    AlertAnswer, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FlatPdf, FormKind, OpenOptions, PasswordRequired, PlacedSignature, SearchHit, Sheet, SignedState, Updates, parse_page_ranges, render_signature,
     signature_size, write_atomic,
 };
 

@@ -8,6 +8,7 @@ mod chrome;
 use form_pdf_reader::t;
 mod autotest;
 mod platform;
+mod print;
 mod settings;
 mod signatures;
 #[cfg(windows)]

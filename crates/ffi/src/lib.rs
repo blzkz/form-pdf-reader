@@ -734,6 +734,19 @@ impl PdfDocument {
             .collect()
     }
 
+    /// Sheets the printed document would have (a continuous XFA form is
+    /// cut into A4 sheets).
+    pub fn print_sheet_count(&self) -> u32 {
+        self.lock().print_layout().len() as u32
+    }
+
+    /// Writes the PDF to print to `path`: every sheet as an image at `dpi`,
+    /// with the form data and the placed signatures (which are written into
+    /// the document, as when saving).
+    pub fn export_print(&self, path: String, dpi: f32) -> Result<(), PdfError> {
+        self.lock().export_flat(Path::new(&path), dpi).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
     /// Saves to a file.
     pub fn save(&self, path: String) -> Result<(), PdfError> {
         self.lock().save(Path::new(&path)).map_err(|e| PdfError::Save(format!("{e:#}")))
