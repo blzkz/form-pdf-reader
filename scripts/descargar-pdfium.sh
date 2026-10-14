@@ -7,6 +7,8 @@
 #   PDFIUM_TGZ=/path/file.tgz scripts/descargar-pdfium.sh   use a local copy
 #   PDFIUM_PLATFORM=win-x64 scripts/descargar-pdfium.sh     Windows build
 #                                                           (default: linux-x64)
+#   PDFIUM_DEST=vendor/pdfium-win ...                       another folder
+#                                                           (default: vendor/pdfium)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,7 +26,7 @@ case "$PLATFORM" in
     exit 1 ;;
 esac
 URL="https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F${VERSION}/pdfium-v8-${PLATFORM}.tgz"
-DEST=vendor/pdfium
+DEST=${PDFIUM_DEST:-vendor/pdfium}
 
 if [[ -f "$DEST/$CHECK" && "${1:-}" != "--force" ]]; then
   echo "PDFium is already in $DEST (use --force to download it again)."

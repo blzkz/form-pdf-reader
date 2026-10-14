@@ -92,6 +92,9 @@ const SUBPIXEL: f64 = 16.0;
 /// AcroForm PDFium ya selecciona al arrastrar.
 const XFA_TEXT_FIELD: i32 = 15;
 
+/// Página y punto (en bits, para compararlos) del campo enfocado.
+type FocusKey = (usize, u64, u64);
+
 #[derive(Debug, Clone, Copy)]
 struct TextDrag {
     idx: usize,
@@ -136,6 +139,9 @@ pub struct Document {
     /// El foco pasó con Tab desde un campo de texto: casi siempre a otro de
     /// texto, aunque no se sabe a cuál (ver `editing_text`).
     tabbed_from_text: bool,
+    /// Zona del último campo enfocado, por su punto (`field_bounds` hace
+    /// muchas consultas a PDFium; ver `focused_text_field`).
+    focus_bounds: RefCell<Option<(FocusKey, [f64; 4])>>,
     /// Bytes del fichero tal como está en disco (base para guardar).
     base: Vec<u8>,
     /// Contraseña con la que se abrió (el PDF guardado conserva el cifrado).
@@ -221,6 +227,7 @@ impl Document {
             text_drag: None,
             swallow_char: None,
             tabbed_from_text: false,
+            focus_bounds: RefCell::new(None),
             base,
             password,
             compat,
@@ -571,7 +578,18 @@ impl Document {
     /// `field_bounds`). None si el último clic no fue en un campo de texto.
     pub fn focused_text_field(&self) -> Option<(usize, [f64; 4])> {
         let (idx, x, y, ty) = self.last_focus?;
-        (ty == XFA_TEXT_FIELD || ty == sys::FPDF_FORMFIELD_TEXTFIELD as i32).then(|| (idx, self.field_bounds(idx, x, y)))
+        if ty != XFA_TEXT_FIELD && ty != sys::FPDF_FORMFIELD_TEXTFIELD as i32 {
+            return None;
+        }
+        let key = (idx, x.to_bits(), y.to_bits());
+        if let Some((k, b)) = *self.focus_bounds.borrow()
+            && k == key
+        {
+            return Some((idx, b));
+        }
+        let b = self.field_bounds(idx, x, y);
+        *self.focus_bounds.borrow_mut() = Some((key, b));
+        Some((idx, b))
     }
 
     /// Franja de la página (±320 pt alrededor de `y`) renderizada a 1 px/pt.

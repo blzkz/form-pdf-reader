@@ -368,11 +368,32 @@ impl DocView {
     }
 
     /// Procesa timers y notificaciones de PDFium.
-    fn pump(&mut self, ctx: &egui::Context, ev: &mut ViewEvents) {
+    /// `drawn_after`: lo que cambie se dibuja en este mismo fotograma (la
+    /// llamada de antes de dibujar), así que no hace falta pedir otro.
+    fn pump(&mut self, ctx: &egui::Context, ev: &mut ViewEvents, drawn_after: bool) {
+        // Lo pendiente de la entrada del usuario, y aparte lo de los timers.
+        let u = self.doc.take_updates();
+        self.apply_updates(ctx, ev, u, drawn_after);
         if let Some(next) = self.doc.process_timers() {
-            ctx.request_repaint_after(next.max(Duration::from_millis(10)));
+            wake_at(ctx, Instant::now() + next.max(Duration::from_millis(10)));
         }
-        let u: Updates = self.doc.take_updates();
+        let mut u = self.doc.take_updates();
+        // El parpadeo del cursor de un campo XFA invalida la página entera
+        // cada 600 ms. Basta con repintar el campo, que es donde está el
+        // cursor: sin tarjeta gráfica, repintar la página entera gastaba
+        // varios núcleos sin tocar nada.
+        if u.invalidated.len() == 1
+            && !u.layout_changed
+            && !u.invalidate_all
+            && let Some((p, b)) = self.doc.focused_text_field()
+            && u.invalidated == [p]
+        {
+            u.invalid_rects = vec![(p, [b[0] - 4.0, b[1].min(b[3]) - 4.0, b[2] + 4.0, b[1].max(b[3]) + 4.0])];
+        }
+        self.apply_updates(ctx, ev, u, drawn_after);
+    }
+
+    fn apply_updates(&mut self, ctx: &egui::Context, ev: &mut ViewEvents, u: Updates, drawn_after: bool) {
         if u.invalidate_all || u.layout_changed {
             self.invalidate_all();
             if u.layout_changed {
@@ -384,13 +405,15 @@ impl DocView {
         // Solo se vuelve a dibujar lo que cambió (el cursor, el campo que se
         // escribe): repintar la página entera en cada tecla es lento sin
         // tarjeta gráfica.
+        // En XFA dinámico PDFium invalida la página entera en cada cambio:
+        // entonces se repinta como siempre, tesela a tesela.
         for p in &u.invalidated {
-            let mut any = false;
-            for (_, r) in u.invalid_rects.iter().filter(|(i, _)| i == p) {
-                self.pending_rects.push((*p, *r));
-                any = true;
-            }
-            if !any {
+            let (w, h) = self.doc.page_size(*p);
+            let rects: Vec<[f64; 4]> = u.invalid_rects.iter().filter(|(i, _)| i == p).map(|(_, r)| *r).collect();
+            let small = |r: &[f64; 4]| ((r[2] - r[0]) * (r[3] - r[1])).abs() < 0.1 * (w * h) as f64;
+            if !rects.is_empty() && rects.iter().all(small) {
+                self.pending_rects.extend(rects.into_iter().map(|r| (*p, r)));
+            } else {
                 self.invalidate_page(*p);
             }
         }
@@ -406,7 +429,7 @@ impl DocView {
         }
         ev.uris.extend(u.uris);
         ev.open_files.extend(u.open_files);
-        if !u.invalidated.is_empty() || u.invalidate_all || u.layout_changed {
+        if !drawn_after && (!u.invalidated.is_empty() || u.invalidate_all || u.layout_changed) {
             ctx.request_repaint();
         }
     }
@@ -749,7 +772,7 @@ impl DocView {
     pub fn ui(&mut self, ui: &mut egui::Ui) -> ViewEvents {
         let ctx = ui.ctx().clone();
         let mut ev = ViewEvents::default();
-        self.pump(&ctx, &mut ev);
+        self.pump(&ctx, &mut ev, true);
 
         let ppp = ctx.pixels_per_point();
         let avail = ui.available_size();
@@ -976,7 +999,7 @@ impl DocView {
             }
 
         // Lo que haya pedido PDFium durante el manejo de eventos.
-        self.pump(&ctx, &mut ev);
+        self.pump(&ctx, &mut ev, false);
         ev
     }
 
@@ -1106,4 +1129,38 @@ impl DocView {
 
 fn sys_autorepeat() -> i32 {
     32 // FWL_EVENTFLAG_AutoRepeat
+}
+
+/// Despierta la interfaz en `at` (el próximo timer de PDFium, como el
+/// parpadeo del cursor). Un hilo aparte espera hasta entonces y pide un
+/// fotograma. Pedirlo a egui con `request_repaint_after` en cada fotograma
+/// adelantaba los fotogramas: con el cursor en un campo se dibujaban más de
+/// diez por segundo en vez de uno cada 600 ms.
+fn wake_at(ctx: &egui::Context, at: Instant) {
+    use std::sync::OnceLock;
+    use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
+    static WAKER: OnceLock<std::sync::Mutex<Sender<Instant>>> = OnceLock::new();
+    let tx = WAKER.get_or_init(|| {
+        let (tx, rx) = channel::<Instant>();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let mut deadline: Option<Instant> = None;
+            loop {
+                let got = match deadline {
+                    Some(d) => rx.recv_timeout(d.saturating_duration_since(Instant::now())),
+                    None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+                };
+                match got {
+                    Ok(at) => deadline = Some(deadline.map_or(at, |d| d.min(at))),
+                    Err(RecvTimeoutError::Timeout) => {
+                        deadline = None;
+                        ctx.request_repaint();
+                    }
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
+            }
+        });
+        std::sync::Mutex::new(tx)
+    });
+    let _ = tx.lock().map(|t| t.send(at));
 }

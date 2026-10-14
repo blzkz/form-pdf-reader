@@ -44,11 +44,11 @@ const ALIASES: &[(&str, Kind)] = &[
     ("Courier New", Kind::Mono),
 ];
 
-#[cfg_attr(target_os = "android", allow(dead_code))]
+#[cfg_attr(any(target_os = "android", windows), allow(dead_code))]
 const SANS: &[&str] = &["Liberation Sans", "Arimo", "Nimbus Sans", "DejaVu Sans"];
-#[cfg_attr(target_os = "android", allow(dead_code))]
+#[cfg_attr(any(target_os = "android", windows), allow(dead_code))]
 const SERIF: &[&str] = &["Liberation Serif", "Tinos", "Nimbus Roman", "DejaVu Serif"];
-#[cfg_attr(target_os = "android", allow(dead_code))]
+#[cfg_attr(any(target_os = "android", windows), allow(dead_code))]
 const MONO: &[&str] = &["Liberation Mono", "Cousine", "Nimbus Mono PS", "DejaVu Sans Mono"];
 
 fn classify(face: &str) -> Option<Kind> {
