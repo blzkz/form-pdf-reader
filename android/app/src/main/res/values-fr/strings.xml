@@ -113,4 +113,23 @@
     <string name="sign_cannot">Ce document n\'accepte pas de signatures sur la page (formulaire XFA dynamique).</string>
     <string name="sign_error">Impossible de placer la signature : %1$s</string>
     <string name="sign_place_hint">Touchez la page à l\'endroit voulu. Ensuite, vous pouvez la déplacer, la redimensionner ou la retirer jusqu\'à l\'enregistrement.</string>
+    <!-- Firmas digitales del documento -->
+    <string name="digital_title">Signatures numériques</string>
+    <string name="digital_none">Ce document n\'a pas de signature numérique.</string>
+    <string name="digital_unknown_signer">Signataire inconnu</string>
+    <string name="digital_intact">Le document n\'a pas changé depuis sa signature</string>
+    <string name="digital_changed_after">Le contenu signé est intact, mais des modifications ont été ajoutées ensuite</string>
+    <string name="digital_broken">Le contenu ne correspond pas à la signature : le document a été modifié</string>
+    <string name="digital_unknown">Impossible de vérifier cette signature</string>
+    <string name="digital_kind">Type :</string>
+    <string name="digital_approval">Signature d\'approbation</string>
+    <string name="digital_cert_none">Certification : aucune modification autorisée</string>
+    <string name="digital_cert_fill">Certification : remplissage de formulaires et signature autorisés</string>
+    <string name="digital_cert_annots">Certification : remplissage, signature et commentaires autorisés</string>
+    <string name="digital_date">Date :</string>
+    <string name="digital_reason">Motif :</string>
+    <string name="digital_issuer">Émetteur du certificat :</string>
+    <string name="digital_validity">Certificat valide :</string>
+    <string name="digital_usage_rights">Il possède les droits d\'utilisation d\'Adobe Reader (ils permettent de le remplir et de l\'enregistrer dans Reader).</string>
+    <string name="digital_trust_note">On vérifie que le contenu signé n\'a pas changé, pas que le certificat provient d\'une autorité de confiance.</string>
 </resources>

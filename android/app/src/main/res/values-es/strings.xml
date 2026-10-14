@@ -113,4 +113,23 @@
     <string name="sign_cannot">Este documento no admite firmas sobre la página (formulario XFA dinámico).</string>
     <string name="sign_error">No se pudo poner la firma: %1$s</string>
     <string name="sign_place_hint">Toca la página donde quieras la firma. Después puedes moverla, cambiar su tamaño o quitarla hasta que guardes.</string>
+    <!-- Firmas digitales del documento -->
+    <string name="digital_title">Firmas digitales</string>
+    <string name="digital_none">Este documento no tiene firmas digitales.</string>
+    <string name="digital_unknown_signer">Firmante desconocido</string>
+    <string name="digital_intact">El documento no ha cambiado desde que se firmó</string>
+    <string name="digital_changed_after">Lo firmado está intacto, pero después se añadieron cambios</string>
+    <string name="digital_broken">El contenido no coincide con la firma: el documento se alteró</string>
+    <string name="digital_unknown">No se pudo comprobar esta firma</string>
+    <string name="digital_kind">Tipo:</string>
+    <string name="digital_approval">Firma de aprobación</string>
+    <string name="digital_cert_none">Certificación: no se permiten cambios</string>
+    <string name="digital_cert_fill">Certificación: se permite rellenar formularios y firmar</string>
+    <string name="digital_cert_annots">Certificación: se permite rellenar, firmar y comentar</string>
+    <string name="digital_date">Fecha:</string>
+    <string name="digital_reason">Motivo:</string>
+    <string name="digital_issuer">Emisor del certificado:</string>
+    <string name="digital_validity">Certificado válido:</string>
+    <string name="digital_usage_rights">Lleva los derechos de uso de Adobe Reader (permiten rellenarlo y guardarlo en Reader).</string>
+    <string name="digital_trust_note">Se comprueba que el contenido firmado no ha cambiado, no si el certificado es de una entidad de confianza.</string>
 </resources>

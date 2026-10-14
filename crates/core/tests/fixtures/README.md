@@ -7,6 +7,10 @@
   licence and is included only as test material.
 - `TINTERNET_adobe.pdf`: the same form filled in with made-up data and saved
   with Adobe Reader, with two attached files. Same terms as the blank form.
+- `firmado-pdfjs.pdf`: a PDF with a digital signature (test certificate
+  "test-pdf-signer"), `test/pdfs/signed_verified.pdf` of
+  [pdf.js](https://github.com/mozilla/pdf.js), Apache License 2.0. SHA-256
+  `1fe9051d…848c`.
 
 ## corpus/
 

@@ -238,6 +238,35 @@ fn rgb(color: u32) -> [u8; 3] {
     [(color >> 16) as u8, (color >> 8) as u8, color as u8]
 }
 
+/// How the signed content of a digital signature is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SignatureState {
+    /// It covers the whole document and the content matches.
+    Intact,
+    /// The signed content matches, but changes were added afterwards.
+    ChangedAfter,
+    /// The content does not match the signature: the document was altered.
+    Broken,
+    /// It could not be checked.
+    Unknown,
+}
+
+/// A digital signature the document already has.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DigitalSignatureInfo {
+    pub signer: Option<String>,
+    pub issuer: Option<String>,
+    pub valid_from: Option<String>,
+    pub valid_to: Option<String>,
+    pub time: Option<String>,
+    pub reason: Option<String>,
+    pub sub_filter: Option<String>,
+    /// Certification (DocMDP): 1 no changes, 2 filling in and signing, 3 also
+    /// comments. None: approval signature.
+    pub certification: Option<u32>,
+    pub state: SignatureState,
+}
+
 /// Keys of the handwriting styles for typed signatures.
 #[uniffi::export]
 pub fn signature_styles() -> Vec<String> {
@@ -615,6 +644,36 @@ impl PdfDocument {
     /// form data, its attachments and state.
     pub fn save_bytes(&self) -> Result<Vec<u8>, PdfError> {
         self.lock().bytes_for_save().map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// The digital signatures of the document, oldest first.
+    pub fn digital_signatures(&self) -> Vec<DigitalSignatureInfo> {
+        use form_pdf_reader::pdfium::SignedState;
+        self.lock()
+            .digital_signatures()
+            .into_iter()
+            .map(|s| DigitalSignatureInfo {
+                signer: s.signer,
+                issuer: s.issuer,
+                valid_from: s.valid_from,
+                valid_to: s.valid_to,
+                time: s.time,
+                reason: s.reason,
+                sub_filter: s.sub_filter,
+                certification: s.certification,
+                state: match s.state {
+                    SignedState::Intact => SignatureState::Intact,
+                    SignedState::ChangedAfter => SignatureState::ChangedAfter,
+                    SignedState::Broken => SignatureState::Broken,
+                    SignedState::Unknown => SignatureState::Unknown,
+                },
+            })
+            .collect()
+    }
+
+    /// It has the Adobe Reader usage rights (filling in and saving in Reader).
+    pub fn has_usage_rights(&self) -> bool {
+        self.lock().has_usage_rights()
     }
 
     /// Handwritten signatures can be placed on the pages (not on dynamic

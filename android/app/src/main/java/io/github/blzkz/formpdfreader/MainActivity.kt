@@ -726,7 +726,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         val has = current?.doc != null
-        for (id in intArrayOf(R.id.action_search, R.id.action_share, R.id.action_save, R.id.action_sign, R.id.action_save_as, R.id.action_attachments, R.id.action_copy_text, R.id.action_go_to_page, R.id.action_view)) {
+        for (id in intArrayOf(R.id.action_search, R.id.action_share, R.id.action_save, R.id.action_sign, R.id.action_digital, R.id.action_save_as, R.id.action_attachments, R.id.action_copy_text, R.id.action_go_to_page, R.id.action_view)) {
             menu.findItem(id)?.isEnabled = has
         }
         // Tablets have these in the toolbar.
@@ -774,6 +774,7 @@ class MainActivity : AppCompatActivity() {
             R.id.action_open -> openDocument.launch(arrayOf("application/pdf"))
             R.id.action_save -> save()
             R.id.action_sign -> sign()
+            R.id.action_digital -> showDigitalSignatures()
             R.id.action_save_as -> saveAs()
             R.id.action_attachments -> showAttachments()
             R.id.action_copy_text -> copyPageText()
@@ -1064,6 +1065,15 @@ class MainActivity : AppCompatActivity() {
             t.modified = true
             updateTabLabel(t)
             if (t === current) updateTitle()
+        }
+    }
+
+    /** The digital signatures the document has, and whether they still match. */
+    private fun showDigitalSignatures() {
+        val d = current?.doc ?: return
+        PdfEngine.run({ Pair(d.digitalSignatures(), d.hasUsageRights()) }) { r ->
+            val (list, rights) = r.getOrNull() ?: return@run
+            Signatures.showDigital(this, list, rights)
         }
     }
 

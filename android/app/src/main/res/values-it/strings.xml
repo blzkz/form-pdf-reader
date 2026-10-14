@@ -113,4 +113,23 @@
     <string name="sign_cannot">Questo documento non accetta firme sulla pagina (modulo XFA dinamico).</string>
     <string name="sign_error">Impossibile inserire la firma: %1$s</string>
     <string name="sign_place_hint">Tocca la pagina dove vuoi la firma. Poi puoi spostarla, ridimensionarla o toglierla finché non salvi.</string>
+    <!-- Firmas digitales del documento -->
+    <string name="digital_title">Firme digitali</string>
+    <string name="digital_none">Questo documento non ha firme digitali.</string>
+    <string name="digital_unknown_signer">Firmatario sconosciuto</string>
+    <string name="digital_intact">Il documento non è cambiato da quando è stato firmato</string>
+    <string name="digital_changed_after">Il contenuto firmato è intatto, ma in seguito sono state aggiunte modifiche</string>
+    <string name="digital_broken">Il contenuto non corrisponde alla firma: il documento è stato alterato</string>
+    <string name="digital_unknown">Impossibile verificare questa firma</string>
+    <string name="digital_kind">Tipo:</string>
+    <string name="digital_approval">Firma di approvazione</string>
+    <string name="digital_cert_none">Certificazione: nessuna modifica consentita</string>
+    <string name="digital_cert_fill">Certificazione: compilazione di moduli e firma consentite</string>
+    <string name="digital_cert_annots">Certificazione: compilazione, firma e commenti consentiti</string>
+    <string name="digital_date">Data:</string>
+    <string name="digital_reason">Motivo:</string>
+    <string name="digital_issuer">Emittente del certificato:</string>
+    <string name="digital_validity">Certificato valido:</string>
+    <string name="digital_usage_rights">Ha i diritti d\'uso di Adobe Reader (permettono di compilarlo e salvarlo in Reader).</string>
+    <string name="digital_trust_note">Si verifica che il contenuto firmato non sia cambiato, non che il certificato provenga da un\'autorità attendibile.</string>
 </resources>

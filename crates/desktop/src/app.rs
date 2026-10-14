@@ -4,7 +4,7 @@ use crate::chrome::{self, TabAction, TabInfo};
 use crate::theme::{self, icon};
 use crate::viewer::{DocView, PageLayout, Tool};
 use eframe::egui::{self, Align, Color32, Key, KeyboardShortcut, Layout, Modifiers, RichText};
-use form_pdf_reader::pdfium::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, Document, FormKind, OpenOptions, PasswordRequired};
+use form_pdf_reader::pdfium::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FormKind, OpenOptions, PasswordRequired, SignedState};
 use form_pdf_reader::t;
 use std::path::{Path, PathBuf};
 
@@ -32,6 +32,23 @@ struct Tab {
     view: DocView,
     dirty: bool,
     search: String,
+    /// Firmas digitales del documento y derechos de uso de Adobe (se leen
+    /// al abrir y al guardar).
+    digital: Vec<DigitalSignature>,
+    usage_rights: bool,
+}
+
+impl Tab {
+    fn new(view: DocView) -> Tab {
+        let mut t = Tab { view, dirty: false, search: String::new(), digital: Vec::new(), usage_rights: false };
+        t.read_signatures();
+        t
+    }
+
+    fn read_signatures(&mut self) {
+        self.digital = self.view.doc.digital_signatures();
+        self.usage_rights = self.view.doc.has_usage_rights();
+    }
 }
 
 pub struct PdfApp {
@@ -52,6 +69,7 @@ pub struct PdfApp {
     title: String,
     autotest: Option<crate::autotest::AutoTest>,
     signatures: crate::signatures::Signatures,
+    show_digital: bool,
 }
 
 impl PdfApp {
@@ -77,6 +95,7 @@ impl PdfApp {
             title: String::new(),
             autotest: crate::autotest::AutoTest::from_env(),
             signatures: crate::signatures::Signatures::new(),
+            show_digital: false,
         };
         if let Some(p) = initial {
             app.open(&p);
@@ -123,7 +142,7 @@ impl PdfApp {
                 install_handlers(&doc);
                 let kind = describe(&doc);
                 let is_xfa_dyn = doc.is_dynamic_xfa();
-                self.tabs.push(Tab { view: DocView::new(doc), dirty: false, search: String::new() });
+                self.tabs.push(Tab::new(DocView::new(doc)));
                 self.active = self.tabs.len() - 1;
                 self.error = None;
                 self.status = t!("status.opened", file_name(path), kind);
@@ -225,6 +244,7 @@ impl PdfApp {
         match tab.view.doc.save(&target) {
             Ok(()) => {
                 tab.dirty = false;
+                tab.read_signatures();
                 self.status = t!("status.saved", target.display());
                 true
             }
@@ -417,6 +437,10 @@ impl PdfApp {
                 if ui.add_enabled(has, egui::Button::new(mi(icon::PAPERCLIP, t!("menu.attachments")))).clicked() {
                     ui.close();
                     self.show_attachments = true;
+                }
+                if ui.add_enabled(has, egui::Button::new(mi(icon::SEAL_CHECK, t!("digital.menu")))).clicked() {
+                    ui.close();
+                    self.show_digital = true;
                 }
                 ui.separator();
                 if ui.add_enabled(has, egui::Button::new(mi(icon::EXPORT, t!("menu.export_flat")))).clicked() {
@@ -663,6 +687,18 @@ impl PdfApp {
         let p = theme::palette(ui);
         ui.horizontal_centered(|ui| {
             let small = |s: String| RichText::new(s).size(12.0).color(p.text_weak);
+            let mut open_digital = false;
+            if let Some(t) = self.cur()
+                && !t.digital.is_empty()
+            {
+                let (glyph, color, text) = digital_summary(&t.digital, &p);
+                let r = ui.add(egui::Label::new(RichText::new(format!("{glyph} {text}")).size(12.0).color(color)).sense(egui::Sense::click()));
+                open_digital = r.on_hover_text(t!("digital.menu")).clicked();
+                ui.label(small("·".into()));
+            }
+            if open_digital {
+                self.show_digital = true;
+            }
             if let Some(t) = self.cur() {
                 ui.label(small(describe(&t.view.doc)));
                 if t.dirty {
@@ -718,6 +754,9 @@ impl PdfApp {
         }
         if self.show_settings {
             self.settings_window(ctx);
+        }
+        if self.show_digital {
+            self.digital_window(ctx);
         }
         if let Some((sig, name)) = self.signatures.create_window(ctx) {
             if !name.is_empty() && self.settings.signer_name.as_deref() != Some(&name) {
@@ -823,6 +862,68 @@ impl PdfApp {
                     self.show_xfa_info = false;
                 }
             });
+        }
+    }
+
+    /// Las firmas digitales del documento.
+    fn digital_window(&mut self, ctx: &egui::Context) {
+        let (sigs, rights) = match self.cur() {
+            Some(t) => (t.digital.clone(), t.usage_rights),
+            None => (Vec::new(), false),
+        };
+        let r = egui::Modal::new(egui::Id::new("firmas_digitales")).show(ctx, |ui| {
+            let p = theme::palette(ui);
+            ui.set_width(480.0);
+            ui.heading(t!("digital.title"));
+            ui.add_space(6.0);
+            if sigs.is_empty() {
+                ui.label(RichText::new(t!("digital.none")).color(p.text_weak));
+            }
+            for s in &sigs {
+                egui::Frame::new().stroke(egui::Stroke::new(1.0, p.border)).corner_radius(8).inner_margin(12).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    let (glyph, color, state) = state_text(s.state, &p);
+                    ui.label(RichText::new(s.signer.clone().unwrap_or_else(|| t!("digital.unknown_signer"))).size(16.0).strong());
+                    ui.label(RichText::new(format!("{glyph}  {state}")).color(color));
+                    ui.add_space(4.0);
+                    let row = |ui: &mut egui::Ui, k: String, v: &Option<String>| {
+                        if let Some(v) = v {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(RichText::new(k).color(p.text_weak));
+                                ui.label(v);
+                            });
+                        }
+                    };
+                    let kind = match s.certification {
+                        Some(1) => t!("digital.cert_none"),
+                        Some(2) => t!("digital.cert_fill"),
+                        Some(_) => t!("digital.cert_annots"),
+                        None => t!("digital.approval"),
+                    };
+                    row(ui, t!("digital.kind"), &Some(kind));
+                    row(ui, t!("digital.date"), &s.time);
+                    row(ui, t!("digital.reason"), &s.reason);
+                    row(ui, t!("digital.issuer"), &s.issuer);
+                    let validity = match (&s.valid_from, &s.valid_to) {
+                        (Some(a), Some(b)) => Some(format!("{a} – {b}")),
+                        _ => None,
+                    };
+                    row(ui, t!("digital.validity"), &validity);
+                });
+                ui.add_space(6.0);
+            }
+            if rights {
+                ui.label(RichText::new(format!("{}  {}", icon::SEAL, t!("digital.usage_rights"))).color(p.text_weak));
+                ui.add_space(4.0);
+            }
+            if !sigs.is_empty() {
+                ui.label(RichText::new(t!("digital.trust_note")).size(12.0).color(p.text_weak));
+            }
+            ui.add_space(8.0);
+            ui.button(t!("dialog.close")).clicked()
+        });
+        if r.inner || r.should_close() {
+            self.show_digital = false;
         }
     }
 
@@ -1089,6 +1190,30 @@ impl ToolbarFit {
         }
         f
     }
+}
+
+/// Icono, color y texto de cómo está una firma.
+fn state_text(s: SignedState, p: &theme::Palette) -> (&'static str, Color32, String) {
+    match s {
+        SignedState::Intact => (icon::SEAL_CHECK, p.ok, t!("digital.intact")),
+        SignedState::ChangedAfter => (icon::SEAL_WARNING, p.warn, t!("digital.changed_after")),
+        SignedState::Broken => (icon::SEAL_WARNING, p.danger, t!("digital.broken")),
+        SignedState::Unknown => (icon::SEAL, p.text_weak, t!("digital.unknown")),
+    }
+}
+
+/// Resumen para la barra de estado: el peor estado de todas las firmas.
+fn digital_summary(sigs: &[DigitalSignature], p: &theme::Palette) -> (&'static str, Color32, String) {
+    let worst = |s: SignedState| match s {
+        SignedState::Broken => 3,
+        SignedState::ChangedAfter => 2,
+        SignedState::Unknown => 1,
+        SignedState::Intact => 0,
+    };
+    let state = sigs.iter().map(|s| s.state).max_by_key(|s| worst(*s)).unwrap_or(SignedState::Unknown);
+    let (glyph, color, _) = state_text(state, p);
+    let text = if sigs.len() == 1 { t!("digital.status_one") } else { t!("digital.status_many", sigs.len()) };
+    (glyph, color, text)
 }
 
 /// Entrada del menú principal con su icono.

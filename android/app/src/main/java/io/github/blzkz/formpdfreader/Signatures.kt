@@ -27,7 +27,9 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import uniffi.form_pdf_reader_ffi.DigitalSignatureInfo
 import uniffi.form_pdf_reader_ffi.InkStroke
+import uniffi.form_pdf_reader_ffi.SignatureState
 import uniffi.form_pdf_reader_ffi.SignatureImage
 import uniffi.form_pdf_reader_ffi.SignatureLibrary
 import uniffi.form_pdf_reader_ffi.nameInitials
@@ -121,6 +123,52 @@ object Signatures {
         dialog.show()
     }
 
+    /** The digital signatures of a document (see `PdfDocument.digitalSignatures`). */
+    fun showDigital(a: AppCompatActivity, list: List<DigitalSignatureInfo>, usageRights: Boolean) {
+        val root = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(a, 24f), dp(a, 8f), dp(a, 24f), 0) }
+        val weak = MaterialColors.getColor(a, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY)
+        fun line(text: String, color: Int? = null, size: Float = 14f, bold: Boolean = false, top: Float = 2f) {
+            root.addView(TextView(a).apply {
+                this.text = text
+                textSize = size
+                color?.let { setTextColor(it) }
+                if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(0, dp(a, top), 0, 0)
+            })
+        }
+        if (list.isEmpty()) line(a.getString(R.string.digital_none), weak)
+        for (s in list) {
+            line(s.signer ?: a.getString(R.string.digital_unknown_signer), size = 17f, bold = true, top = 12f)
+            val (mark, color, text) = when (s.state) {
+                SignatureState.INTACT -> Triple("✓", Color.rgb(0x2E, 0x7D, 0x32), R.string.digital_intact)
+                SignatureState.CHANGED_AFTER -> Triple("⚠", Color.rgb(0xC7, 0x7C, 0x00), R.string.digital_changed_after)
+                SignatureState.BROKEN -> Triple("✕", Color.rgb(0xC6, 0x28, 0x28), R.string.digital_broken)
+                SignatureState.UNKNOWN -> Triple("?", weak, R.string.digital_unknown)
+            }
+            line("$mark  ${a.getString(text)}", color)
+            val kind = when (s.certification?.toInt()) {
+                null -> R.string.digital_approval
+                1 -> R.string.digital_cert_none
+                2 -> R.string.digital_cert_fill
+                else -> R.string.digital_cert_annots
+            }
+            line("${a.getString(R.string.digital_kind)} ${a.getString(kind)}", top = 6f)
+            s.time?.let { line("${a.getString(R.string.digital_date)} $it") }
+            s.reason?.let { line("${a.getString(R.string.digital_reason)} $it") }
+            s.issuer?.let { line("${a.getString(R.string.digital_issuer)} $it") }
+            val from = s.validFrom
+            val to = s.validTo
+            if (from != null && to != null) line("${a.getString(R.string.digital_validity)} $from – $to")
+        }
+        if (usageRights) line(a.getString(R.string.digital_usage_rights), weak, top = 14f)
+        if (list.isNotEmpty()) line(a.getString(R.string.digital_trust_note), weak, size = 12f, top = 14f)
+        MaterialAlertDialogBuilder(a)
+            .setTitle(R.string.digital_title)
+            .setView(ScrollView(a).apply { addView(root) })
+            .setPositiveButton(R.string.ok, null)
+            .show()
+    }
+
     /** White card with a border (the accent colour when [selected]). */
     private fun card(c: Context, selected: Boolean) = GradientDrawable().apply {
         setColor(Color.WHITE)
@@ -180,7 +228,14 @@ object Signatures {
             val b = MaterialButton(a, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
                 id = View.generateViewId()
                 setText(pair.first)
-                setTextColor(Color.rgb(pair.second shr 16 and 0xFF, pair.second shr 8 and 0xFF, pair.second and 0xFF))
+                // Un punto del color de la tinta (el texto, del tema: se lee en claro y oscuro).
+                icon = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.rgb(pair.second shr 16 and 0xFF, pair.second shr 8 and 0xFF, pair.second and 0xFF))
+                    setStroke(dp(a, 1f), Color.WHITE)
+                    setSize(dp(a, 16f), dp(a, 16f))
+                }
+                iconTint = null
                 tag = pair.second
             }
             inks.addView(b)

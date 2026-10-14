@@ -14,7 +14,9 @@ use std::time::{Duration, Instant};
 
 pub use super::host::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest};
 
+mod digital;
 mod signatures;
+pub use digital::{DigitalSignature, SignedState};
 pub use signatures::{PlacedSignature, render_signature, signature_size};
 
 /// Tipo de formulario que contiene el documento.

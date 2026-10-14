@@ -114,4 +114,23 @@
     <string name="sign_cannot">This document does not accept signatures on the page (dynamic XFA form).</string>
     <string name="sign_error">The signature could not be placed: %1$s</string>
     <string name="sign_place_hint">Tap the page where you want the signature. Then you can move it, resize it or remove it until you save.</string>
+    <!-- Firmas digitales del documento -->
+    <string name="digital_title">Digital signatures</string>
+    <string name="digital_none">This document has no digital signatures.</string>
+    <string name="digital_unknown_signer">Unknown signer</string>
+    <string name="digital_intact">The document has not changed since it was signed</string>
+    <string name="digital_changed_after">The signed content is intact, but changes were added afterwards</string>
+    <string name="digital_broken">The content does not match the signature: the document was altered</string>
+    <string name="digital_unknown">This signature could not be checked</string>
+    <string name="digital_kind">Type:</string>
+    <string name="digital_approval">Approval signature</string>
+    <string name="digital_cert_none">Certification: no changes allowed</string>
+    <string name="digital_cert_fill">Certification: filling in forms and signing allowed</string>
+    <string name="digital_cert_annots">Certification: filling in, signing and commenting allowed</string>
+    <string name="digital_date">Date:</string>
+    <string name="digital_reason">Reason:</string>
+    <string name="digital_issuer">Certificate issuer:</string>
+    <string name="digital_validity">Certificate valid:</string>
+    <string name="digital_usage_rights">It has Adobe Reader usage rights (they allow filling it in and saving it in Reader).</string>
+    <string name="digital_trust_note">This checks that the signed content has not changed, not whether the certificate comes from a trusted authority.</string>
 </resources>

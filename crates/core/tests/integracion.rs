@@ -714,8 +714,42 @@ fn firmas_manuscritas() {
     assert!(doc.add_signature(0, a, &escrita).is_err());
 }
 
+fn firmas_digitales() {
+    use form_pdf_reader::pdfium::SignedState;
+    let src = Path::new("tests/fixtures/firmado-pdfjs.pdf");
+    let doc = Document::open(src).unwrap();
+    let f = doc.digital_signatures();
+    assert_eq!(f.len(), 1);
+    assert_eq!(f[0].signer.as_deref(), Some("test-pdf-signer"));
+    assert_eq!(f[0].issuer.as_deref(), Some("pdf-sign-ca"));
+    assert_eq!(f[0].sub_filter.as_deref(), Some("adbe.pkcs7.detached"));
+    assert!(f[0].reason.as_deref().unwrap_or("").starts_with("Test signature"));
+    assert_eq!(f[0].certification, None);
+    assert_eq!(f[0].state, SignedState::Intact);
+    assert!(!doc.has_usage_rights());
+    drop(doc);
+
+    // Un byte cambiado dentro de lo firmado, y cambios añadidos después.
+    let b = std::fs::read(src).unwrap();
+    let mut alterado = b.clone();
+    alterado[101] = alterado[101].wrapping_add(1);
+    let p = tmp("firmado-alterado.pdf");
+    std::fs::write(&p, &alterado).unwrap();
+    assert_eq!(Document::open(&p).unwrap().digital_signatures()[0].state, SignedState::Broken);
+    let sx = b.windows(9).rposition(|w| w == b"startxref").unwrap();
+    let mut ampliado = b.clone();
+    ampliado.extend_from_slice(b"\n% cambio posterior\n");
+    ampliado.extend_from_slice(&b[sx..]);
+    std::fs::write(&p, &ampliado).unwrap();
+    assert_eq!(Document::open(&p).unwrap().digital_signatures()[0].state, SignedState::ChangedAfter);
+
+    // Derechos de uso de Adobe (formulario del Banco de España).
+    assert!(Document::open(Path::new(XFA)).unwrap().has_usage_rights());
+}
+
 #[test]
 fn pdfium_completo() {
+    firmas_digitales();
     firmas_manuscritas();
     normal();
     acroform();

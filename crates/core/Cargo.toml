@@ -21,6 +21,13 @@ flate2 = "1"
 regex = "1"
 # Contornos de las letras de las firmas escritas (sign::shape).
 ttf-parser = "0.25"
+# Firmas digitales del documento: CMS (PKCS#7), certificados y resúmenes
+# (pdfium::Document::digital_signatures).
+cms = "0.2"
+der = { version = "0.7", features = ["oid"] }
+x509-cert = "0.2"
+sha1 = "0.10"
+sha2 = "0.10"
 
 [dev-dependencies]
 env_logger.workspace = true
