@@ -403,7 +403,8 @@ impl PrintDialog {
             let can_duplex = printer.as_ref().is_some_and(|p| p.duplex);
             row(ui, t!("print.duplex"), &mut |ui| {
                 if !can_duplex {
-                    ui.label(RichText::new(t!("print.duplex_unavailable")).color(p.text_weak));
+                    let text = if printer.is_some() { t!("print.duplex_unavailable") } else { "—".to_string() };
+                    ui.label(RichText::new(text).color(p.text_weak));
                     return;
                 }
                 let name = |d: Duplex| match d {
