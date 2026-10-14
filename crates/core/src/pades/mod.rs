@@ -15,6 +15,7 @@ pub mod cert;
 mod cms;
 mod local_time;
 pub mod p12;
+pub mod tsa;
 
 use anyhow::{Context, Result, anyhow, bail};
 use lopdf::{Dictionary, Object, ObjectId};
@@ -57,6 +58,8 @@ pub struct Request {
     pub location: Option<String>,
     /// La firma manuscrita que se ve junto al texto (si es visible).
     pub handwritten: Option<SavedSignature>,
+    /// Servidor de sellado de tiempo (`http://...`), si se quiere sello.
+    pub timestamp: Option<String>,
 }
 
 /// Un campo de firma del documento.
@@ -80,6 +83,7 @@ pub struct Prepared {
     chain: Vec<Vec<u8>>,
     attrs: der::asn1::SetOfVec<x509_cert::attr::Attribute>,
     to_sign: Vec<u8>,
+    tsa: Option<String>,
 }
 
 impl Prepared {
@@ -91,7 +95,16 @@ impl Prepared {
     /// Mete la firma `signature` (de `data_to_sign`) y devuelve el PDF
     /// firmado.
     pub fn finish(self, signature: &[u8]) -> Result<Vec<u8>> {
-        let cms = cms::signed_data(&self.chain, self.attrs, signature)?;
+        // El sello de tiempo cubre el valor de la firma tal como va en el CMS.
+        let signature = match key_kind(&self.chain[0])? {
+            KeyKind::Ec => ecdsa_der(signature),
+            KeyKind::Rsa => signature.to_vec(),
+        };
+        let token = match &self.tsa {
+            Some(url) => Some(tsa::timestamp(url, &signature)?),
+            None => None,
+        };
+        let cms = cms::signed_data(&self.chain, self.attrs, &signature, token)?;
         let hex: String = cms.iter().map(|b| format!("{b:02X}")).collect();
         if hex.len() > self.contents_len {
             bail!("la firma no cabe en el hueco reservado ({} > {})", hex.len(), self.contents_len);
@@ -126,9 +139,11 @@ pub fn signature_fields(base: &[u8], password: Option<&str>) -> Result<Vec<Signa
 // Preparar
 // ---------------------------------------------------------------------------
 
-/// Hueco para la firma CMS, en bytes: certificados y unos 8 KB para lo demás.
-fn contents_size(chain: &[Vec<u8>]) -> usize {
-    chain.iter().map(Vec::len).sum::<usize>() + 8192
+/// Hueco para la firma CMS, en bytes: certificados y unos 8 KB para lo
+/// demás; con sello de tiempo, 12 KB más (lleva los certificados del
+/// servidor).
+fn contents_size(chain: &[Vec<u8>], timestamp: bool) -> usize {
+    chain.iter().map(Vec::len).sum::<usize>() + 8192 + if timestamp { 12288 } else { 0 }
 }
 
 /// Prepara la firma de `base` con el certificado (y la cadena) `chain`.
@@ -160,7 +175,7 @@ pub fn prepare(base: &[u8], password: Option<&str>, req: &Request, chain: &[Vec<
     let mut build = Dictionary::new();
     build.set("App", Object::Dictionary(app));
     sig.set("Prop_Build", Object::Dictionary(build));
-    let size = contents_size(chain);
+    let size = contents_size(chain, req.timestamp.is_some());
     let mut tail = Vec::new();
     tail.extend_from_slice(b"/ByteRange ");
     tail.extend_from_slice(&[b' '; BYTE_RANGE_LEN]);
@@ -298,7 +313,7 @@ pub fn prepare(base: &[u8], password: Option<&str>, req: &Request, chain: &[Vec<
     let digest = Sha256::new().chain_update(&pdf[..contents_at]).chain_update(&pdf[after..]).finalize();
     let attrs = cms::signed_attributes(&digest, leaf)?;
     let to_sign = cms::to_be_signed(&attrs)?;
-    Ok(Prepared { pdf, contents_at, contents_len: size * 2, chain: chain.to_vec(), attrs, to_sign })
+    Ok(Prepared { pdf, contents_at, contents_len: size * 2, chain: chain.to_vec(), attrs, to_sign, tsa: req.timestamp.clone() })
 }
 
 /// Sitio reservado para `[0 a b c]`.

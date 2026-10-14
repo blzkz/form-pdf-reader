@@ -911,12 +911,20 @@ impl PdfApp {
             tab.view.commit_focus();
             let doc = &tab.view.doc;
             let fields = doc.signature_fields();
-            self.digital_dialog = Some(DigitalSignDialog::new(fields, self.signatures.saved().to_vec(), !doc.can_sign()));
+            let s = &self.settings;
+            self.digital_dialog = Some(DigitalSignDialog::new(fields, self.signatures.saved().to_vec(), !doc.can_sign(), s.timestamp, s.timestamp_server.clone()));
         }
         let Some(d) = self.digital_dialog.as_mut() else { return };
         let Some(out) = d.show(ctx) else { return };
         self.digital_dialog = None;
         let Outcome::Sign(plan) = out else { return };
+        // Recordar lo elegido para el sello de tiempo.
+        let server = Some(plan.timestamp_server.clone()).filter(|s| !s.is_empty() && s != form_pdf_reader::pades::tsa::DEFAULT_TSA);
+        if plan.timestamp_on != self.settings.timestamp || server != self.settings.timestamp_server {
+            self.settings.timestamp = plan.timestamp_on;
+            self.settings.timestamp_server = server;
+            self.settings.save();
+        }
         match (&plan.field, plan.visible) {
             (None, true) => {
                 // Primero el sitio en la página.
@@ -968,6 +976,7 @@ impl PdfApp {
             reason: Some(plan.reason).filter(|s| !s.is_empty()),
             location: Some(plan.location).filter(|s| !s.is_empty()),
             handwritten: plan.handwritten,
+            timestamp: plan.timestamp,
         };
         let Some(view) = self.view_mut() else { return };
         view.commit_focus();

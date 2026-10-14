@@ -23,6 +23,11 @@ pub struct SignPlan {
     pub handwritten: Option<SavedSignature>,
     pub reason: String,
     pub location: String,
+    /// Servidor de sellado de tiempo, si se pide sello.
+    pub timestamp: Option<String>,
+    /// Lo elegido para el sello (para recordarlo).
+    pub timestamp_on: bool,
+    pub timestamp_server: String,
 }
 
 pub enum Outcome {
@@ -39,6 +44,8 @@ pub struct DigitalSignDialog {
     pending_file: Option<PathBuf>,
     file_password: String,
     file_error: Option<String>,
+    /// Poner el foco en la contraseña del fichero.
+    focus_password: bool,
     /// Contraseñas de los ficheros ya abiertos.
     file_passwords: std::collections::HashMap<PathBuf, String>,
     visible: bool,
@@ -50,10 +57,12 @@ pub struct DigitalSignDialog {
     reason: String,
     location: String,
     dynamic_xfa: bool,
+    timestamp: bool,
+    timestamp_server: String,
 }
 
 impl DigitalSignDialog {
-    pub fn new(fields: Vec<SignatureField>, saved: Vec<SavedSignature>, dynamic_xfa: bool) -> DigitalSignDialog {
+    pub fn new(fields: Vec<SignatureField>, saved: Vec<SavedSignature>, dynamic_xfa: bool, timestamp: bool, timestamp_server: Option<String>) -> DigitalSignDialog {
         let (tx, rx) = channel();
         std::thread::spawn(move || {
             let _ = tx.send(certs::system_certificates());
@@ -67,6 +76,7 @@ impl DigitalSignDialog {
             pending_file: None,
             file_password: String::new(),
             file_error: None,
+            focus_password: false,
             file_passwords: Default::default(),
             // En XFA dinámico Adobe no enseña anotaciones: invisible.
             visible: !dynamic_xfa,
@@ -77,6 +87,8 @@ impl DigitalSignDialog {
             reason: String::new(),
             location: String::new(),
             dynamic_xfa,
+            timestamp,
+            timestamp_server: timestamp_server.unwrap_or_else(|| form_pdf_reader::pades::tsa::DEFAULT_TSA.to_string()),
         }
     }
 
@@ -180,7 +192,7 @@ impl DigitalSignDialog {
             let mut open = false;
             ui.horizontal(|ui| {
                 let r = ui.add(egui::TextEdit::singleline(&mut self.file_password).password(true).desired_width(260.0).margin(egui::Margin::symmetric(8, 5)));
-                if !r.has_focus() && self.file_password.is_empty() && self.file_error.is_none() {
+                if std::mem::take(&mut self.focus_password) {
                     r.request_focus();
                 }
                 open = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
@@ -198,7 +210,11 @@ impl DigitalSignDialog {
                         self.pending_file = None;
                         self.file_error = None;
                     }
-                    Err(e) => self.file_error = Some(format!("{e:#}")),
+                    Err(e) => {
+                        self.file_error = Some(format!("{e:#}"));
+                        self.file_password.clear();
+                        self.focus_password = true;
+                    }
                 }
             }
             if let Some(e) = &self.file_error {
@@ -210,6 +226,7 @@ impl DigitalSignDialog {
             self.pending_file = Some(f);
             self.file_password.clear();
             self.file_error = None;
+            self.focus_password = true;
         }
     }
 
@@ -228,7 +245,7 @@ impl DigitalSignDialog {
     }
 
     fn options(&mut self, ui: &mut egui::Ui, p: &theme::Palette) {
-        let label_w = 130.0;
+        let label_w = 165.0;
         let row = |ui: &mut egui::Ui, label: String, add: &mut dyn FnMut(&mut egui::Ui)| {
             ui.horizontal(|ui| {
                 ui.allocate_ui_with_layout(Vec2::new(label_w, 28.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -277,6 +294,16 @@ impl DigitalSignDialog {
         row(ui, t!("dsig.location"), &mut |ui| {
             ui.add(egui::TextEdit::singleline(&mut self.location).hint_text(t!("dsig.optional")).desired_width(330.0).margin(egui::Margin::symmetric(8, 5)));
         });
+        row(ui, t!("dsig.timestamp"), &mut |ui| {
+            ui.checkbox(&mut self.timestamp, "").on_hover_text(t!("dsig.timestamp_tip"));
+            ui.add_enabled(
+                self.timestamp,
+                egui::TextEdit::singleline(&mut self.timestamp_server).desired_width(300.0).margin(egui::Margin::symmetric(8, 5)),
+            );
+        });
+        if self.timestamp {
+            ui.label(RichText::new(format!("{}  {}", icon::INFO, t!("dsig.timestamp_note"))).small().color(p.text_weak));
+        }
         if self.dynamic_xfa {
             ui.label(RichText::new(format!("{}  {}", icon::INFO, t!("dsig.note_xfa"))).small().color(p.text_weak));
         }
@@ -302,6 +329,9 @@ impl DigitalSignDialog {
                     handwritten: if self.visible { self.handwritten.and_then(|i| self.saved.get(i).cloned()) } else { None },
                     reason: self.reason.trim().to_string(),
                     location: self.location.trim().to_string(),
+                    timestamp: (self.timestamp && !self.timestamp_server.trim().is_empty()).then(|| self.timestamp_server.trim().to_string()),
+                    timestamp_on: self.timestamp,
+                    timestamp_server: self.timestamp_server.trim().to_string(),
                 })))
             }
             Some(_) => Some(Outcome::Closed),

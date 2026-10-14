@@ -6,13 +6,13 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.radiobutton.MaterialRadioButton
 import uniffi.form_pdf_reader_ffi.SignatureFieldInfo
 import uniffi.form_pdf_reader_ffi.SignatureInfo
 
@@ -52,7 +52,7 @@ object DigitalSign {
         onDone: (Options) -> Unit,
     ) {
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(a, 24f), dp(a, 4f), dp(a, 24f), 0) }
-        fun radio(text: Int, id: Int) = RadioButton(a).apply { setText(text); this.id = id }
+        fun radio(text: Int, id: Int) = MaterialRadioButton(a).apply { setText(text); this.id = id }
 
         box.addView(label(a, R.string.dsig_certificate, 0f))
         val source = RadioGroup(a).apply {

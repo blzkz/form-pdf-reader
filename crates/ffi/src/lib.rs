@@ -888,7 +888,7 @@ impl PdfDocument {
             (Some(l), Some(id)) => l.get(&id),
             _ => None,
         };
-        let req = Request { placement, reason: reason.filter(|s| !s.trim().is_empty()), location: location.filter(|s| !s.trim().is_empty()), handwritten };
+        let req = Request { placement, reason: reason.filter(|s| !s.trim().is_empty()), location: location.filter(|s| !s.trim().is_empty()), handwritten, timestamp: None };
         let prepared = doc.prepare_digital(&req, &chain).map_err(|e| PdfError::Sign(format!("{e:#}")))?;
         let to_sign = prepared.data_to_sign().to_vec();
         Ok(Arc::new(PendingSignature { prepared: Mutex::new(Some(prepared)), to_sign }))

@@ -25,6 +25,7 @@ const OID_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.10
 const OID_RSA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
 const OID_EC_PUBLIC_KEY: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
 const OID_ECDSA_SHA256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.4.3.2");
+const OID_SIGNATURE_TIMESTAMP: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.16.2.14");
 
 /// ESSCertIDv2 (RFC 5035), con SHA-256 (el algoritmo por defecto, que no se
 /// escribe).
@@ -122,7 +123,9 @@ pub fn ecdsa_der(sig: &[u8]) -> Vec<u8> {
 }
 
 /// El ContentInfo SignedData completo (DER).
-pub fn signed_data(chain: &[Vec<u8>], attrs: SetOfVec<Attribute>, signature: &[u8]) -> Result<Vec<u8>> {
+/// `timestamp`: el sello de tiempo de la firma (TimeStampToken), que va
+/// como atributo sin firmar.
+pub fn signed_data(chain: &[Vec<u8>], attrs: SetOfVec<Attribute>, signature: &[u8], timestamp: Option<Vec<u8>>) -> Result<Vec<u8>> {
     let leaf = Certificate::from_der(chain.first().ok_or_else(|| anyhow!("sin certificado"))?).map_err(|e| anyhow!("{e}"))?;
     let kind = key_kind(&chain[0])?;
     let (sig_alg, signature) = match kind {
@@ -140,7 +143,10 @@ pub fn signed_data(chain: &[Vec<u8>], attrs: SetOfVec<Attribute>, signature: &[u
         signed_attrs: Some(attrs),
         signature_algorithm: sig_alg,
         signature: OctetString::new(signature)?,
-        unsigned_attrs: None,
+        unsigned_attrs: match timestamp {
+            Some(t) => Some(set(vec![attribute(OID_SIGNATURE_TIMESTAMP, Any::from_der(&t).map_err(|e| anyhow!("{e}"))?)?])?),
+            None => None,
+        },
     };
     let mut certs = Vec::new();
     for c in chain {

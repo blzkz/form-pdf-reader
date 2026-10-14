@@ -789,7 +789,7 @@ fn firma_digital_pades() {
     for (i, (src, placement, use_ec, firmas)) in casos.into_iter().enumerate() {
         let key = if use_ec { &mut k_ec } else { &mut k_rsa };
         let base = std::fs::read(src).unwrap();
-        let req = Request { placement, reason: Some("Prueba de firma ñ".into()), location: Some("Madrid".into()), handwritten: None };
+        let req = Request { placement, reason: Some("Prueba de firma ñ".into()), location: Some("Madrid".into()), handwritten: None, timestamp: None };
         let firmado = pades::sign(&base, None, &req, key).unwrap_or_else(|e| panic!("{src}: {e:#}"));
         assert!(firmado.starts_with(&base), "{src}: actualización incremental");
         let p = tmp(&format!("pades-{i}.pdf"));

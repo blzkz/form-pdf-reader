@@ -162,4 +162,7 @@
     <string name="dsig_place_hint">Tippen Sie auf die Stelle der Seite für die digitale Signatur.</string>
     <string name="dsig_done">Signiert und gespeichert.</string>
     <string name="dsig_signed_name">%1$s_signiert.pdf</string>
+    <string name="dsig_no_device_title">Keine Zertifikate auf dem Gerät</string>
+    <string name="dsig_no_device">Sie haben kein Zertifikat gewählt oder es ist keines installiert. Sie können Ihres unter Einstellungen › Sicherheit › Verschlüsselung und Anmeldedaten › Zertifikat installieren hinzufügen oder die Zertifikatsdatei (.p12, .pfx) verwenden.</string>
+    <string name="dsig_use_file">Datei verwenden</string>
 </resources>

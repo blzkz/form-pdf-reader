@@ -1145,7 +1145,18 @@ class MainActivity : AppCompatActivity() {
     private fun chooseCertificate(source: DigitalSign.Source, then: (CertSigner) -> Unit) {
         when (source) {
             DigitalSign.Source.DEVICE -> KeyChain.choosePrivateKeyAlias(this, { alias ->
-                if (alias == null) return@choosePrivateKeyAlias
+                if (alias == null) {
+                    // Cancelled, or none installed (then Android shows nothing).
+                    runOnUiThread {
+                        MaterialAlertDialogBuilder(this)
+                            .setTitle(R.string.dsig_no_device_title)
+                            .setMessage(R.string.dsig_no_device)
+                            .setPositiveButton(R.string.dsig_use_file) { _, _ -> chooseCertificate(DigitalSign.Source.FILE, then) }
+                            .setNegativeButton(R.string.cancel, null)
+                            .show()
+                    }
+                    return@choosePrivateKeyAlias
+                }
                 Io.run({
                     val chain = KeyChain.getCertificateChain(this, alias)?.map { it.encoded } ?: error(getString(R.string.dsig_no_key))
                     val key = KeyChain.getPrivateKey(this, alias) ?: error(getString(R.string.dsig_no_key))

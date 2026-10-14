@@ -163,4 +163,7 @@
     <string name="dsig_place_hint">Tap on the page where you want the digital signature.</string>
     <string name="dsig_done">Signed and saved.</string>
     <string name="dsig_signed_name">%1$s_signed.pdf</string>
+    <string name="dsig_no_device_title">No certificates on the device</string>
+    <string name="dsig_no_device">You did not choose a certificate, or there is none installed. You can install yours in Settings › Security › Encryption &amp; credentials › Install a certificate, or use the certificate file (.p12, .pfx).</string>
+    <string name="dsig_use_file">Use a file</string>
 </resources>

@@ -162,4 +162,7 @@
     <string name="dsig_place_hint">Toque na página onde quer a assinatura digital.</string>
     <string name="dsig_done">Assinado e guardado.</string>
     <string name="dsig_signed_name">%1$s_assinado.pdf</string>
+    <string name="dsig_no_device_title">Não há certificados no dispositivo</string>
+    <string name="dsig_no_device">Não escolheu nenhum certificado ou não há nenhum instalado. Pode instalar o seu em Definições › Segurança › Encriptação e credenciais › Instalar um certificado, ou usar o ficheiro do certificado (.p12, .pfx).</string>
+    <string name="dsig_use_file">Usar um ficheiro</string>
 </resources>

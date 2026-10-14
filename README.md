@@ -93,11 +93,32 @@ made-up data and the public US Form I-9.
   can be moved, resized or removed. Saving writes them into the PDF as
   vector drawings, without touching what was there. Not on dynamic XFA
   forms, which Adobe Reader shows without annotations.
-- **Digital signatures:** the ones a PDF already has are listed (☰ > Digital
-  signatures…), with the signer, the certificate's issuer and validity, the
-  date and reason, and whether the signed content is unchanged, had changes
-  added afterwards or was altered. Whether the certificate comes from a
-  trusted authority is not checked yet.
+- **Digital signatures with a certificate:** Sign > "Sign with
+  certificate…" signs the document as it is (form data included) with a
+  PAdES signature, the European standard that Adobe Reader recognises. The
+  certificate can be:
+  - a certificate file (`.p12`, `.pfx`), such as the one the FNMT or a
+    browser exports, on every platform;
+  - an installed one: on Windows, the user's certificate store, which also
+    has the national ID card (DNIe) and other smart cards with a reader; on
+    Linux, Chrome's and Firefox's certificates (NSS) and smart cards and the
+    DNIe through PKCS#11 (OpenSC or the official DNIe module); on Android,
+    the certificates installed on the device.
+
+  The private key never leaves where it is (the system or the card signs);
+  the key of a file is only in memory while signing. The signature can be
+  visible (a box with the name and the date, and your handwritten signature
+  if you want, where you click or in a signature field of the document) or
+  invisible, with an optional reason and location and, on the desktop, an
+  optional timestamp from a timestamp server (PAdES B-T). It is saved as a
+  signed copy. In dynamic XFA forms the signature is invisible and Adobe
+  Reader does not show it: it only recognises the form's own XFA signature
+  fields.
+- **Seeing digital signatures:** the ones a PDF already has are listed (☰ >
+  Digital signatures…), with the signer, the certificate's issuer and
+  validity, the date and reason, and whether the signed content is
+  unchanged, had changes added afterwards or was altered. Whether the
+  certificate comes from a trusted authority is not checked yet.
 - **Saving:** Ctrl+S and Save As, with a warning about unsaved changes.
   Saving keeps the original file intact (see below).
 - **Printing:** a print dialog with the installed printers, pages (all,
@@ -180,7 +201,9 @@ as when Adobe Reader saves the form.
 
 ## Known limitations
 
-- Digital signatures and submitting the form by e-mail or web do not work.
+- Submitting the form by e-mail or web does not work.
+- The DNIe on Android (by NFC) is not supported; on Android use the
+  certificate installed on the device or its `.p12` file.
 - Non-embedded corporate fonts are replaced by Liberation Sans (Arial on
   Windows), so some text is slightly wider.
 - The date picker is in English (PDFium's choice) and opens on the current
@@ -420,11 +443,12 @@ crates/core/      form-pdf-reader-core: the library (imported as form_pdf_reader
   src/pdfium/       PDFium layer: bindings (bindgen), callbacks, document, fonts,
                     handwritten signatures on the page, digital signatures
   src/sign/         saved handwritten signatures and their vector shapes
+  src/pades/        digital signature (PAdES): CMS, PKCS#12, timestamps
   assets/signature-fonts/  handwriting fonts (OFL and Apache 2.0)
   src/xfa/          XFA compatibility fixes, incremental PDF editing, form state
   src/i18n.rs       translations (catalogs in locales/)
   tests/            integration test and sample PDFs
-  examples/         diagnostic tools (probe, packet dump)
+  examples/         diagnostic tools (probe, packet dump, firmar)
 crates/ffi/       form-pdf-reader-ffi: UniFFI bridge used by the Android app
 crates/desktop/   form-pdf-reader: the desktop application (egui)
   src/viewer.rs     view: tiles, mouse and keyboard to PDFium, tools, layouts
@@ -434,6 +458,8 @@ crates/desktop/   form-pdf-reader: the desktop application (egui)
   src/snap.rs       Windows: system frame and snap layouts
   src/signatures.rs saved signatures menu and "Create signature" dialog
   src/print.rs      print dialog and job; print/cups.rs (Linux), print/win.rs
+  src/digital_sign.rs  "Sign with certificate" dialog
+  src/certs.rs      certificates: certs/pkcs11.rs (Linux), certs/winstore.rs
   src/soft.rs       window drawn with the CPU when there is no graphics card
   src/autotest.rs   UI test driver
 crates/egui_software_backend/   CPU renderer for egui (a copy of the crate

@@ -11,6 +11,10 @@
   "test-pdf-signer"), `test/pdfs/signed_verified.pdf` of
   [pdf.js](https://github.com/mozilla/pdf.js), Apache License 2.0. SHA-256
   `1fe9051d…848c`.
+- `certs/`: test certificates for the digital signature, made with OpenSSL
+  for these tests (fictitious holders, marked "(PRUEBA)"): `ca.pem` (a test
+  authority), `prueba-rsa.p12` (RSA, AES) and `prueba-ec-3des.p12` (P-256,
+  legacy 3DES). The password of both files is `prueba`.
 
 ## corpus/
 
@@ -26,3 +30,4 @@ MIT licence; each keeps its own terms.
 | `gencat-22100.pdf` | 22100, parking card for people with disabilities | Generalitat de Catalunya | Dynamic XFA | Open reuse with attribution ([legal notice](https://tramits.gencat.cat/ca/ajuda/avis_legal/)) | [dretssocials.gencat.cat](https://dretssocials.gencat.cat/ca/ambits_tematics/accessibilitat/mobilitat/targetes-aparcament/index.html) | `f97829f8…fda4` |
 | `irs-f1040x.pdf` | Form 1040-X | Internal Revenue Service (US) | Static XFA | US Government work, public domain | [irs.gov](https://www.irs.gov/pub/irs-pdf/f1040x.pdf) | `e4d8d7df…013e` |
 | `uscis-i9.pdf` | Form I-9 | US Citizenship and Immigration Services | AcroForm | US Government work, public domain | [uscis.gov](https://www.uscis.gov/i-9) | `780f348c…7281` |
+
