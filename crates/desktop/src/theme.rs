@@ -147,26 +147,51 @@ fn style(dark: bool) -> egui::Style {
     w.inactive.fg_stroke = Stroke::new(1.0, p.text);
     // Borde fino en campos de texto y botones normales, como Fluent (los de
     // solo icono no tienen marco en reposo).
-    w.inactive.bg_stroke = Stroke::new(1.0, p.border);
-    w.hovered.bg_stroke = Stroke::new(1.0, p.border);
+    // El mismo grosor de borde en todos los estados: egui suma el borde al
+    // tamaño del botón, y si cambiaba al pasar el ratón o pulsar, los botones
+    // de al lado se movían.
+    for st in [&mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
+        st.bg_stroke = Stroke::new(1.0, p.border);
+    }
     s
 }
 
-/// Botón de solo icono, sin marco hasta pasar el ratón.
+/// Botones planos, como los de la barra de herramientas: sin fondo ni borde
+/// en reposo, pero ocupando lo mismo en reposo, con el ratón encima y
+/// pulsados. egui solo mide el borde de un botón cuando lo dibuja; por eso
+/// aquí siempre lo tienen, transparente, y los botones de dentro deben
+/// dibujar su marco también en reposo (`frame_when_inactive(true)`).
+pub fn flat<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.scope(|ui| {
+        let w = &mut ui.visuals_mut().widgets;
+        w.inactive.weak_bg_fill = Color32::TRANSPARENT;
+        for st in [&mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
+            st.bg_stroke = Stroke::new(1.0, Color32::TRANSPARENT);
+        }
+        add(ui)
+    })
+    .inner
+}
+
+/// Botón de solo icono, sin fondo hasta pasar el ratón.
 pub fn icon_button(ui: &mut Ui, glyph: &str, tip: impl Into<WidgetText>) -> Response {
-    let b = egui::Button::new(RichText::new(glyph).size(18.0)).frame_when_inactive(false).min_size(Vec2::splat(32.0));
-    ui.add(b).on_hover_text(tip)
+    flat(ui, |ui| {
+        let b = egui::Button::new(RichText::new(glyph).size(18.0)).frame_when_inactive(true).min_size(Vec2::splat(32.0));
+        ui.add(b).on_hover_text(tip)
+    })
 }
 
 /// Igual, marcado cuando está activo.
 pub fn icon_toggle(ui: &mut Ui, on: bool, glyph: &str, tip: impl Into<WidgetText>) -> Response {
     let p = palette(ui);
-    let text = RichText::new(glyph).size(18.0).color(if on { p.accent } else { p.text });
-    let mut b = egui::Button::new(text).frame_when_inactive(on).min_size(Vec2::splat(32.0));
-    if on {
-        b = b.fill(p.accent.gamma_multiply(0.16));
-    }
-    ui.add(b).on_hover_text(tip)
+    flat(ui, |ui| {
+        let text = RichText::new(glyph).size(18.0).color(if on { p.accent } else { p.text });
+        let mut b = egui::Button::new(text).frame_when_inactive(true).min_size(Vec2::splat(32.0));
+        if on {
+            b = b.fill(p.accent.gamma_multiply(0.16));
+        }
+        ui.add(b).on_hover_text(tip)
+    })
 }
 
 /// Botón de diálogo: el principal relleno con el color de acento, los demás
@@ -228,12 +253,12 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
     let frame = egui::Frame::new().fill(p.hover).corner_radius(8).inner_margin(Margin::same(2));
     frame.show(ui, |ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
-        ui.horizontal(|ui| {
+        flat(ui, |ui| ui.horizontal(|ui| {
             for (opt, glyph, label, tip) in options {
                 let on = *value == *opt;
                 let shown = if labels { format!("{glyph}  {label}") } else { glyph.to_string() };
                 let text = RichText::new(shown).color(if on { p.text } else { p.text_weak });
-                let mut b = egui::Button::new(text).frame_when_inactive(on).min_size(Vec2::new(0.0, 28.0)).corner_radius(6);
+                let mut b = egui::Button::new(text).frame_when_inactive(true).min_size(Vec2::new(0.0, 28.0)).corner_radius(6);
                 if on {
                     b = b.fill(p.surface).stroke(Stroke::new(1.0, p.border));
                 }
@@ -242,7 +267,7 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
                     *value = *opt;
                 }
             }
-        });
+        }));
     });
 }
 

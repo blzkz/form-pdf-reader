@@ -1,6 +1,6 @@
 [package]
 name = "form-pdf-reader"
-description = "PDF reader that fills in and saves dynamic XFA forms without Adobe Reader"
+description = "Lightweight PDF reader that fills in and saves dynamic XFA forms without Adobe Reader"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

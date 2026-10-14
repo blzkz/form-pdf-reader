@@ -15,7 +15,8 @@ priority: optional
 # MAINTAINER and HOMEPAGE come from the GitHub repository (see release.yml).
 maintainer: ${MAINTAINER}
 description: |
-  PDF reader that fills in and saves dynamic XFA forms without Adobe Reader.
+  Lightweight PDF reader that fills in and saves dynamic XFA forms without
+  Adobe Reader.
   Reads normal PDFs and fills in AcroForm and dynamic XFA (Adobe LiveCycle)
   forms, running their scripts with PDFium (V8 + XFA).
 vendor: Form PDF Reader

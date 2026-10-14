@@ -214,3 +214,4 @@ digital.usage_rights = It has Adobe Reader usage rights (they allow filling it i
 digital.trust_note = This checks that the signed content has not changed, not whether the certificate comes from a trusted authority.
 digital.status_one = Digitally signed
 digital.status_many = {0} digital signatures
+status.opening = Opening {0}…

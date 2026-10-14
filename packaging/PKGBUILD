@@ -3,7 +3,7 @@
 pkgname=form-pdf-reader
 pkgver=0.7.0
 pkgrel=1
-pkgdesc="PDF reader that fills and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)"
+pkgdesc="Lightweight PDF reader that fills and saves dynamic XFA forms without Adobe Reader (PDFium with V8/XFA)"
 # Nombres anteriores del proyecto.
 provides=('pdf-reader-editor' 'simple-pdf-reader')
 conflicts=('pdf-reader-editor' 'simple-pdf-reader')
