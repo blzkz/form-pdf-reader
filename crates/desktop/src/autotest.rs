@@ -5,7 +5,8 @@
 //!
 //! Pasos: wait:N (fotogramas), click:X,Y, down:X,Y, up:X,Y (pulsar y soltar
 //! por separado, para arrastrar), move:X,Y, copy, type:TEXTO, key:Nombre
-//! (Enter, Tab, ArrowDown...), scroll:DY, shot:RUTA.png, quit.
+//! (Enter, Tab, ArrowDown...), scroll:DY, size:ANCHO,ALTO (tamaño de la
+//! ventana), shot:RUTA.png, quit.
 
 use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Vec2};
 use std::collections::VecDeque;
@@ -19,6 +20,7 @@ enum Step {
     Copy,
     Key(Key, bool, Modifiers),
     Scroll(f32),
+    Size(Vec2),
     Shot(String),
     Quit,
 }
@@ -76,6 +78,7 @@ impl AutoTest {
                     }
                 }
                 "scroll" => steps.push_back(Step::Scroll(arg.parse().unwrap_or(0.0))),
+                "size" => steps.push_back(Step::Size(pos().to_vec2())),
                 "shot" => steps.push_back(Step::Shot(arg.to_string())),
                 "quit" => steps.push_back(Step::Quit),
                 _ => eprintln!("[autotest] paso desconocido: {part}"),
@@ -113,6 +116,7 @@ impl AutoTest {
                 raw.events.push(Event::Key { key: k, physical_key: Some(k), pressed, repeat: false, modifiers: m });
             }
             Step::Scroll(dy) => raw.events.push(Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: Vec2::new(0.0, dy), phase: egui::TouchPhase::Move, modifiers: Modifiers::NONE }),
+            Step::Size(s) => ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(s)),
             Step::Shot(path) => {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
                 self.waiting_shot = Some(path);

@@ -9,6 +9,8 @@ use std::path::PathBuf;
 pub struct Settings {
     /// Idioma elegido ("fr"…); None: el del sistema.
     pub language: Option<String>,
+    /// Tema: "light", "dark"; None: el del sistema.
+    pub theme: Option<String>,
 }
 
 fn path() -> Option<PathBuf> {
@@ -26,8 +28,10 @@ impl Settings {
         for line in text.lines() {
             if let Some((k, v)) = line.split_once('=') {
                 let v = v.trim();
-                if k.trim() == "language" && !v.is_empty() {
-                    s.language = Some(v.to_string());
+                match k.trim() {
+                    "language" if !v.is_empty() => s.language = Some(v.to_string()),
+                    "theme" if v == "light" || v == "dark" => s.theme = Some(v.to_string()),
+                    _ => {}
                 }
             }
         }
@@ -40,10 +44,23 @@ impl Settings {
         if let Some(l) = &self.language {
             text.push_str(&format!("language = {l}\n"));
         }
+        if let Some(t) = &self.theme {
+            text.push_str(&format!("theme = {t}\n"));
+        }
         let ok = p.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&p, text).is_ok();
         if !ok {
             log::warn!("no se pudieron guardar los ajustes en {}", p.display());
         }
+    }
+
+    /// Aplica el tema: el elegido, o el del sistema.
+    pub fn apply_theme(&self, ctx: &eframe::egui::Context) {
+        use eframe::egui::ThemePreference;
+        ctx.set_theme(match self.theme.as_deref() {
+            Some("light") => ThemePreference::Light,
+            Some("dark") => ThemePreference::Dark,
+            _ => ThemePreference::System,
+        });
     }
 
     /// Aplica el idioma: el elegido, o el del sistema. La variable
@@ -71,5 +88,7 @@ mod tests {
         assert_eq!(Settings::parse(""), Settings::default());
         assert_eq!(Settings::parse("# x\nlanguage = de\n").language.as_deref(), Some("de"));
         assert_eq!(Settings::parse("language =\n").language, None);
+        assert_eq!(Settings::parse("theme = dark\n").theme.as_deref(), Some("dark"));
+        assert_eq!(Settings::parse("theme = azul\n").theme, None);
     }
 }

@@ -94,6 +94,8 @@ impl Runner {
             Some(16384),
         );
         state.init_accesskit(el, &window, self.proxy.clone());
+        #[cfg(windows)]
+        crate::snap::install(&*window, &self.ctx);
         let context = softbuffer::Context::new(window.clone()).map_err(|e| anyhow::anyhow!("softbuffer: {e}"))?;
         let surface = softbuffer::Surface::new(&context, window.clone()).map_err(|e| anyhow::anyhow!("softbuffer: {e}"))?;
         let mut info = ViewportInfo::default();

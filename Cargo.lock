@@ -1276,6 +1276,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui-phosphor"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f4299551488dddaa8f757727e1eb4ffdaf277ffe6e30b413403468f5ecf4634"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "egui-wgpu"
 version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1592,11 +1601,12 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "form-pdf-reader"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "bytemuck",
  "eframe",
+ "egui-phosphor",
  "egui-winit",
  "egui_software_backend",
  "env_logger",
@@ -1604,6 +1614,7 @@ dependencies = [
  "log",
  "png",
  "pollster 0.4.0",
+ "raw-window-handle",
  "rfd",
  "softbuffer",
  "winresource",
@@ -1611,7 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "form-pdf-reader-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -1625,7 +1636,7 @@ dependencies = [
 
 [[package]]
 name = "form-pdf-reader-ffi"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "form-pdf-reader-core",
  "log",

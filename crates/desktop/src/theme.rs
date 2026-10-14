@@ -1,0 +1,213 @@
+//! Aspecto de la interfaz: la fuente del sistema, los iconos (Phosphor) y
+//! los colores, claros u oscuros según el sistema, al estilo de Windows 11.
+
+use std::sync::Arc;
+
+use eframe::egui::{
+    self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, Response, RichText, Shadow, Stroke, TextStyle, Theme, Ui,
+    Vec2, WidgetText,
+};
+
+pub use egui_phosphor::regular as icon;
+
+/// Colores de la ventana, para lo que se dibuja a mano.
+#[derive(Clone, Copy)]
+pub struct Palette {
+    /// Barra de título (detrás de las pestañas).
+    pub title_bar: Color32,
+    /// Barra de herramientas, pestaña activa, paneles.
+    pub surface: Color32,
+    /// Fondo detrás de las páginas.
+    pub canvas: Color32,
+    pub border: Color32,
+    pub text: Color32,
+    pub text_weak: Color32,
+    pub accent: Color32,
+    pub hover: Color32,
+    pub pressed: Color32,
+    /// Botón de cerrar la ventana al pasar el ratón.
+    pub close_hover: Color32,
+    pub warn: Color32,
+}
+
+const LIGHT: Palette = Palette {
+    title_bar: Color32::from_rgb(0xE9, 0xEC, 0xF0),
+    surface: Color32::from_rgb(0xF9, 0xFA, 0xFB),
+    canvas: Color32::from_rgb(0xE3, 0xE6, 0xEA),
+    border: Color32::from_rgb(0xD5, 0xD9, 0xDE),
+    text: Color32::from_rgb(0x1B, 0x1C, 0x1F),
+    text_weak: Color32::from_rgb(0x5C, 0x61, 0x68),
+    accent: Color32::from_rgb(0x0F, 0x6C, 0xBD),
+    hover: Color32::from_rgba_premultiplied(0, 0, 0, 12),
+    pressed: Color32::from_rgba_premultiplied(0, 0, 0, 22),
+    close_hover: Color32::from_rgb(0xC4, 0x2B, 0x1C),
+    warn: Color32::from_rgb(0xB2, 0x5E, 0x00),
+};
+
+const DARK: Palette = Palette {
+    title_bar: Color32::from_rgb(0x1C, 0x1C, 0x1E),
+    surface: Color32::from_rgb(0x2B, 0x2B, 0x2D),
+    canvas: Color32::from_rgb(0x16, 0x16, 0x18),
+    border: Color32::from_rgb(0x3D, 0x3D, 0x41),
+    text: Color32::from_rgb(0xEC, 0xEC, 0xEE),
+    text_weak: Color32::from_rgb(0xA4, 0xA6, 0xAB),
+    accent: Color32::from_rgb(0x4C, 0xA8, 0xF5),
+    hover: Color32::from_rgba_premultiplied(15, 15, 15, 15),
+    pressed: Color32::from_rgba_premultiplied(26, 26, 26, 26),
+    close_hover: Color32::from_rgb(0xC4, 0x2B, 0x1C),
+    warn: Color32::from_rgb(0xF0, 0xA0, 0x3C),
+};
+
+pub fn palette(ui: &Ui) -> Palette {
+    palette_of(ui.visuals().dark_mode)
+}
+
+pub fn palette_of(dark: bool) -> Palette {
+    if dark { DARK } else { LIGHT }
+}
+
+/// Fuentes, iconos y estilo claro y oscuro. El tema sigue al del sistema.
+pub fn install(ctx: &egui::Context) {
+    let mut fonts = FontDefinitions::default();
+    if let Some(data) = system_ui_font() {
+        fonts.font_data.insert("ui".into(), Arc::new(FontData::from_owned(data)));
+        if let Some(f) = fonts.families.get_mut(&FontFamily::Proportional) {
+            f.insert(0, "ui".into());
+        }
+    }
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+    ctx.set_fonts(fonts);
+    for theme in [Theme::Light, Theme::Dark] {
+        ctx.set_style_of(theme, style(theme == Theme::Dark));
+    }
+}
+
+fn style(dark: bool) -> egui::Style {
+    let p = palette_of(dark);
+    let mut s = egui::Style {
+        visuals: if dark { egui::Visuals::dark() } else { egui::Visuals::light() },
+        text_styles: [
+            (TextStyle::Small, FontId::proportional(12.0)),
+            (TextStyle::Body, FontId::proportional(14.0)),
+            (TextStyle::Button, FontId::proportional(14.0)),
+            (TextStyle::Heading, FontId::proportional(20.0)),
+            (TextStyle::Monospace, FontId::monospace(13.0)),
+        ]
+        .into(),
+        ..Default::default()
+    };
+
+    let sp = &mut s.spacing;
+    sp.item_spacing = Vec2::new(6.0, 6.0);
+    sp.button_padding = Vec2::new(10.0, 5.0);
+    sp.interact_size.y = 28.0;
+    sp.menu_margin = Margin::same(6);
+    sp.window_margin = Margin::same(20);
+    sp.menu_spacing = 2.0;
+
+    let v = &mut s.visuals;
+    let radius = CornerRadius::same(6);
+    v.panel_fill = p.surface;
+    v.window_fill = p.surface;
+    v.extreme_bg_color = p.canvas;
+    v.faint_bg_color = p.title_bar;
+    v.text_edit_bg_color = Some(if dark { Color32::from_rgb(0x1F, 0x1F, 0x21) } else { Color32::WHITE });
+    v.window_stroke = Stroke::new(1.0, p.border);
+    v.window_corner_radius = CornerRadius::same(10);
+    v.menu_corner_radius = CornerRadius::same(8);
+    v.window_shadow = Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(if dark { 120 } else { 40 }) };
+    v.popup_shadow = Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(if dark { 110 } else { 30 }) };
+    v.hyperlink_color = p.accent;
+    v.selection.bg_fill = p.accent.gamma_multiply(if dark { 0.45 } else { 0.22 });
+    v.selection.stroke = Stroke::new(1.0, p.accent);
+    v.warn_fg_color = p.warn;
+
+    let w = &mut v.widgets;
+    w.noninteractive.bg_stroke = Stroke::new(1.0, p.border);
+    w.noninteractive.fg_stroke = Stroke::new(1.0, p.text);
+    w.noninteractive.corner_radius = radius;
+    for (st, fill) in [(&mut w.inactive, p.hover), (&mut w.hovered, p.hover), (&mut w.active, p.pressed), (&mut w.open, p.pressed)] {
+        st.corner_radius = radius;
+        st.weak_bg_fill = fill;
+        st.bg_fill = fill;
+        st.bg_stroke = Stroke::NONE;
+        st.fg_stroke = Stroke::new(1.0, p.text);
+        st.expansion = 0.0;
+    }
+    // Botones en reposo: un fondo apenas visible, como Fluent.
+    w.inactive.weak_bg_fill = if dark { Color32::from_rgba_premultiplied(10, 10, 10, 10) } else { Color32::from_rgba_premultiplied(0, 0, 0, 6) };
+    w.inactive.bg_fill = if dark { Color32::from_rgb(0x3A, 0x3A, 0x3D) } else { Color32::from_rgb(0xD5, 0xD9, 0xDE) };
+    w.inactive.fg_stroke = Stroke::new(1.0, p.text);
+    w.hovered.bg_stroke = Stroke::new(1.0, p.border);
+    s
+}
+
+/// Botón de solo icono, sin marco hasta pasar el ratón.
+pub fn icon_button(ui: &mut Ui, glyph: &str, tip: impl Into<WidgetText>) -> Response {
+    let b = egui::Button::new(RichText::new(glyph).size(18.0)).frame_when_inactive(false).min_size(Vec2::splat(32.0));
+    ui.add(b).on_hover_text(tip)
+}
+
+/// Igual, marcado cuando está activo.
+pub fn icon_toggle(ui: &mut Ui, on: bool, glyph: &str, tip: impl Into<WidgetText>) -> Response {
+    let p = palette(ui);
+    let text = RichText::new(glyph).size(18.0).color(if on { p.accent } else { p.text });
+    let mut b = egui::Button::new(text).frame_when_inactive(on).min_size(Vec2::splat(32.0));
+    if on {
+        b = b.fill(p.accent.gamma_multiply(0.16));
+    }
+    ui.add(b).on_hover_text(tip)
+}
+
+/// Botón principal de un diálogo (relleno con el color de acento).
+pub fn primary_button(ui: &mut Ui, text: impl Into<String>) -> Response {
+    let p = palette(ui);
+    let on = if ui.visuals().dark_mode { Color32::from_rgb(0x0B, 0x1E, 0x33) } else { Color32::WHITE };
+    ui.add(egui::Button::new(RichText::new(text.into()).color(on)).fill(p.accent).min_size(Vec2::new(80.0, 30.0)))
+}
+
+/// Control segmentado: varias opciones juntas, una elegida.
+/// Con `labels` false, solo los iconos (el texto queda en la ayuda).
+pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, &str, String, String)], labels: bool) {
+    let p = palette(ui);
+    let frame = egui::Frame::new().fill(p.hover).corner_radius(8).inner_margin(Margin::same(2));
+    frame.show(ui, |ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        ui.horizontal(|ui| {
+            for (opt, glyph, label, tip) in options {
+                let on = *value == *opt;
+                let shown = if labels { format!("{glyph}  {label}") } else { glyph.to_string() };
+                let text = RichText::new(shown).color(if on { p.text } else { p.text_weak });
+                let mut b = egui::Button::new(text).frame_when_inactive(on).min_size(Vec2::new(0.0, 28.0)).corner_radius(6);
+                if on {
+                    b = b.fill(p.surface).stroke(Stroke::new(1.0, p.border));
+                }
+                let tip = if labels { tip.clone() } else { format!("{label}: {tip}") };
+                if ui.add(b).on_hover_text(tip).clicked() {
+                    *value = *opt;
+                }
+            }
+        });
+    });
+}
+
+/// Fuente de la interfaz del sistema: Segoe UI en Windows; en Linux, la
+/// "sans-serif" de fontconfig (Noto Sans en KDE, Cantarell en GNOME...).
+fn system_ui_font() -> Option<Vec<u8>> {
+    #[cfg(windows)]
+    {
+        let dir = std::env::var_os("WINDIR").map(std::path::PathBuf::from).unwrap_or_else(|| "C:\\Windows".into());
+        std::fs::read(dir.join("Fonts").join("segoeui.ttf")).ok()
+    }
+    #[cfg(not(windows))]
+    {
+        let out = std::process::Command::new("fc-match").args(["-f", "%{file}", "sans-serif:style=Regular"]).output().ok()?;
+        let path = String::from_utf8(out.stdout).ok()?;
+        // Solo TrueType/OpenType sencillos (no colecciones .ttc ni fuentes variables).
+        let ok = path.ends_with(".ttf") || path.ends_with(".otf");
+        if !ok || path.contains('[') {
+            return None;
+        }
+        std::fs::read(path.trim()).ok()
+    }
+}

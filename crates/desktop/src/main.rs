@@ -4,11 +4,15 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod app;
+mod chrome;
 use form_pdf_reader::t;
 mod autotest;
 mod platform;
 mod settings;
+#[cfg(windows)]
+mod snap;
 mod soft;
+mod theme;
 mod viewer;
 
 use std::path::PathBuf;
@@ -52,7 +56,9 @@ fn main() -> anyhow::Result<()> {
         .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icons/256/form-pdf-reader.png")).unwrap_or_default())
         .with_inner_size([1100.0, 900.0])
         .with_min_inner_size([480.0, 360.0])
-        .with_drag_and_drop(true);
+        .with_drag_and_drop(true)
+        // La barra de título la dibuja la app, con las pestañas (chrome.rs).
+        .with_decorations(false);
 
     // Sin tarjeta gráfica, la interfaz se dibuja con la CPU (ver soft.rs).
     // FORM_PDF_READER_SOFTWARE=1 lo fuerza en cualquier sistema.
@@ -61,7 +67,11 @@ fn main() -> anyhow::Result<()> {
         return soft::run(viewport, move |ctx| app::PdfApp::new(ctx, file));
     }
     let options = eframe::NativeOptions { viewport, ..Default::default() };
-    eframe::run_native("form-pdf-reader", options, Box::new(move |cc| Ok(Box::new(app::PdfApp::new(&cc.egui_ctx, file)))))
+    eframe::run_native("form-pdf-reader", options, Box::new(move |cc| {
+        #[cfg(windows)]
+        snap::install(cc, &cc.egui_ctx);
+        Ok(Box::new(app::PdfApp::new(&cc.egui_ctx, file)))
+    }))
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(())
 }
