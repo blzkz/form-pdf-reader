@@ -2,3 +2,5 @@
 # las firmas digitales de los PDF de prueba).
 *.pdf binary
 *.ttf binary
+*.p12 binary
+*.pfx binary

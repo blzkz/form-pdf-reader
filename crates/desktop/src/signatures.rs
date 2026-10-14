@@ -17,6 +17,8 @@ pub enum Action {
     Place(SavedSignature),
     /// Abrir el diálogo para crear una.
     Create,
+    /// Firmar con certificado (firma digital).
+    Digital,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -69,9 +71,34 @@ impl Signatures {
     }
 
     /// Contenido del menú del botón de firmar.
-    pub fn menu(&mut self, ui: &mut egui::Ui) -> Option<Action> {
+    /// Las firmas guardadas en este equipo.
+    pub fn saved(&self) -> &[SavedSignature] {
+        &self.items
+    }
+
+    /// `handwritten`: el documento admite firmas manuscritas (no en XFA
+    /// dinámico); la firma digital se puede siempre.
+    pub fn menu(&mut self, ui: &mut egui::Ui, handwritten: bool) -> Option<Action> {
         // Más aire que los demás menús: aquí hay imágenes.
-        egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 8)).show(ui, |ui| self.menu_contents(ui)).inner
+        egui::Frame::new()
+            .inner_margin(egui::Margin::symmetric(10, 8))
+            .show(ui, |ui| {
+                let p = theme::palette(ui);
+                let mut action = None;
+                if handwritten {
+                    action = self.menu_contents(ui);
+                } else {
+                    ui.set_min_width(300.0);
+                    ui.label(RichText::new(t!("sign.cannot")).small().color(p.text_weak));
+                }
+                ui.separator();
+                if ui.button(format!("{}   {}", icon::SEAL_CHECK, t!("dsig.menu"))).on_hover_text(t!("dsig.menu_tip")).clicked() {
+                    action = Some(Action::Digital);
+                    ui.close();
+                }
+                action
+            })
+            .inner
     }
 
     fn menu_contents(&mut self, ui: &mut egui::Ui) -> Option<Action> {

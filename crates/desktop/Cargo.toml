@@ -25,11 +25,15 @@ bytemuck = "1"
 egui-winit = { version = "0.36", default-features = false, features = ["accesskit", "clipboard", "links"] }
 egui_software_backend = { path = "../egui_software_backend", features = ["rayon"] }
 softbuffer = "0.4"
+sha2 = "0.10"
 
 # Linux: OpenGL (glow). Windows: wgpu (Direct3D 12); sin tarjeta gráfica,
 # dibujo por CPU (soft.rs).
 [target.'cfg(not(windows))'.dependencies]
 eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
+# Certificados en tarjetas y en las bases de los navegadores (PKCS#11).
+cryptoki-sys = "0.5"
+libloading = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "wgpu"] }

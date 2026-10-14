@@ -209,6 +209,22 @@ impl<'a> UpdateBuilder<'a> {
         Ok(())
     }
 
+    /// Escribe un diccionario y le añade al final `tail` (claves ya
+    /// serializadas) sin cifrar: el `/Contents` de una firma digital va en
+    /// claro también en los PDF cifrados.
+    pub fn set_dict_with_raw(&mut self, id: ObjectId, dict: &Dictionary, tail: &[u8]) -> Result<()> {
+        let mut o = Object::Dictionary(dict.clone());
+        self.encrypt(id, &mut o)?;
+        let mut body = serialize_obj(&o);
+        body.truncate(body.len() - 2);
+        body.push(b' ');
+        body.extend_from_slice(tail);
+        body.extend_from_slice(b">>");
+        self.objects.retain(|(i, _)| *i != id);
+        self.objects.push((id, body));
+        Ok(())
+    }
+
     /// Escribe (o sustituye) un stream comprimido con Flate. `dict` no debe
     /// llevar /Length ni /Filter (se añaden aquí).
     pub fn set_stream(&mut self, id: ObjectId, dict: &Dictionary, data: &[u8]) -> Result<()> {

@@ -7,6 +7,8 @@ mod app;
 mod chrome;
 use form_pdf_reader::t;
 mod autotest;
+mod certs;
+mod digital_sign;
 mod platform;
 mod print;
 mod settings;

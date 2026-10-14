@@ -74,6 +74,11 @@ pub struct PdfApp {
     pending_open: Option<PathBuf>,
     frames: u32,
     print_dialog: Option<crate::print::PrintDialog>,
+    digital_dialog: Option<crate::digital_sign::DigitalSignDialog>,
+    /// Pedido abrir el diálogo de firma digital (desde la barra).
+    digital_requested: bool,
+    /// Firma digital esperando a que se elija el sitio en la página.
+    digital_pending: Option<Box<crate::digital_sign::SignPlan>>,
 }
 
 impl PdfApp {
@@ -103,6 +108,9 @@ impl PdfApp {
             pending_open: None,
             frames: 0,
             print_dialog: None,
+            digital_dialog: None,
+            digital_requested: false,
+            digital_pending: None,
         };
         // El fichero de la línea de órdenes se abre tras el primer fotograma:
         // así la ventana sale enseguida aunque abrirlo tarde (formularios
@@ -565,6 +573,7 @@ impl PdfApp {
                 }
             });
             let search_focus = &mut self.search_focus;
+            let digital_requested = &mut self.digital_requested;
             let status = &mut self.status;
             let Some(Tab { view: v, search, .. }) = self.tabs.get_mut(self.active) else { return };
             separator(ui);
@@ -605,13 +614,11 @@ impl PdfApp {
             if v.is_placing() {
                 sign_button = sign_button.fill(theme::palette(ui).accent.gamma_multiply(0.16));
             }
-            let mut action = None;
-            ui.add_enabled_ui(can_sign, |ui| {
-                let (r, inner) = theme::flat(ui, |ui| egui::containers::menu::MenuButton::from_button(sign_button).ui(ui, |ui| self.signatures.menu(ui)));
-                r.on_hover_text(t!("sign.button_tip")).on_disabled_hover_text(t!("sign.cannot"));
-                action = inner.and_then(|i| i.inner);
-            });
+            let (r, inner) = theme::flat(ui, |ui| egui::containers::menu::MenuButton::from_button(sign_button).ui(ui, |ui| self.signatures.menu(ui, can_sign)));
+            r.on_hover_text(t!("sign.button_tip"));
+            let action = inner.and_then(|i| i.inner);
             match action {
+                Some(crate::signatures::Action::Digital) => *digital_requested = true,
                 Some(crate::signatures::Action::Place(sig)) => {
                     v.start_placing(ui.ctx(), sig);
                     *status = t!("sign.placing_status");
@@ -788,6 +795,7 @@ impl PdfApp {
             self.digital_window(ctx);
         }
         self.print_window(ctx);
+        self.sign_digital_window(ctx);
         if let Some((sig, name)) = self.signatures.create_window(ctx) {
             if !name.is_empty() && self.settings.signer_name.as_deref() != Some(&name) {
                 self.settings.signer_name = Some(name);
@@ -893,6 +901,92 @@ impl PdfApp {
     }
 
     /// Las firmas digitales del documento.
+    /// El diálogo de firma digital, y lo que sigue al pulsar "Firmar".
+    fn sign_digital_window(&mut self, ctx: &egui::Context) {
+        use crate::digital_sign::{DigitalSignDialog, Outcome};
+        use form_pdf_reader::pades::Placement;
+        if std::mem::take(&mut self.digital_requested)
+            && let Some(tab) = self.tabs.get_mut(self.active)
+        {
+            tab.view.commit_focus();
+            let doc = &tab.view.doc;
+            let fields = doc.signature_fields();
+            self.digital_dialog = Some(DigitalSignDialog::new(fields, self.signatures.saved().to_vec(), tab.usage_rights, !doc.can_sign()));
+        }
+        let Some(d) = self.digital_dialog.as_mut() else { return };
+        let Some(out) = d.show(ctx) else { return };
+        self.digital_dialog = None;
+        let Outcome::Sign(plan) = out else { return };
+        match (&plan.field, plan.visible) {
+            (None, true) => {
+                // Primero el sitio en la página.
+                let (w, h) = if plan.handwritten.is_some() { (240.0, 66.0) } else { (200.0, 54.0) };
+                if let Some(v) = self.view_mut() {
+                    v.start_placing_digital(w, h);
+                }
+                self.status = t!("dsig.place_status");
+                self.digital_pending = Some(plan);
+            }
+            (Some(f), true) => {
+                let f = f.clone();
+                self.digital_sign(*plan, Placement::Field(f));
+            }
+            _ => self.digital_sign(*plan, Placement::Invisible),
+        }
+    }
+
+    /// Firma el documento con lo elegido y lo guarda como copia firmada,
+    /// que se abre en la misma pestaña.
+    fn digital_sign(&mut self, plan: crate::digital_sign::SignPlan, placement: form_pdf_reader::pades::Placement) {
+        let Some(view) = self.view() else { return };
+        let p = view.doc.path().to_path_buf();
+        let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| t!("file.default_stem"));
+        let name = format!("{stem}_{}.pdf", t!("file.signed_suffix"));
+        let target = match std::env::var("PDFRE_AUTOTEST_SAVE").ok().filter(|_| crate::autotest::active()) {
+            Some(t) => Some(PathBuf::from(t)),
+            None => {
+                let mut d = rfd::FileDialog::new().add_filter(t!("dialog.pdf_filter"), &["pdf"]).set_title(t!("dsig.save_title")).set_file_name(&name);
+                if let Some(dir) = p.parent() {
+                    d = d.set_directory(dir);
+                }
+                d.save_file()
+            }
+        };
+        let Some(mut target) = target else { return };
+        if target.extension().is_none() {
+            target.set_extension("pdf");
+        }
+        let mut signer = match crate::certs::signer(&plan.cert, &plan.secret) {
+            Ok(s) => s,
+            Err(e) => {
+                self.error = Some(t!("dsig.failed", format!("{e:#}")));
+                return;
+            }
+        };
+        let req = form_pdf_reader::pades::Request {
+            placement,
+            reason: Some(plan.reason).filter(|s| !s.is_empty()),
+            location: Some(plan.location).filter(|s| !s.is_empty()),
+            handwritten: plan.handwritten,
+        };
+        let Some(view) = self.view_mut() else { return };
+        view.commit_focus();
+        let result = view.doc.sign_digital(&req, signer.as_mut()).and_then(|bytes| form_pdf_reader::pdfium::write_atomic(&target, &bytes));
+        drop(signer);
+        match result {
+            Ok(()) => {
+                self.reopen(&target);
+                self.status = t!("dsig.done", target.display());
+            }
+            Err(e) => {
+                let msg = format!("{e:#}");
+                if msg != t!("print.cancelled") {
+                    self.error = Some(t!("dsig.failed", msg));
+                }
+            }
+        }
+    }
+
     fn print_window(&mut self, ctx: &egui::Context) {
         use crate::print::Outcome;
         let Some(d) = self.print_dialog.as_mut() else { return };
@@ -1142,6 +1236,15 @@ impl PdfApp {
                     && v.doc.lost_focus_on_refresh() {
                         self.status = t!("status.restructured");
                     }
+            if let Some((page, rect)) = ev.digital_placed
+                && let Some(plan) = self.digital_pending.take()
+            {
+                self.digital_sign(*plan, form_pdf_reader::pades::Placement::New { page, rect });
+            }
+            if ev.digital_cancelled {
+                self.digital_pending = None;
+                self.status.clear();
+            }
             if ev.print_requested {
                 self.print();
             }

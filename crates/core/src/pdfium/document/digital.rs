@@ -64,6 +64,27 @@ pub struct DigitalSignature {
 
 impl Document {
     /// Las firmas digitales del documento, en el orden en que se hicieron.
+    /// Los campos de firma del documento (vacíos o ya firmados).
+    pub fn signature_fields(&self) -> Vec<crate::pades::SignatureField> {
+        crate::pades::signature_fields(&self.base, self.password.as_deref()).unwrap_or_default()
+    }
+
+    /// Prepara la firma digital del documento tal como está ahora (con los
+    /// datos del formulario y las firmas manuscritas): devuelve lo que hay
+    /// que firmar. No escribe nada en disco.
+    pub fn prepare_digital(&mut self, req: &crate::pades::Request, chain: &[Vec<u8>]) -> anyhow::Result<crate::pades::Prepared> {
+        let bytes = self.bytes_for_save()?;
+        crate::pades::prepare(&bytes, self.password.as_deref(), req, chain)
+    }
+
+    /// Firma el documento tal como está ahora con `signer`: devuelve el PDF
+    /// firmado (no lo escribe).
+    pub fn sign_digital(&mut self, req: &crate::pades::Request, signer: &mut dyn crate::pades::Signer) -> anyhow::Result<Vec<u8>> {
+        let p = self.prepare_digital(req, &signer.chain())?;
+        let sig = signer.sign(p.data_to_sign())?;
+        p.finish(&sig)
+    }
+
     pub fn digital_signatures(&self) -> Vec<DigitalSignature> {
         let n = unsafe { FPDF_GetSignatureCount(self.doc) };
         (0..n.max(0)).filter_map(|i| self.read_signature(i)).collect()
@@ -265,7 +286,7 @@ fn parse_cms(contents: &[u8]) -> Option<CmsInfo> {
 }
 
 /// El nombre común (CN) de un nombre X.509, o la organización, o entero.
-fn name_of(name: &x509_cert::name::Name) -> Option<String> {
+pub(crate) fn name_of(name: &x509_cert::name::Name) -> Option<String> {
     let find = |oid: ObjectIdentifier| {
         name.0.iter().flat_map(|rdn| rdn.0.iter()).find(|atv| atv.oid == oid).and_then(|atv| {
             let bytes = atv.value.value();
@@ -278,7 +299,7 @@ fn name_of(name: &x509_cert::name::Name) -> Option<String> {
     })
 }
 
-fn time_str(t: &x509_cert::time::Time, with_time: bool) -> String {
+pub(crate) fn time_str(t: &x509_cert::time::Time, with_time: bool) -> String {
     let dt = t.to_date_time();
     if with_time {
         format!("{:04}-{:02}-{:02} {:02}:{:02}", dt.year(), dt.month(), dt.day(), dt.hour(), dt.minutes())
