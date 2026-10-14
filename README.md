@@ -1,7 +1,11 @@
 # Form PDF Reader
 
-**Read, fill in and save dynamic XFA forms on Linux, Windows and Android,
-without Adobe Reader.**
+**A lightweight PDF reader that reads, fills in, signs and saves dynamic XFA
+forms on Linux, Windows and Android, without Adobe Reader.**
+
+<p align="center">
+  <img src="assets/screenshots/desktop-light.png" alt="A dynamic XFA form filled in with Form PDF Reader on Linux" width="820">
+</p>
 
 Many official forms are dynamic XFA forms (Adobe LiveCycle). Other PDF
 viewers only show a "Please wait… / Adobe Reader 8 or higher is required"
@@ -11,8 +15,12 @@ disappear, validations work, and the result is saved in a way Adobe Reader
 accepts.
 
 It is also an ordinary PDF reader with tabs, text selection and several page
-layouts. It is written in Rust with [egui](https://github.com/emilk/egui),
-on top of Chromium's **PDFium** engine built with V8 and XFA.
+layouts, and it lets you sign documents as in DocuSign. It is lightweight:
+a download of about 20 MB with everything it needs, it opens in a moment,
+and it draws its own interface without a graphics card if there is none
+(virtual machines, remote desktops). It is written in Rust with
+[egui](https://github.com/emilk/egui), on top of Chromium's **PDFium**
+engine built with V8 and XFA.
 
 It was created to fill in the Banco de España job application form, which no
 free Linux viewer could handle.
@@ -32,6 +40,27 @@ means adding a file there and registering it in `crates/core/src/i18n.rs`);
 the Android ones in `android/app/src/main/res/values-<code>/strings.xml`.
 Texts that belong to a form itself (its labels, messages and validations)
 stay in the form's own language.
+
+## Screenshots
+
+| Light theme, signing a form | Dark theme, a signature placed |
+|---|---|
+| ![Create signature dialog: name in three handwriting styles](assets/screenshots/desktop-create-signature.png) | ![A handwritten signature placed on Form I-9, dark theme](assets/screenshots/desktop-dark-signature.png) |
+
+**Windows 11**
+
+![Form PDF Reader on Windows 11 with a dynamic XFA form](assets/screenshots/windows.jpg)
+
+**Android**
+
+<p>
+  <img src="assets/screenshots/android-form.png" alt="A dynamic XFA form on Android" width="260">
+  <img src="assets/screenshots/android-signatures.png" alt="Saved signatures on Android" width="260">
+  <img src="assets/screenshots/android-create-signature.png" alt="Create signature dialog on Android" width="260">
+</p>
+
+The forms shown are the Banco de España application form filled in with
+made-up data and the public US Form I-9.
 
 ## Features
 
@@ -402,7 +431,7 @@ crates/desktop/   form-pdf-reader: the desktop application (egui)
 crates/egui_software_backend/   CPU renderer for egui (a copy of the crate
                     of the same name, adapted to this egui version)
 android/          Android app (Kotlin) on top of the Rust core
-assets/           icons and .desktop file
+assets/           icons, .desktop file and the screenshots of this README
 packaging/ scripts/   packages, PDFium download, install scripts
 ```
 

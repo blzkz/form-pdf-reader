@@ -210,12 +210,17 @@ class PdfPageView(context: Context) : View(context) {
         }) { r ->
             if (d !== doc) return@run
             r.onSuccess {
+                val first = pages.isEmpty()
                 pages = it
                 single = single.coerceIn(0, max(0, pages.size - 1))
                 if (initialLayoutPending && width > 0) chooseInitialLayout()
                 relayout(null)
                 redraw()
                 notifyState()
+                // On slow devices an XFA form finishes its layout after it is
+                // shown: check its height for a while (otherwise it could not
+                // be scrolled past the first page until something was tapped).
+                if (first) for (delay in longArrayOf(500, 1000, 2000, 4000, 8000)) main.postDelayed({ checkStructure() }, delay)
             }
         }
     }

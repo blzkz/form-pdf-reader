@@ -103,6 +103,11 @@ pub struct DocView {
     has_focus: bool,
     /// Fotogramas restantes en los que comprobar cambios de estructura.
     struct_checks: u32,
+    /// Hasta cuándo comprobar la estructura sin esperar a una entrada: en
+    /// equipos lentos el formulario XFA termina de maquetarse después de
+    /// abrirlo, y sin esto no se podía bajar de la primera página hasta pulsar.
+    settle_until: Option<Instant>,
+    last_settle_check: Option<Instant>,
     pub search_hits: Vec<SearchHit>,
     pub search_index: usize,
     area_id: Id,
@@ -145,6 +150,8 @@ impl DocView {
             last_click: None,
             has_focus: false,
             struct_checks: 0,
+            settle_until: Some(Instant::now() + Duration::from_secs(8)),
+            last_settle_check: None,
             search_hits: Vec::new(),
             search_index: 0,
             // Un identificador por vista: cada pestaña conserva su propio
@@ -1018,10 +1025,23 @@ impl DocView {
         if had_input {
             self.struct_checks = 6;
         }
-        let check = self.struct_checks > 0;
+        let mut check = self.struct_checks > 0;
         if check {
             self.struct_checks -= 1;
             ctx.request_repaint();
+        }
+        // Recién abierto: cada 300 ms durante unos segundos.
+        let now = Instant::now();
+        match self.settle_until {
+            Some(t) if now < t => {
+                if self.last_settle_check.is_none_or(|l| now - l >= Duration::from_millis(300)) {
+                    self.last_settle_check = Some(now);
+                    check = true;
+                }
+                wake_at(&ctx, now + Duration::from_millis(300));
+            }
+            Some(_) => self.settle_until = None,
+            None => {}
         }
         if check && self.doc.refresh_if_structure_changed() {
             self.invalidate_all();

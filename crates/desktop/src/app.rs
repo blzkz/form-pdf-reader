@@ -70,6 +70,9 @@ pub struct PdfApp {
     autotest: Option<crate::autotest::AutoTest>,
     signatures: crate::signatures::Signatures,
     show_digital: bool,
+    /// Fichero por abrir en cuanto se haya dibujado la ventana.
+    pending_open: Option<PathBuf>,
+    frames: u32,
 }
 
 impl PdfApp {
@@ -96,9 +99,15 @@ impl PdfApp {
             autotest: crate::autotest::AutoTest::from_env(),
             signatures: crate::signatures::Signatures::new(),
             show_digital: false,
+            pending_open: None,
+            frames: 0,
         };
+        // El fichero de la línea de órdenes se abre tras el primer fotograma:
+        // así la ventana sale enseguida aunque abrirlo tarde (formularios
+        // XFA grandes en equipos lentos).
         if let Some(p) = initial {
-            app.open(&p);
+            app.status = t!("status.opening", file_name(&p));
+            app.pending_open = Some(p);
         }
         app
     }
@@ -529,8 +538,8 @@ impl PdfApp {
         let p = theme::palette(ui);
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            let menu = egui::Button::new(RichText::new(icon::LIST).size(18.0)).frame_when_inactive(false).min_size(egui::Vec2::splat(32.0));
-            egui::containers::menu::MenuButton::from_button(menu).ui(ui, |ui| self.main_menu(ui)).0.on_hover_text(t!("menu.main"));
+            let menu = egui::Button::new(RichText::new(icon::LIST).size(18.0)).frame_when_inactive(true).min_size(egui::Vec2::splat(32.0));
+            theme::flat(ui, |ui| egui::containers::menu::MenuButton::from_button(menu).ui(ui, |ui| self.main_menu(ui)).0.on_hover_text(t!("menu.main")));
             if theme::icon_button(ui, icon::FOLDER_OPEN, format!("{} (Ctrl+O)", t!("toolbar.open"))).clicked() {
                 self.open_dialog();
             }
@@ -576,10 +585,13 @@ impl PdfApp {
 
             // Firmar: las firmas guardadas en este equipo, o crear una.
             let can_sign = v.doc.can_sign();
-            let sign_button = egui::Button::new(RichText::new(icon::SIGNATURE).size(18.0)).frame_when_inactive(v.is_placing()).min_size(egui::Vec2::splat(32.0));
+            let mut sign_button = egui::Button::new(RichText::new(icon::SIGNATURE).size(18.0)).frame_when_inactive(true).min_size(egui::Vec2::splat(32.0));
+            if v.is_placing() {
+                sign_button = sign_button.fill(theme::palette(ui).accent.gamma_multiply(0.16));
+            }
             let mut action = None;
             ui.add_enabled_ui(can_sign, |ui| {
-                let (r, inner) = egui::containers::menu::MenuButton::from_button(sign_button).ui(ui, |ui| self.signatures.menu(ui));
+                let (r, inner) = theme::flat(ui, |ui| egui::containers::menu::MenuButton::from_button(sign_button).ui(ui, |ui| self.signatures.menu(ui)));
                 r.on_hover_text(t!("sign.button_tip")).on_disabled_hover_text(t!("sign.cannot"));
                 action = inner.and_then(|i| i.inner);
             });
@@ -958,9 +970,26 @@ impl PdfApp {
             let mut theme = self.settings.theme.clone();
             ui.horizontal(|ui| {
                 ui.label(t!("settings.theme"));
-                ui.selectable_value(&mut theme, None, t!("settings.theme_system"));
-                ui.selectable_value(&mut theme, Some("light".to_string()), t!("settings.theme_light"));
-                ui.selectable_value(&mut theme, Some("dark".to_string()), t!("settings.theme_dark"));
+                let mut choice = match theme.as_deref() {
+                    Some("light") => 1,
+                    Some("dark") => 2,
+                    _ => 0,
+                };
+                theme::segmented(
+                    ui,
+                    &mut choice,
+                    &[
+                        (0, icon::MONITOR, t!("settings.theme_system"), t!("settings.theme_system")),
+                        (1, icon::SUN, t!("settings.theme_light"), t!("settings.theme_light")),
+                        (2, icon::MOON, t!("settings.theme_dark"), t!("settings.theme_dark")),
+                    ],
+                    true,
+                );
+                theme = match choice {
+                    1 => Some("light".to_string()),
+                    2 => Some("dark".to_string()),
+                    _ => None,
+                };
             });
             if theme != self.settings.theme {
                 self.settings.theme = theme;
@@ -1102,6 +1131,14 @@ impl PdfApp {
 
         self.dialogs(&ctx);
         self.update_title(&ctx);
+        self.frames = self.frames.saturating_add(1);
+        if self.frames > 1
+            && let Some(p) = self.pending_open.take()
+        {
+            self.open(&p);
+        } else if self.pending_open.is_some() {
+            ctx.request_repaint();
+        }
         chrome::window_border(&ctx);
         chrome::resize_edges(&ctx);
     }

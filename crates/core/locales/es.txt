@@ -214,3 +214,4 @@ digital.usage_rights = Lleva los derechos de uso de Adobe Reader (permiten relle
 digital.trust_note = Se comprueba que el contenido firmado no ha cambiado, no si el certificado es de una entidad de confianza.
 digital.status_one = Firmado digitalmente
 digital.status_many = {0} firmas digitales
+status.opening = Abriendo {0}…

@@ -214,3 +214,4 @@ digital.usage_rights = Es hat die Nutzungsrechte von Adobe Reader (sie erlauben,
 digital.trust_note = Geprüft wird, dass sich der signierte Inhalt nicht geändert hat, nicht, ob das Zertifikat von einer vertrauenswürdigen Stelle stammt.
 digital.status_one = Digital signiert
 digital.status_many = {0} digitale Signaturen
+status.opening = {0} wird geöffnet…
