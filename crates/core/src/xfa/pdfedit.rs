@@ -278,7 +278,12 @@ impl<'a> UpdateBuilder<'a> {
             out.extend_from_slice(b"\nendobj\n");
             entries.push((*id, offset, *gen_));
         }
-        // Stream de referencias cruzadas (el original también las usa).
+        // Las referencias cruzadas en el mismo formato que la sección
+        // anterior: Adobe "repara" (y da por rotas las firmas digitales) los
+        // ficheros con una tabla clásica seguida de un stream de referencias.
+        if self.base.get(prev as usize..prev as usize + 4) == Some(b"xref") {
+            return self.finish_table(out, entries, prev);
+        }
         let xref_id = self.next_id;
         let xref_offset = out.len() as u64;
         if xref_offset > u32::MAX as u64 {
@@ -321,6 +326,48 @@ impl<'a> UpdateBuilder<'a> {
         out.extend_from_slice(&rows);
         out.extend_from_slice(b"\nendstream\nendobj\n");
         out.extend_from_slice(format!("startxref\n{xref_offset}\n%%EOF\n").as_bytes());
+        Ok(out)
+    }
+}
+
+impl UpdateBuilder<'_> {
+    /// Termina la actualización con una tabla de referencias clásica.
+    fn finish_table(&self, mut out: Vec<u8>, mut entries: Vec<(u32, u64, u16)>, prev: u64) -> Result<Vec<u8>> {
+        entries.sort_by_key(|e| e.0);
+        let xref_offset = out.len();
+        out.extend_from_slice(b"xref\n");
+        let mut i = 0;
+        while i < entries.len() {
+            // Subsecciones de números seguidos.
+            let mut j = i + 1;
+            while j < entries.len() && entries[j].0 == entries[j - 1].0 + 1 {
+                j += 1;
+            }
+            out.extend_from_slice(format!("{} {}\n", entries[i].0, j - i).as_bytes());
+            for (_, off, g) in &entries[i..j] {
+                out.extend_from_slice(format!("{off:010} {g:05} n\r\n").as_bytes());
+            }
+            i = j;
+        }
+        let trailer = &self.doc.trailer;
+        let mut d = Dictionary::new();
+        let size = self.next_id.max(entries.last().map_or(0, |e| e.0 + 1));
+        d.set("Size", Object::Integer(size as i64));
+        d.set("Prev", Object::Integer(prev as i64));
+        for key in [&b"Root"[..], b"Info", b"ID", b"Encrypt"] {
+            if let Ok(v) = trailer.get(key) {
+                d.set(key.to_vec(), v.clone());
+            }
+        }
+        if let Some(enc) = self.doc.encryption_state.as_ref().and_then(|s| s.encrypt_object_id()) {
+            d.set("Encrypt", Object::Reference(enc));
+        }
+        if let Some(info) = self.info {
+            d.set("Info", Object::Reference(info));
+        }
+        out.extend_from_slice(b"trailer\n");
+        out.extend_from_slice(&serialize_obj(&Object::Dictionary(d)));
+        out.extend_from_slice(format!("\nstartxref\n{xref_offset}\n%%EOF\n").as_bytes());
         Ok(out)
     }
 }

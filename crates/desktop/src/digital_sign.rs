@@ -49,12 +49,11 @@ pub struct DigitalSignDialog {
     handwritten: Option<usize>,
     reason: String,
     location: String,
-    usage_rights: bool,
     dynamic_xfa: bool,
 }
 
 impl DigitalSignDialog {
-    pub fn new(fields: Vec<SignatureField>, saved: Vec<SavedSignature>, usage_rights: bool, dynamic_xfa: bool) -> DigitalSignDialog {
+    pub fn new(fields: Vec<SignatureField>, saved: Vec<SavedSignature>, dynamic_xfa: bool) -> DigitalSignDialog {
         let (tx, rx) = channel();
         std::thread::spawn(move || {
             let _ = tx.send(certs::system_certificates());
@@ -77,7 +76,6 @@ impl DigitalSignDialog {
             handwritten: None,
             reason: String::new(),
             location: String::new(),
-            usage_rights,
             dynamic_xfa,
         }
     }
@@ -281,9 +279,6 @@ impl DigitalSignDialog {
         });
         if self.dynamic_xfa {
             ui.label(RichText::new(format!("{}  {}", icon::INFO, t!("dsig.note_xfa"))).small().color(p.text_weak));
-        }
-        if self.usage_rights {
-            ui.label(RichText::new(format!("{}  {}", icon::WARNING, t!("dsig.note_ur3"))).small().color(p.warn));
         }
         ui.label(RichText::new(format!("{}  {}", icon::INFO, t!("dsig.note_copy"))).small().color(p.text_weak));
     }

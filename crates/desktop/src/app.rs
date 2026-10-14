@@ -911,7 +911,7 @@ impl PdfApp {
             tab.view.commit_focus();
             let doc = &tab.view.doc;
             let fields = doc.signature_fields();
-            self.digital_dialog = Some(DigitalSignDialog::new(fields, self.signatures.saved().to_vec(), tab.usage_rights, !doc.can_sign()));
+            self.digital_dialog = Some(DigitalSignDialog::new(fields, self.signatures.saved().to_vec(), !doc.can_sign()));
         }
         let Some(d) = self.digital_dialog.as_mut() else { return };
         let Some(out) = d.show(ctx) else { return };
