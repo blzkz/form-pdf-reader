@@ -40,6 +40,10 @@ pub struct ViewEvents {
     pub open_files: Vec<std::path::PathBuf>,
     /// No se pudo poner o mover una firma.
     pub sign_error: Option<String>,
+    /// Sitio elegido para una firma digital visible: página y rectángulo.
+    pub digital_placed: Option<(usize, [f32; 4])>,
+    /// Se canceló la colocación de la firma digital (Esc).
+    pub digital_cancelled: bool,
 }
 
 static NEXT_VIEW: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -84,6 +88,8 @@ pub struct DocView {
     pending_rects: Vec<(usize, [f64; 4])>,
     /// Firma manuscrita a punto de ponerse (sigue al ratón).
     placing: Option<sign::Placing>,
+    /// Firma digital visible por colocar: su tamaño en puntos.
+    placing_box: Option<(f32, f32)>,
     /// Firma puesta (aún no escrita en el PDF) seleccionada, su arrastre y
     /// la imagen de cada una con su alto en píxeles (por su posición en
     /// `Document::placed_signatures`).
@@ -138,6 +144,7 @@ impl DocView {
             tiles: HashMap::new(),
             pending_rects: Vec::new(),
             placing: None,
+            placing_box: None,
             sig_selected: None,
             sig_drag: None,
             sig_tex: Vec::new(),

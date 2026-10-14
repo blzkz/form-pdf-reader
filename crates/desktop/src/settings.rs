@@ -15,6 +15,9 @@ pub struct Settings {
     pub signer_name: Option<String>,
     /// La última impresora usada.
     pub printer: Option<String>,
+    /// Firma digital: pedir sello de tiempo, y a qué servidor.
+    pub timestamp: bool,
+    pub timestamp_server: Option<String>,
 }
 
 fn path() -> Option<PathBuf> {
@@ -37,6 +40,8 @@ impl Settings {
                     "theme" if v == "light" || v == "dark" => s.theme = Some(v.to_string()),
                     "signer_name" if !v.is_empty() => s.signer_name = Some(v.to_string()),
                     "printer" if !v.is_empty() => s.printer = Some(v.to_string()),
+                    "timestamp" => s.timestamp = v == "true",
+                    "timestamp_server" if !v.is_empty() => s.timestamp_server = Some(v.to_string()),
                     _ => {}
                 }
             }
@@ -58,6 +63,12 @@ impl Settings {
         }
         if let Some(n) = &self.printer {
             text.push_str(&format!("printer = {n}\n"));
+        }
+        if self.timestamp {
+            text.push_str("timestamp = true\n");
+        }
+        if let Some(n) = &self.timestamp_server {
+            text.push_str(&format!("timestamp_server = {n}\n"));
         }
         let ok = p.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&p, text).is_ok();
         if !ok {

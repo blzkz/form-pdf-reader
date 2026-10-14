@@ -188,6 +188,111 @@ pub fn set_temp_dir(path: String) {
 }
 
 // ---------------------------------------------------------------------------
+// Digital signatures with a certificate (PAdES)
+// ---------------------------------------------------------------------------
+
+/// A certificate, summarised to choose one.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CertificateInfo {
+    pub subject: String,
+    pub issuer: String,
+    /// Holder's serial number (the ID number in Spanish certificates).
+    pub holder_id: Option<String>,
+    pub valid_from: String,
+    pub valid_to: String,
+    pub expired: bool,
+    pub for_signing: bool,
+}
+
+/// Summary of the certificate `der` (None if it cannot be read).
+#[uniffi::export]
+pub fn certificate_info(der: Vec<u8>) -> Option<CertificateInfo> {
+    let i = form_pdf_reader::pades::cert_info(&der)?;
+    Some(CertificateInfo { subject: i.subject, issuer: i.issuer, holder_id: i.holder_id, valid_from: i.valid_from, valid_to: i.valid_to, expired: i.expired, for_signing: i.for_signing })
+}
+
+/// The key of the certificate `der` is RSA (otherwise, elliptic curve).
+#[uniffi::export]
+pub fn certificate_is_rsa(der: Vec<u8>) -> bool {
+    matches!(form_pdf_reader::pades::key_kind(&der), Ok(form_pdf_reader::pades::KeyKind::Rsa))
+}
+
+/// A certificate file (.p12, .pfx) opened with its password. The private
+/// key is wiped from memory when the object is released.
+#[derive(uniffi::Object)]
+pub struct P12Certificate {
+    key: Mutex<form_pdf_reader::pades::P12Key>,
+}
+
+#[uniffi::export]
+impl P12Certificate {
+    #[uniffi::constructor]
+    pub fn open(data: Vec<u8>, password: String) -> Result<Arc<Self>, PdfError> {
+        let key = form_pdf_reader::pades::P12Key::open(&data, &password).map_err(|e| {
+            if e.downcast_ref::<form_pdf_reader::pades::p12::WrongPassword>().is_some() {
+                PdfError::WrongPassword(format!("{e}"))
+            } else {
+                PdfError::Sign(format!("{e:#}"))
+            }
+        })?;
+        Ok(Arc::new(P12Certificate { key: Mutex::new(key) }))
+    }
+
+    /// The certificate and its intermediates (DER), signer first.
+    pub fn chain(&self) -> Vec<Vec<u8>> {
+        use form_pdf_reader::pades::Signer;
+        self.key.lock().unwrap_or_else(|e| e.into_inner()).chain()
+    }
+
+    /// Signs `data` (SHA-256 with RSA or ECDSA).
+    pub fn sign(&self, data: Vec<u8>) -> Result<Vec<u8>, PdfError> {
+        use form_pdf_reader::pades::Signer;
+        self.key.lock().unwrap_or_else(|e| e.into_inner()).sign(&data).map_err(|e| PdfError::Sign(format!("{e:#}")))
+    }
+}
+
+/// Where a digital signature goes.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum DigitalPlacement {
+    /// Nothing on the page (it shows in the signatures panel of readers).
+    Invisible,
+    /// An empty signature field of the document.
+    Field { name: String },
+    /// A new box centred at (x, y), in points of the page from its top left
+    /// corner.
+    New { page: u32, x: f32, y: f32, width: f32, height: f32 },
+}
+
+/// A signature field of the document.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SignatureFieldInfo {
+    pub name: String,
+    pub page: Option<u32>,
+    pub signed: bool,
+}
+
+/// A digital signature waiting for the key to sign `data_to_sign`.
+#[derive(uniffi::Object)]
+pub struct PendingSignature {
+    prepared: Mutex<Option<form_pdf_reader::pades::Prepared>>,
+    to_sign: Vec<u8>,
+}
+
+#[uniffi::export]
+impl PendingSignature {
+    /// What the private key has to sign (SHA-256 with RSA or ECDSA).
+    pub fn data_to_sign(&self) -> Vec<u8> {
+        self.to_sign.clone()
+    }
+
+    /// Puts the signature in and returns the signed PDF.
+    pub fn finish(&self, signature: Vec<u8>) -> Result<Vec<u8>, PdfError> {
+        let p = self.prepared.lock().unwrap_or_else(|e| e.into_inner()).take().ok_or_else(|| PdfError::Sign("already finished".into()))?;
+        p.finish(&signature).map_err(|e| PdfError::Sign(format!("{e:#}")))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Handwritten signatures
 // ---------------------------------------------------------------------------
 
@@ -745,6 +850,48 @@ impl PdfDocument {
     /// the document, as when saving).
     pub fn export_print(&self, path: String, dpi: f32) -> Result<(), PdfError> {
         self.lock().export_flat(Path::new(&path), dpi).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// The signature fields of the document (empty or signed).
+    pub fn signature_fields(&self) -> Vec<SignatureFieldInfo> {
+        self.lock().signature_fields().into_iter().map(|f| SignatureFieldInfo { name: f.name, page: f.page.map(|p| p as u32), signed: f.signed }).collect()
+    }
+
+    /// Prepares a digital signature of the document as it is now (with the
+    /// form data and the handwritten signatures), with the certificate
+    /// `chain` (signer first). The returned object gives what the key has
+    /// to sign; `finish` with that signature gives the signed PDF.
+    pub fn prepare_digital_signature(
+        &self,
+        placement: DigitalPlacement,
+        reason: Option<String>,
+        location: Option<String>,
+        library: Option<Arc<SignatureLibrary>>,
+        handwritten_id: Option<String>,
+        chain: Vec<Vec<u8>>,
+    ) -> Result<Arc<PendingSignature>, PdfError> {
+        use form_pdf_reader::pades::{Placement, Request};
+        let mut doc = self.lock();
+        let placement = match placement {
+            DigitalPlacement::Invisible => Placement::Invisible,
+            DigitalPlacement::Field { name } => Placement::Field(name),
+            DigitalPlacement::New { page, x, y, width, height } => {
+                let p = usize_page(page);
+                let (w, h) = doc.page_size(p);
+                let (x0, y0) = doc.device_to_page(p, w as f64, h as f64, (x - width / 2.0) as f64, (y - height / 2.0) as f64);
+                let (x1, y1) = doc.device_to_page(p, w as f64, h as f64, (x + width / 2.0) as f64, (y + height / 2.0) as f64);
+                let r = [x0.min(x1) as f32, y0.min(y1) as f32, x0.max(x1) as f32, y0.max(y1) as f32];
+                Placement::New { page: p, rect: doc.clamp_to_page(p, r) }
+            }
+        };
+        let handwritten = match (library, handwritten_id) {
+            (Some(l), Some(id)) => l.get(&id),
+            _ => None,
+        };
+        let req = Request { placement, reason: reason.filter(|s| !s.trim().is_empty()), location: location.filter(|s| !s.trim().is_empty()), handwritten, timestamp: None };
+        let prepared = doc.prepare_digital(&req, &chain).map_err(|e| PdfError::Sign(format!("{e:#}")))?;
+        let to_sign = prepared.data_to_sign().to_vec();
+        Ok(Arc::new(PendingSignature { prepared: Mutex::new(Some(prepared)), to_sign }))
     }
 
     /// Saves to a file.

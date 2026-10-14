@@ -763,3 +763,54 @@ fn pdfium_completo() {
     adjuntos();
     fechas_y_cascada();
 }
+
+/// Firma digital PAdES con los certificados de prueba (RSA y EC): invisible,
+/// en un campo nuevo visible y sobre un documento ya firmado. Las firmas se
+/// leen como intactas y, si está poppler, `pdfsig` las da por válidas.
+#[test]
+fn firma_digital_pades() {
+    use form_pdf_reader::pades::{self, P12Key, Placement, Request};
+    use form_pdf_reader::pdfium::SignedState;
+    let rsa = std::fs::read("tests/fixtures/certs/prueba-rsa.p12").unwrap();
+    let ec = std::fs::read("tests/fixtures/certs/prueba-ec-3des.p12").unwrap();
+    assert!(P12Key::open(&rsa, "mala").is_err());
+    let mut k_rsa = P12Key::open(&rsa, "prueba").expect("PKCS#12 RSA (AES)");
+    let mut k_ec = P12Key::open(&ec, "prueba").expect("PKCS#12 EC (3DES)");
+    let info = pades::cert_info(&pades::Signer::chain(&k_rsa)[0]).unwrap();
+    assert_eq!(info.subject, "PEREZ GARCIA JUAN - 00000000T (PRUEBA)");
+    assert_eq!(info.holder_id.as_deref(), Some("IDCES-00000000T"));
+    assert!(info.for_signing && !info.expired);
+
+    let casos: [(&str, Placement, bool, usize); 3] = [
+        ("tests/fixtures/normal.pdf", Placement::Invisible, false, 1),
+        ("tests/fixtures/acroform.pdf", Placement::New { page: 0, rect: [72.0, 72.0, 272.0, 132.0] }, true, 1),
+        ("tests/fixtures/firmado-pdfjs.pdf", Placement::New { page: 0, rect: [300.0, 600.0, 500.0, 660.0] }, false, 2),
+    ];
+    for (i, (src, placement, use_ec, firmas)) in casos.into_iter().enumerate() {
+        let key = if use_ec { &mut k_ec } else { &mut k_rsa };
+        let base = std::fs::read(src).unwrap();
+        let req = Request { placement, reason: Some("Prueba de firma ñ".into()), location: Some("Madrid".into()), handwritten: None, timestamp: None };
+        let firmado = pades::sign(&base, None, &req, key).unwrap_or_else(|e| panic!("{src}: {e:#}"));
+        assert!(firmado.starts_with(&base), "{src}: actualización incremental");
+        let p = tmp(&format!("pades-{i}.pdf"));
+        std::fs::write(&p, &firmado).unwrap();
+        let doc = Document::open(&p).unwrap();
+        let f = doc.digital_signatures();
+        assert_eq!(f.len(), firmas, "{src}");
+        let nueva = f.last().unwrap();
+        assert_eq!(nueva.sub_filter.as_deref(), Some("ETSI.CAdES.detached"), "{src}");
+        assert_eq!(nueva.state, SignedState::Intact, "{src}");
+        assert!(nueva.signer.as_deref().unwrap_or("").contains("(PRUEBA)"), "{src}");
+        // Las anteriores siguen intactas... salvo que cubren hasta su final:
+        // ahora hay una actualización después.
+        if firmas > 1 {
+            assert_eq!(f[0].state, SignedState::ChangedAfter, "{src}");
+        }
+        let campos = pades::signature_fields(&firmado, None).unwrap();
+        assert!(campos.iter().filter(|c| c.signed).count() >= 1, "{src}");
+        if let Ok(out) = std::process::Command::new("pdfsig").arg(&p).output() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            assert!(s.contains("Signature Validation: Signature is Valid."), "{src}: pdfsig:\n{s}");
+        }
+    }
+}

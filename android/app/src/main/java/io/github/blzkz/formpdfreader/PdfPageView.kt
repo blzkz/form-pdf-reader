@@ -649,7 +649,18 @@ class PdfPageView(context: Context) : View(context) {
     private val sigBitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val handleRadius = 12 * density
 
-    val isPlacingSignature get() = placingId != null
+    /** Waiting for a tap on the page for a digital signature: page and point (points from the top left). */
+    private var placingDigital: ((Int, Float, Float) -> Unit)? = null
+
+    val isPlacingSignature get() = placingId != null || placingDigital != null
+
+    /** The next tap on a page gives where the digital signature goes. */
+    fun startPlacingDigital(onPlaced: (page: Int, x: Float, y: Float) -> Unit) {
+        placingId = null
+        selectedSig = null
+        placingDigital = onPlaced
+        invalidate()
+    }
 
     /** The next tap on a page places signature [id]. */
     fun startPlacingSignature(library: SignatureLibrary, id: String) {
@@ -661,6 +672,7 @@ class PdfPageView(context: Context) : View(context) {
 
     fun cancelPlacingSignature() {
         placingId = null
+        placingDigital = null
     }
 
     /** Reads the placed signatures again (after placing one, or saving). */
@@ -729,6 +741,12 @@ class PdfPageView(context: Context) : View(context) {
 
     /** A tap: places the signature waiting, or selects a placed one. */
     private fun placeOrSelectSignature(x: Float, y: Float): Boolean {
+        placingDigital?.let { cb ->
+            val slot = slotAt(x, y) ?: return true
+            placingDigital = null
+            cb(slot.page, (x + offsetX - slot.x) / scale, (y + offsetY - slot.y) / scale)
+            return true
+        }
         val id = placingId
         if (id != null) {
             val slot = slotAt(x, y) ?: return true
@@ -764,7 +782,7 @@ class PdfPageView(context: Context) : View(context) {
     /** Moving, resizing or removing the selected signature. true if the event was for it. */
     private fun handleSignatureTouch(e: MotionEvent): Boolean {
         // A mouse click places the signature waiting (taps go through the gestures).
-        if (placingId != null && e.isFromSource(InputDevice.SOURCE_MOUSE) && e.actionMasked == MotionEvent.ACTION_UP) {
+        if ((placingId != null || placingDigital != null) && e.isFromSource(InputDevice.SOURCE_MOUSE) && e.actionMasked == MotionEvent.ACTION_UP) {
             placeOrSelectSignature(e.x, e.y)
             return true
         }

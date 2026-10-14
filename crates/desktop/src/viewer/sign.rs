@@ -47,7 +47,15 @@ impl DocView {
     }
 
     pub fn is_placing(&self) -> bool {
-        self.placing.is_some()
+        self.placing.is_some() || self.placing_box.is_some()
+    }
+
+    /// El recuadro de una firma digital visible (`w`×`h` puntos) sigue al
+    /// ratón hasta pulsar en una página (Esc cancela).
+    pub fn start_placing_digital(&mut self, w: f32, h: f32) {
+        self.sig_selected = None;
+        self.placing = None;
+        self.placing_box = Some((w, h));
     }
 
     /// Rectángulo en pantalla de un rectángulo de página.
@@ -93,6 +101,11 @@ impl DocView {
                         self.placing = None;
                         return true;
                     }
+                    Key::Escape if self.placing_box.is_some() => {
+                        self.placing_box = None;
+                        ev.digital_cancelled = true;
+                        return true;
+                    }
                     Key::Delete | Key::Backspace if self.sig_selected.is_some() && !self.doc.editing_text() => {
                         self.remove_selected_signature(ev);
                         return true;
@@ -102,6 +115,26 @@ impl DocView {
             }
         }
 
+        if let Some((w, h)) = self.placing_box {
+            for e in events {
+                if let Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, .. } = e
+                    && area.contains(*pos)
+                    && let Some((page, x, y)) = self.hit(*pos)
+                {
+                    let (x, y) = (x as f32, y as f32);
+                    let r = self.clamp_to_page(page, [x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0]);
+                    self.placing_box = None;
+                    ev.digital_placed = Some((page, r));
+                    ctx.request_repaint();
+                    return true;
+                }
+            }
+            if ctx.input(|i| i.pointer.hover_pos()).is_some_and(|p| area.contains(p)) {
+                ctx.set_cursor_icon(CursorIcon::Crosshair);
+                ctx.request_repaint();
+            }
+            return true;
+        }
         if let Some(pl) = &self.placing {
             let size = pl.size;
             for e in events {
@@ -250,6 +283,18 @@ impl DocView {
             if let Some((tex, _)) = &self.sig_tex[i] {
                 image(tex, sr, if dragging { 0.7 } else { 1.0 });
             }
+        }
+        if let Some((w, h)) = self.placing_box {
+            if let Some(p) = ctx.input(|i| i.pointer.hover_pos())
+                && self.hit(p).is_some()
+            {
+                let s = self.zoom * PT_TO_PX;
+                let r = Rect::from_center_size(p, Vec2::new(w * s, h * s));
+                painter.rect(r, 3.0, accent.gamma_multiply(0.12), Stroke::new(1.5, accent), StrokeKind::Outside);
+                let size = (h * s * 0.22).clamp(9.0, 18.0);
+                painter.text(r.center(), egui::Align2::CENTER_CENTER, format!("{}  {}", crate::theme::icon::SEAL_CHECK, form_pdf_reader::t!("dsig.box_label")), egui::FontId::proportional(size), accent.gamma_multiply(1.0));
+            }
+            return;
         }
         if let Some(pl) = &self.placing {
             if let Some(p) = ctx.input(|i| i.pointer.hover_pos())

@@ -74,17 +74,27 @@ object Signatures {
     private fun dp(c: Context, v: Float) = (v * c.resources.displayMetrics.density).toInt()
 
     /** The saved signatures to choose one; [onPlace] gets its id. */
-    fun showMenu(a: AppCompatActivity, onPlace: (String) -> Unit) {
+    /**
+     * The signing menu: the saved signatures to place one, create one, or
+     * sign with a certificate ([onDigital]). [handwritten]: the document
+     * accepts signatures on the page (not dynamic XFA forms).
+     */
+    fun showMenu(a: AppCompatActivity, handwritten: Boolean, onPlace: (String) -> Unit, onDigital: () -> Unit) {
         val library = library(a)
         val list = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(a, 20f), dp(a, 8f), dp(a, 20f), 0) }
-        val dialog = MaterialAlertDialogBuilder(a)
+        val builder = MaterialAlertDialogBuilder(a)
             .setTitle(R.string.sign)
             .setView(ScrollView(a).apply { addView(list) })
-            .setPositiveButton(R.string.sign_create) { _, _ -> showCreate(a) { id -> onPlace(id) } }
+            .setNeutralButton(R.string.dsig_menu) { _, _ -> onDigital() }
             .setNegativeButton(R.string.cancel, null)
-            .create()
+        if (handwritten) builder.setPositiveButton(R.string.sign_create) { _, _ -> showCreate(a) { id -> onPlace(id) } }
+        val dialog = builder.create()
         fun fill() {
             list.removeAllViews()
+            if (!handwritten) {
+                list.addView(TextView(a).apply { setText(R.string.sign_cannot) })
+                return
+            }
             val items = library.list()
             if (items.isEmpty()) {
                 list.addView(TextView(a).apply { setText(R.string.sign_none) })
