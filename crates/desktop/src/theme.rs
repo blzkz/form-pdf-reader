@@ -169,11 +169,56 @@ pub fn icon_toggle(ui: &mut Ui, on: bool, glyph: &str, tip: impl Into<WidgetText
     ui.add(b).on_hover_text(tip)
 }
 
-/// Botón principal de un diálogo (relleno con el color de acento).
-pub fn primary_button(ui: &mut Ui, text: impl Into<String>) -> Response {
+/// Botón de diálogo: el principal relleno con el color de acento, los demás
+/// claros con un borde fino, como en Windows 11. Con estados al pasar el
+/// ratón y al pulsar.
+pub fn dialog_button(ui: &mut Ui, text: impl Into<WidgetText>, primary: bool, enabled: bool) -> Response {
     let p = palette(ui);
-    let on = if ui.visuals().dark_mode { Color32::from_rgb(0x0B, 0x1E, 0x33) } else { Color32::WHITE };
-    ui.add(egui::Button::new(RichText::new(text.into()).color(on)).fill(p.accent).min_size(Vec2::new(80.0, 30.0)))
+    let dark = ui.visuals().dark_mode;
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = Vec2::new(18.0, 6.0);
+        let (base, ink, stroke) = if primary {
+            (p.accent, if dark { Color32::from_rgb(0x0B, 0x1E, 0x33) } else { Color32::WHITE }, Stroke::NONE)
+        } else {
+            (if dark { Color32::from_rgb(0x37, 0x37, 0x3A) } else { Color32::WHITE }, p.text, Stroke::new(1.0, p.border))
+        };
+        let toward = if dark { Color32::WHITE } else { Color32::BLACK };
+        let w = &mut ui.visuals_mut().widgets;
+        for (st, fill) in [
+            (&mut w.inactive, base),
+            (&mut w.hovered, base.lerp_to_gamma(toward, 0.08)),
+            (&mut w.active, base.lerp_to_gamma(toward, 0.16)),
+        ] {
+            st.weak_bg_fill = fill;
+            st.bg_fill = fill;
+            st.bg_stroke = stroke;
+            st.fg_stroke = Stroke::new(1.0, ink);
+            st.corner_radius = CornerRadius::same(6);
+        }
+        ui.add_enabled(enabled, egui::Button::new(text).min_size(Vec2::new(96.0, 32.0)))
+    })
+    .inner
+}
+
+/// Botón principal suelto (p. ej. "Abrir" en la ventana vacía).
+pub fn primary_button(ui: &mut Ui, text: impl Into<String>) -> Response {
+    dialog_button(ui, text.into(), true, true)
+}
+
+/// Pie de un diálogo: los botones (texto, principal, activo) a la derecha,
+/// en ese orden. Devuelve el que se pulsó.
+pub fn dialog_footer(ui: &mut Ui, buttons: &[(String, bool, bool)]) -> Option<usize> {
+    ui.add_space(14.0);
+    let mut clicked = None;
+    ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), 34.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        for (i, (text, primary, enabled)) in buttons.iter().enumerate().rev() {
+            if dialog_button(ui, text.as_str(), *primary, *enabled).clicked() {
+                clicked = Some(i);
+            }
+        }
+    });
+    clicked
 }
 
 /// Control segmentado: varias opciones juntas, una elegida.
