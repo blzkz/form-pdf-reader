@@ -94,7 +94,7 @@ For the DNIe (Spanish national ID card) over NFC:
   Source code: https://github.com/ctt-gob-es/jmulticard
   Because of this library, the Android app as a whole is distributed under
   the EUPL 1.1; the source code of Form PDF Reader keeps its MIT licence.
-- Bouncy Castle (org.bouncycastle: bcprov-jdk18on, bcpkix-jdk18on) 1.84,
+- Bouncy Castle (org.bouncycastle), the parts included in jmulticard-crypto,
   The Legion of the Bouncy Castle Inc., under the MIT licence:
 
   Copyright (c) 2000-2026 The Legion of the Bouncy Castle Inc.
