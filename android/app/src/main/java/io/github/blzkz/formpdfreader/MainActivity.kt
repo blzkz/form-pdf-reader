@@ -1205,6 +1205,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 pickCertificate.launch(arrayOf("application/x-pkcs12", "application/pkcs12", "application/octet-stream", "*/*"))
             }
+            // Read at the end, while it is held against the phone (dnieSign).
+            DigitalSign.Source.DNIE -> Unit
         }
     }
 
