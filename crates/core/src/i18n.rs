@@ -92,8 +92,26 @@ fn requested() -> String {
         .filter_map(|v| std::env::var(v).ok())
         .map(|v| v.split(':').next().unwrap_or("").to_string())
         .find(|v| !v.is_empty() && v != "C" && v != "POSIX")
+        .or_else(windows_locale)
         .unwrap_or_default();
     base(&raw)
+}
+
+/// Idioma de Windows ("es-ES"), que no se refleja en LANG.
+#[cfg(windows)]
+fn windows_locale() -> Option<String> {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetUserDefaultLocaleName(name: *mut u16, len: i32) -> i32;
+    }
+    let mut buf = [0u16; 85];
+    let n = unsafe { GetUserDefaultLocaleName(buf.as_mut_ptr(), buf.len() as i32) };
+    (n > 1).then(|| String::from_utf16_lossy(&buf[..n as usize - 1]))
+}
+
+#[cfg(not(windows))]
+fn windows_locale() -> Option<String> {
+    None
 }
 
 /// Idioma de la interfaz ("en", "es"…).

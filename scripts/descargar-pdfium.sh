@@ -5,15 +5,30 @@
 #   scripts/descargar-pdfium.sh            download if missing
 #   scripts/descargar-pdfium.sh --force    download again
 #   PDFIUM_TGZ=/path/file.tgz scripts/descargar-pdfium.sh   use a local copy
+#   PDFIUM_PLATFORM=win-x64 scripts/descargar-pdfium.sh     Windows build
+#                                                           (default: linux-x64)
+#   PDFIUM_DEST=vendor/pdfium-win ...                       another folder
+#                                                           (default: vendor/pdfium)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION=8086
-URL="https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F${VERSION}/pdfium-v8-linux-x64.tgz"
-SHA256=8e3efa4fe6784ed80fd58ef3c839b072ddcd79b16880706892a008f8a2da730b
-DEST=vendor/pdfium
+PLATFORM=${PDFIUM_PLATFORM:-linux-x64}
+case "$PLATFORM" in
+  linux-x64)
+    SHA256=8e3efa4fe6784ed80fd58ef3c839b072ddcd79b16880706892a008f8a2da730b
+    CHECK=lib/libpdfium.so ;;
+  win-x64)
+    SHA256=cb8f1e0e0c0dd74cbb17e8ec11d8969c4b95638fd3e66fd1c7e4a684d28a0d46
+    CHECK=lib/pdfium.dll.lib ;;
+  *)
+    echo "Unknown PDFIUM_PLATFORM: $PLATFORM (linux-x64 or win-x64)" >&2
+    exit 1 ;;
+esac
+URL="https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F${VERSION}/pdfium-v8-${PLATFORM}.tgz"
+DEST=${PDFIUM_DEST:-vendor/pdfium}
 
-if [[ -f "$DEST/lib/libpdfium.so" && "${1:-}" != "--force" ]]; then
+if [[ -f "$DEST/$CHECK" && "${1:-}" != "--force" ]]; then
   echo "PDFium is already in $DEST (use --force to download it again)."
   exit 0
 fi
@@ -30,4 +45,4 @@ echo "$SHA256  $tmp/pdfium.tgz" | sha256sum -c --quiet -
 rm -rf "$DEST"
 mkdir -p "$DEST"
 tar -xzf "$tmp/pdfium.tgz" -C "$DEST"
-echo "PDFium chromium/$VERSION installed in $DEST"
+echo "PDFium chromium/$VERSION ($PLATFORM) installed in $DEST"

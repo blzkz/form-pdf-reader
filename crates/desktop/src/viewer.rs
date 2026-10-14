@@ -74,6 +74,11 @@ pub struct DocView {
     pub zoom: f32,
     pub fit_width: bool,
     tiles: HashMap<(usize, i32), Tile>,
+    /// Zonas cambiadas por PDFium (página, rectángulo en coordenadas de
+    /// página) que hay que volver a dibujar en las teselas ya hechas.
+    pending_rects: Vec<(usize, [f64; 4])>,
+    /// Cuándo repintar todo tras haber repintado solo el campo al escribir.
+    reconcile_at: Option<Instant>,
     /// Rectángulos de página en pantalla del último fotograma.
     page_rects: Vec<(usize, Rect)>,
     scale_px: f32,
@@ -113,6 +118,8 @@ impl DocView {
             zoom: 1.0,
             fit_width: true,
             tiles: HashMap::new(),
+            pending_rects: Vec::new(),
+            reconcile_at: None,
             page_rects: Vec::new(),
             scale_px: 1.0,
             scroll_to: None,
@@ -364,11 +371,56 @@ impl DocView {
     }
 
     /// Procesa timers y notificaciones de PDFium.
-    fn pump(&mut self, ctx: &egui::Context, ev: &mut ViewEvents) {
-        if let Some(next) = self.doc.process_timers() {
-            ctx.request_repaint_after(next.max(Duration::from_millis(10)));
+    /// `drawn_after`: lo que cambie se dibuja en este mismo fotograma (la
+    /// llamada de antes de dibujar), así que no hace falta pedir otro.
+    fn pump(&mut self, ctx: &egui::Context, ev: &mut ViewEvents, drawn_after: bool) {
+        // Repintado completo pendiente tras escribir (ver más abajo).
+        match self.reconcile_at {
+            Some(t) if Instant::now() >= t => {
+                self.reconcile_at = None;
+                self.invalidate_all();
+                ctx.request_repaint();
+            }
+            // Cada tecla la retrasa: el aviso ya programado puede llegar antes.
+            Some(t) => wake_at(ctx, t),
+            None => {}
         }
-        let u: Updates = self.doc.take_updates();
+        // Lo pendiente de la entrada del usuario. Al escribir en un campo XFA
+        // PDFium invalida la página entera en cada tecla: se repinta solo el
+        // campo, y al dejar de escribir, la página entera por si los scripts
+        // del formulario cambiaron otra cosa.
+        let mut u = self.doc.take_updates();
+        if self.limit_to_focused_field(&mut u) {
+            let at = Instant::now() + Duration::from_millis(500);
+            self.reconcile_at = Some(at);
+            wake_at(ctx, at);
+        }
+        self.apply_updates(ctx, ev, u, drawn_after);
+        if let Some(next) = self.doc.process_timers() {
+            wake_at(ctx, Instant::now() + next.max(Duration::from_millis(10)));
+        }
+        // El parpadeo del cursor de un campo XFA también invalida la página
+        // entera cada 600 ms: basta con repintar el campo.
+        let mut u = self.doc.take_updates();
+        self.limit_to_focused_field(&mut u);
+        self.apply_updates(ctx, ev, u, drawn_after);
+    }
+
+    /// Si `u` solo invalida la página del campo de texto enfocado, deja como
+    /// zona a repintar el propio campo. true si lo ha hecho.
+    fn limit_to_focused_field(&self, u: &mut Updates) -> bool {
+        if u.invalidated.len() != 1 || u.layout_changed || u.invalidate_all {
+            return false;
+        }
+        let Some((p, b)) = self.doc.focused_text_field() else { return false };
+        if u.invalidated != [p] {
+            return false;
+        }
+        u.invalid_rects = vec![(p, [b[0] - 4.0, b[1].min(b[3]) - 4.0, b[2] + 4.0, b[1].max(b[3]) + 4.0])];
+        true
+    }
+
+    fn apply_updates(&mut self, ctx: &egui::Context, ev: &mut ViewEvents, u: Updates, drawn_after: bool) {
         if u.invalidate_all || u.layout_changed {
             self.invalidate_all();
             if u.layout_changed {
@@ -377,8 +429,20 @@ impl DocView {
                 self.tiles.retain(|(p, _), _| *p < n);
             }
         }
+        // Solo se vuelve a dibujar lo que cambió (el cursor, el campo que se
+        // escribe): repintar la página entera en cada tecla es lento sin
+        // tarjeta gráfica.
+        // En XFA dinámico PDFium invalida la página entera en cada cambio:
+        // entonces se repinta como siempre, tesela a tesela.
         for p in &u.invalidated {
-            self.invalidate_page(*p);
+            let (w, h) = self.doc.page_size(*p);
+            let rects: Vec<[f64; 4]> = u.invalid_rects.iter().filter(|(i, _)| i == p).map(|(_, r)| *r).collect();
+            let small = |r: &[f64; 4]| ((r[2] - r[0]) * (r[3] - r[1])).abs() < 0.1 * (w * h) as f64;
+            if !rects.is_empty() && rects.iter().all(small) {
+                self.pending_rects.extend(rects.into_iter().map(|r| (*p, r)));
+            } else {
+                self.invalidate_page(*p);
+            }
         }
         if u.form_changed {
             ev.modified = true;
@@ -392,7 +456,7 @@ impl DocView {
         }
         ev.uris.extend(u.uris);
         ev.open_files.extend(u.open_files);
-        if !u.invalidated.is_empty() || u.invalidate_all || u.layout_changed {
+        if !drawn_after && (!u.invalidated.is_empty() || u.invalidate_all || u.layout_changed) {
             ctx.request_repaint();
         }
     }
@@ -735,7 +799,7 @@ impl DocView {
     pub fn ui(&mut self, ui: &mut egui::Ui) -> ViewEvents {
         let ctx = ui.ctx().clone();
         let mut ev = ViewEvents::default();
-        self.pump(&ctx, &mut ev);
+        self.pump(&ctx, &mut ev, true);
 
         let ppp = ctx.pixels_per_point();
         let avail = ui.available_size();
@@ -871,6 +935,12 @@ impl DocView {
                 self.draw_search(&painter, i, pr);
                 self.draw_selection(&painter, i, pr);
             }
+            // Zonas de páginas que no se han dibujado: se repintan enteras
+            // cuando vuelvan a verse.
+            let lejos: Vec<usize> = self.pending_rects.drain(..).map(|(p, _)| p).collect();
+            for p in lejos {
+                self.invalidate_page(p);
+            }
             if let Some(c) = center_page.filter(|_| self.effective_layout() != PageLayout::Single) {
                 self.current_page = c;
                 self.doc.set_current_page(c);
@@ -956,7 +1026,7 @@ impl DocView {
             }
 
         // Lo que haya pedido PDFium durante el manejo de eventos.
-        self.pump(&ctx, &mut ev);
+        self.pump(&ctx, &mut ev, false);
         ev
     }
 
@@ -969,10 +1039,15 @@ impl DocView {
         let key = (self.scale_px * 1000.0) as u32;
         let ppp = ctx.pixels_per_point();
         let ntiles = (shown_h + TILE_PX - 1) / TILE_PX;
+        self.redraw_rects(i, page_w, page_h, shown_h, key, visible, pr);
         for t in 0..ntiles {
             let ty = t * TILE_PX;
             let th = TILE_PX.min(shown_h - ty);
-            let tile_rect = Rect::from_min_size(pr.min + Vec2::new(0.0, ty as f32 / ppp), Vec2::new(pr.width(), th as f32 / ppp));
+            // Un píxel de la tesela en un píxel de pantalla: más nítido, y sin
+            // tarjeta gráfica (soft.rs) se copia sin filtrar.
+            let min = pr.min + Vec2::new(0.0, ty as f32 / ppp);
+            let min = Pos2::new((min.x * ppp).round() / ppp, (min.y * ppp).round() / ppp);
+            let tile_rect = Rect::from_min_size(min, Vec2::new(page_w as f32 / ppp, th as f32 / ppp));
             if !tile_rect.intersects(visible.expand(300.0)) {
                 continue;
             }
@@ -999,6 +1074,50 @@ impl DocView {
             }
             if let Some(tile) = self.tiles.get(&(i, t)) {
                 painter.image(tile.tex.id(), tile_rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+            }
+        }
+    }
+
+    /// Vuelve a dibujar en sus teselas las zonas de la página `i` que cambió
+    /// PDFium. Las teselas lejos de la vista solo se marcan para más tarde.
+    #[allow(clippy::too_many_arguments)]
+    fn redraw_rects(&mut self, i: usize, page_w: i32, page_h: i32, shown_h: i32, key: u32, visible: Rect, pr: Rect) {
+        let rects: Vec<[f64; 4]> = self.pending_rects.iter().filter(|(p, _)| *p == i).map(|(_, r)| *r).collect();
+        if rects.is_empty() {
+            return;
+        }
+        self.pending_rects.retain(|(p, _)| *p != i);
+        let ppp = pr.width() as f64 / page_w as f64;
+        for r in rects {
+            let (ax, ay) = self.doc.page_to_device(i, page_w as f64, page_h as f64, r[0], r[1]);
+            let (bx, by) = self.doc.page_to_device(i, page_w as f64, page_h as f64, r[2], r[3]);
+            let x0 = (ax.min(bx).floor() as i32 - 2).clamp(0, page_w);
+            let x1 = (ax.max(bx).ceil() as i32 + 2).clamp(0, page_w);
+            let y0 = (ay.min(by).floor() as i32 - 2).clamp(0, shown_h);
+            let y1 = (ay.max(by).ceil() as i32 + 2).clamp(0, shown_h);
+            if x1 <= x0 || y1 <= y0 {
+                continue;
+            }
+            for t in y0 / TILE_PX..=(y1 - 1) / TILE_PX {
+                let ty = t * TILE_PX;
+                let th = TILE_PX.min(shown_h - ty);
+                let Some(tile) = self.tiles.get_mut(&(i, t)) else { continue };
+                if tile.dirty || tile.scale_key != key {
+                    continue;
+                }
+                let tile_rect = Rect::from_min_size(pr.min + Vec2::new(0.0, (ty as f64 * ppp) as f32), Vec2::new(pr.width(), (th as f64 * ppp) as f32));
+                if !tile_rect.intersects(visible.expand(300.0)) {
+                    tile.dirty = true;
+                    continue;
+                }
+                let (ry0, ry1) = (y0.max(ty), y1.min(ty + th));
+                match self.doc.render_region(i, page_w, page_h, x0, ry0, x1 - x0, ry1 - ry0) {
+                    Some(px) => {
+                        let img = egui::ColorImage::from_rgba_unmultiplied([(x1 - x0) as usize, (ry1 - ry0) as usize], &px);
+                        tile.tex.set_partial([x0 as usize, (ry0 - ty) as usize], img, TextureOptions::LINEAR);
+                    }
+                    None => tile.dirty = true,
+                }
             }
         }
     }
@@ -1042,3 +1161,38 @@ impl DocView {
 fn sys_autorepeat() -> i32 {
     32 // FWL_EVENTFLAG_AutoRepeat
 }
+
+/// Despierta la interfaz en `at` (el próximo timer de PDFium, como el
+/// parpadeo del cursor). Un hilo aparte espera hasta entonces y pide un
+/// fotograma. Pedirlo a egui con `request_repaint_after` en cada fotograma
+/// adelantaba los fotogramas: con el cursor en un campo se dibujaban más de
+/// diez por segundo en vez de uno cada 600 ms.
+fn wake_at(ctx: &egui::Context, at: Instant) {
+    use std::sync::OnceLock;
+    use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
+    static WAKER: OnceLock<std::sync::Mutex<Sender<Instant>>> = OnceLock::new();
+    let tx = WAKER.get_or_init(|| {
+        let (tx, rx) = channel::<Instant>();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let mut deadline: Option<Instant> = None;
+            loop {
+                let got = match deadline {
+                    Some(d) => rx.recv_timeout(d.saturating_duration_since(Instant::now())),
+                    None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+                };
+                match got {
+                    Ok(at) => deadline = Some(deadline.map_or(at, |d| d.min(at))),
+                    Err(RecvTimeoutError::Timeout) => {
+                        deadline = None;
+                        ctx.request_repaint();
+                    }
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
+            }
+        });
+        std::sync::Mutex::new(tx)
+    });
+    let _ = tx.lock().map(|t| t.send(at));
+}
+

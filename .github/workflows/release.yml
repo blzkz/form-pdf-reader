@@ -2,8 +2,9 @@
 #
 #   git tag v0.3.1 && git push origin v0.3.1
 #
-# Produces: .deb (Debian/Ubuntu), .rpm (Fedora), .pkg.tar.zst (Arch/CachyOS)
-# and a self-contained .tar.gz.
+# Produces: .deb (Debian/Ubuntu), .rpm (Fedora), .pkg.tar.zst (Arch/CachyOS),
+# a self-contained .tar.gz, and for Windows a portable .zip and an installer
+# (workflow windows.yml).
 name: Release
 
 on:
@@ -50,8 +51,11 @@ jobs:
             target/release/form-pdf-reader
             target/THIRD-PARTY-NOTICES.txt
 
+  windows:
+    uses: ./.github/workflows/windows.yml
+
   package:
-    needs: build
+    needs: [build, windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -82,6 +86,10 @@ jobs:
           SKIP_BUILD=1 scripts/empaquetar.sh
           rm -rf dist/*-x86_64/
           ls -l dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows
+          path: dist
       - uses: actions/upload-artifact@v7
         with:
           name: packages

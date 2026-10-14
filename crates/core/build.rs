@@ -1,20 +1,29 @@
-// Enlaza con libpdfium.so (variante V8 + XFA) de vendor/pdfium, en la raíz del
+// Enlaza con PDFium (variante V8 + XFA) de vendor/pdfium, en la raíz del
 // repositorio, que descarga scripts/descargar-pdfium.sh. PDFIUM_LIB_DIR permite
 // usar otra ubicación.
 //
-// El rpath de aquí solo afecta a las pruebas y ejemplos de este crate; cada
-// ejecutable que use la librería pone el suyo (ver crates/desktop/build.rs).
+// - Linux: libpdfium.so. El rpath de aquí solo afecta a las pruebas y
+//   ejemplos de este crate; cada ejecutable que use la librería pone el suyo
+//   (ver crates/desktop/build.rs).
+// - Windows: pdfium.dll.lib (la DLL va junto al ejecutable; para las pruebas,
+//   vendor/pdfium/bin debe estar en el PATH).
 fn main() {
     let lib_dir = pdfium_lib_dir();
-    if !std::path::Path::new(&lib_dir).join("libpdfium.so").exists() {
-        panic!("libpdfium.so not found in {lib_dir}. Run scripts/descargar-pdfium.sh first (or set PDFIUM_LIB_DIR).");
+    let windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
+    let file = if windows { "pdfium.dll.lib" } else { "libpdfium.so" };
+    if !std::path::Path::new(&lib_dir).join(file).exists() {
+        panic!("{file} not found in {lib_dir}. Run scripts/descargar-pdfium.sh first (or set PDFIUM_LIB_DIR).");
     }
     println!("cargo:rerun-if-env-changed=PDFIUM_LIB_DIR");
-    println!("cargo:rerun-if-changed={lib_dir}/libpdfium.so");
+    println!("cargo:rerun-if-changed={lib_dir}/{file}");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rustc-link-search=native={lib_dir}");
-    println!("cargo:rustc-link-lib=dylib=pdfium");
-    println!("cargo:rustc-link-arg=-Wl,-rpath,{lib_dir}");
+    if windows {
+        println!("cargo:rustc-link-lib=dylib=pdfium.dll");
+    } else {
+        println!("cargo:rustc-link-lib=dylib=pdfium");
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{lib_dir}");
+    }
 }
 
 fn pdfium_lib_dir() -> String {

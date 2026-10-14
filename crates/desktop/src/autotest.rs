@@ -88,6 +88,11 @@ impl AutoTest {
     }
 
     pub fn raw_input(&mut self, ctx: &egui::Context, raw: &mut RawInput) {
+        // Sin pasos pendientes la aplicación queda como en uso normal (para
+        // medir lo que hace sola).
+        if self.steps.is_empty() && self.waiting_shot.is_none() {
+            return;
+        }
         ctx.request_repaint();
         if self.waiting_shot.is_some() {
             return;

@@ -1,0 +1,31 @@
+# Copia de egui_software_backend 0.0.3 (https://github.com/DGriffin91/egui_software_backend,
+# MIT o Apache-2.0) solo con el dibujo por CPU, sin su bucle de winit, y
+# adaptada a egui 0.36. La usa la app de escritorio sin tarjeta gráfica.
+[package]
+name = "egui_software_backend"
+version = "0.0.3"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "A CPU software render backend for egui."
+repository = "https://github.com/DGriffin91/egui_software_backend"
+publish = false
+
+[lib]
+# Los ejemplos de la documentación usan egui_demo_lib.
+doctest = false
+
+[features]
+default = ["std"]
+std = []
+log = ["dep:log"]
+raster_stats = ["std"]
+rayon = ["dep:rayon"]
+
+[dependencies]
+ahash = "0.8"
+constify = "0.0.1"
+egui = { version = "0.36", default-features = false }
+log = { workspace = true, optional = true }
+rayon = { version = "1", optional = true }
+strength_reduce = "0.2.4"
+

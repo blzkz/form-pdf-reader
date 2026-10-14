@@ -89,4 +89,8 @@
     <string name="later">Più tardi</string>
     <string name="draft_recovered">Modifiche non salvate recuperate</string>
     <string name="save_incomplete">Il documento non è stato scritto per intero.</string>
+    <string name="password_title">Password</string>
+    <string name="password_prompt">«%1$s» è protetto da password. Inseriscila per aprire il documento.</string>
+    <string name="password_wrong">La password non è corretta. Riprova.</string>
+    <string name="a11y_document">Documento, pagina %1$d di %2$d</string>
 </resources>

@@ -27,7 +27,12 @@ impl XfaPdf {
     /// Analiza un PDF. Devuelve `Ok(None)` si no tiene XFA en forma de array
     /// de paquetes (el caso de un único stream XFA no se soporta para edición).
     pub fn parse(bytes: &[u8]) -> Result<Option<XfaPdf>> {
-        let doc = lopdf::Document::load_mem(bytes).context(crate::t!("err.lopdf_read"))?;
+        Self::parse_with(bytes, None)
+    }
+
+    /// Como `parse`, para un PDF que pide `password` para abrirlo.
+    pub fn parse_with(bytes: &[u8], password: Option<&str>) -> Result<Option<XfaPdf>> {
+        let doc = load(bytes, password).context(crate::t!("err.lopdf_read"))?;
         let root = doc.catalog().context(crate::t!("err.no_catalog"))?;
         let Ok(acro) = root.get(b"AcroForm") else { return Ok(None) };
         let acro = resolve_dict(&doc, acro)?;
@@ -63,6 +68,14 @@ impl XfaPdf {
 
     pub fn document(&self) -> &lopdf::Document {
         &self.doc
+    }
+}
+
+/// Lee un PDF con lopdf (descifrado con `password` si lo pide).
+pub fn load(bytes: &[u8], password: Option<&str>) -> lopdf::Result<lopdf::Document> {
+    match password {
+        Some(p) => lopdf::Document::load_mem_with_options(bytes, lopdf::LoadOptions::with_password(p)),
+        None => lopdf::Document::load_mem(bytes),
     }
 }
 

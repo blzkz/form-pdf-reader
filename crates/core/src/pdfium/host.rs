@@ -291,8 +291,8 @@ unsafe extern "C" fn ffi_invalidate(p: *mut sys::FPDF_FORMFILLINFO, page: sys::F
     }
 }
 
-unsafe extern "C" fn ffi_output_selected_rect(p: *mut sys::FPDF_FORMFILLINFO, page: sys::FPDF_PAGE, _l: f64, _t: f64, _r: f64, _b: f64) {
-    unsafe { mark_invalid(host(p), page) }
+unsafe extern "C" fn ffi_output_selected_rect(p: *mut sys::FPDF_FORMFILLINFO, page: sys::FPDF_PAGE, l: f64, t: f64, r: f64, b: f64) {
+    unsafe { ffi_invalidate(p, page, l, t, r, b) }
 }
 
 unsafe extern "C" fn ffi_set_cursor(p: *mut sys::FPDF_FORMFILLINFO, t: c_int) {
@@ -315,6 +315,21 @@ unsafe extern "C" fn ffi_kill_timer(p: *mut sys::FPDF_FORMFILLINFO, id: c_int) {
     unsafe { host(p).state.borrow_mut().timers.retain(|t| t.id != id) }
 }
 
+#[cfg(windows)]
+unsafe extern "C" fn ffi_get_local_time(_p: *mut sys::FPDF_FORMFILLINFO) -> sys::FPDF_SYSTEMTIME {
+    // FPDF_SYSTEMTIME tiene la misma forma que el SYSTEMTIME de Windows.
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetLocalTime(t: *mut sys::FPDF_SYSTEMTIME);
+    }
+    unsafe {
+        let mut t: sys::FPDF_SYSTEMTIME = std::mem::zeroed();
+        GetLocalTime(&mut t);
+        t
+    }
+}
+
+#[cfg(not(windows))]
 unsafe extern "C" fn ffi_get_local_time(_p: *mut sys::FPDF_FORMFILLINFO) -> sys::FPDF_SYSTEMTIME {
     unsafe {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
@@ -404,6 +419,7 @@ unsafe extern "C" fn ffi_display_caret(p: *mut sys::FPDF_FORMFILLINFO, page: sys
         st.caret = if visible != 0 { Some((page, [l, t, r, b])) } else { None };
         if let Some(i) = st.index_of(page) {
             st.invalidated.insert(i);
+            st.invalid_rects.push((i, [l.min(r) - 1.0, t.min(b) - 1.0, l.max(r) + 1.0, t.max(b) + 1.0]));
         }
     }
 }

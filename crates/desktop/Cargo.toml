@@ -1,6 +1,6 @@
 [package]
 name = "form-pdf-reader"
-description = "PDF reader that fills in and saves dynamic XFA forms on Linux without Adobe Reader"
+description = "PDF reader that fills in and saves dynamic XFA forms without Adobe Reader"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,7 +18,24 @@ log.workspace = true
 env_logger.workspace = true
 png.workspace = true
 rfd = "0.17"
-eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+# Dibujo por CPU cuando no hay tarjeta gráfica (soft.rs).
+bytemuck = "1"
+egui-winit = { version = "0.36", default-features = false, features = ["accesskit", "clipboard", "links"] }
+egui_software_backend = { path = "../egui_software_backend", features = ["rayon"] }
+softbuffer = "0.4"
+
+# Linux: OpenGL (glow). Windows: wgpu (Direct3D 12); sin tarjeta gráfica,
+# dibujo por CPU (soft.rs).
+[target.'cfg(not(windows))'.dependencies]
+eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
+
+[target.'cfg(windows)'.dependencies]
+eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "wgpu"] }
+pollster = "0.4"
+
+# Icono y datos de versión del .exe.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
 
 [features]
 # Solo para pruebas: EFRAME_SCREENSHOT_TO=/ruta.png guarda una captura y sale.

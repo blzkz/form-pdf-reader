@@ -2,7 +2,7 @@
 
 use crate::viewer::{DocView, PageLayout, Tool};
 use eframe::egui::{self, Align, Color32, Key, KeyboardShortcut, Layout, Modifiers, RichText};
-use form_pdf_reader::pdfium::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, Document, FormKind, OpenOptions};
+use form_pdf_reader::pdfium::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, Document, FormKind, OpenOptions, PasswordRequired};
 use form_pdf_reader::t;
 use std::path::{Path, PathBuf};
 
@@ -17,6 +17,15 @@ enum Pending {
 }
 
 /// Un documento abierto en una pestaña.
+/// Un PDF que pide contraseña para abrirlo.
+struct PasswordPrompt {
+    path: PathBuf,
+    text: String,
+    /// La contraseña anterior no era correcta.
+    wrong: bool,
+    focus: bool,
+}
+
 struct Tab {
     view: DocView,
     dirty: bool,
@@ -33,6 +42,7 @@ pub struct PdfApp {
     search_focus: bool,
     show_about: bool,
     show_settings: bool,
+    password_prompt: Option<PasswordPrompt>,
     settings: crate::settings::Settings,
     show_xfa_info: bool,
     show_attachments: bool,
@@ -42,8 +52,8 @@ pub struct PdfApp {
 }
 
 impl PdfApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, initial: Option<PathBuf>) -> PdfApp {
-        cc.egui_ctx.set_visuals(egui::Visuals::light());
+    pub fn new(ctx: &egui::Context, initial: Option<PathBuf>) -> PdfApp {
+        ctx.set_visuals(egui::Visuals::light());
         let mut app = PdfApp {
             tabs: Vec::new(),
             active: 0,
@@ -54,6 +64,7 @@ impl PdfApp {
             search_focus: false,
             show_about: false,
             show_settings: false,
+            password_prompt: None,
             settings: crate::settings::Settings::load(),
             show_xfa_info: false,
             show_attachments: false,
@@ -89,13 +100,19 @@ impl PdfApp {
 
     /// Abre `path` en una pestaña nueva (o activa la que ya lo tenga).
     fn open(&mut self, path: &Path) {
+        self.open_with_password(path, None);
+    }
+
+    /// Como `open`, con la contraseña del PDF si la pide. Si falta (o no es
+    /// correcta), se pide.
+    fn open_with_password(&mut self, path: &Path, password: Option<String>) {
         let canon = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         if let Some(i) = self.tabs.iter().position(|t| std::fs::canonicalize(t.view.doc.path()).ok().as_deref() == Some(canon.as_path())) {
             self.active = i;
             self.status = t!("status.already_open", file_name(path));
             return;
         }
-        match Document::open_with(path, OpenOptions { continuous_xfa: self.continuous_xfa }) {
+        match Document::open_with(path, OpenOptions { continuous_xfa: self.continuous_xfa, password }) {
             Ok(doc) => {
                 install_handlers(&doc);
                 let kind = describe(&doc);
@@ -107,8 +124,46 @@ impl PdfApp {
                 self.show_xfa_info = is_xfa_dyn;
             }
             Err(e) => {
+                if let Some(p) = e.downcast_ref::<PasswordRequired>() {
+                    self.password_prompt = Some(PasswordPrompt { path: path.to_path_buf(), text: String::new(), wrong: p.wrong, focus: true });
+                    return;
+                }
                 self.error = Some(t!("error.open", path.display(), format!("{e:#}")));
             }
+        }
+    }
+
+    fn password_window(&mut self, ctx: &egui::Context) {
+        let Some(p) = self.password_prompt.as_mut() else { return };
+        let mut submit = false;
+        let mut cancel = false;
+        let r = egui::Modal::new(egui::Id::new("contraseña")).show(ctx, |ui| {
+            ui.set_max_width(420.0);
+            ui.heading(t!("dialog.password_title"));
+            ui.add_space(4.0);
+            ui.label(t!("dialog.password_prompt", file_name(&p.path)));
+            if p.wrong {
+                ui.colored_label(ui.visuals().error_fg_color, t!("dialog.password_wrong"));
+            }
+            ui.add_space(4.0);
+            let field = ui.add(egui::TextEdit::singleline(&mut p.text).password(true).desired_width(f32::INFINITY));
+            if std::mem::take(&mut p.focus) {
+                field.request_focus();
+            }
+            if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                submit = true;
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                submit |= ui.button(t!("toolbar.open")).clicked();
+                cancel |= ui.button(t!("dialog.cancel")).clicked();
+            });
+        });
+        if submit {
+            let p = self.password_prompt.take().unwrap();
+            self.open_with_password(&p.path, Some(p.text));
+        } else if cancel || r.should_close() {
+            self.password_prompt = None;
         }
     }
 
@@ -118,10 +173,11 @@ impl PdfApp {
             return self.open(path);
         }
         let i = self.active;
+        let password = self.tabs[i].view.doc.password().map(str::to_string);
         // Liberar antes el documento actual (entorno de PDFium).
         self.tabs.remove(i);
         let n = self.tabs.len();
-        self.open(path);
+        self.open_with_password(path, password);
         if self.tabs.len() > n {
             let t = self.tabs.pop().unwrap();
             self.tabs.insert(i, t);
@@ -137,8 +193,8 @@ impl PdfApp {
             self.open(path);
             return;
         }
-        match std::process::Command::new("xdg-open").arg(path).spawn() {
-            Ok(_) => self.status = t!("status.opening_attachment", file_name(path)),
+        match crate::platform::open_external(&path.to_string_lossy()) {
+            Ok(()) => self.status = t!("status.opening_attachment", file_name(path)),
             Err(e) => self.error = Some(t!("error.open_short", path.display(), e)),
         }
     }
@@ -220,8 +276,8 @@ impl PdfApp {
         let stem = view.doc.path().file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| t!("file.default_stem"));
         let out = dir.join(format!("{stem}_{}.pdf", t!("file.print_suffix")));
         match view.doc.export_flat(&out, 200.0) {
-            Ok(()) => match std::process::Command::new("xdg-open").arg(&out).spawn() {
-                Ok(_) => self.status = t!("status.print_opened"),
+            Ok(()) => match crate::platform::open_external(&out.to_string_lossy()) {
+                Ok(()) => self.status = t!("status.print_opened"),
                 Err(e) => self.error = Some(t!("error.print_open", out.display(), e)),
             },
             Err(e) => self.error = Some(t!("error.print", format!("{e:#}"))),
@@ -592,6 +648,7 @@ impl PdfApp {
         if self.show_settings {
             self.settings_window(ctx);
         }
+        self.password_window(ctx);
         if self.show_about {
             egui::Modal::new(egui::Id::new("acerca")).show(ctx, |ui| {
                 ui.set_max_width(440.0);
@@ -739,12 +796,23 @@ impl PdfApp {
 
 impl eframe::App for PdfApp {
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        self.before_frame(ctx, raw);
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.frame(ui);
+    }
+}
+
+/// Lo que hace cada fotograma, con eframe o con `soft::run`.
+impl PdfApp {
+    pub fn before_frame(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         if let Some(t) = self.autotest.as_mut() {
             t.raw_input(ctx, raw);
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    pub fn frame(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         if let Some(t) = self.autotest.as_mut() {
             t.after_frame(&ctx);
@@ -821,7 +889,7 @@ impl eframe::App for PdfApp {
             }
             for u in ev.uris {
                 if u.starts_with("http://") || u.starts_with("https://") || u.starts_with("mailto:") {
-                    let _ = std::process::Command::new("xdg-open").arg(&u).spawn();
+                    let _ = crate::platform::open_external(&u);
                     self.status = t!("status.opening_link", u);
                 }
             }
@@ -928,17 +996,11 @@ fn install_handlers(doc: &Document) {
         }
     }));
     doc.set_browse_handler(Box::new(|| rfd::FileDialog::new().set_title(t!("dialog.pick_file")).pick_file().map(|p| p.to_string_lossy().into_owned())));
-    // app.response(): pregunta de texto. Se usa zenity (los diálogos de rfd no
-    // tienen campo de texto).
+    // app.response(): pregunta de texto, con un diálogo del sistema (los de
+    // rfd no tienen campo de texto).
     doc.set_response_handler(Box::new(|question: &str, title: &str, default: &str| {
-        let out = std::process::Command::new("zenity")
-            .arg("--entry")
-            .arg(format!("--title={}", if title.is_empty() { t!("dialog.form_title") } else { title.to_string() }))
-            .arg(format!("--text={question}"))
-            .arg(format!("--entry-text={default}"))
-            .output()
-            .ok()?;
-        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim_end_matches('\n').to_string())
+        let title = if title.is_empty() { t!("dialog.form_title") } else { title.to_string() };
+        crate::platform::ask_text(&title, question, default)
     }));
 }
 

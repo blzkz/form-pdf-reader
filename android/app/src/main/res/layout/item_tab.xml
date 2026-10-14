@@ -16,12 +16,11 @@
 
     <ImageButton
         android:id="@+id/tab_close"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:layout_marginStart="4dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/close_tab"
-        android:padding="6dp"
+        android:padding="14dp"
         android:scaleType="fitCenter"
         android:src="@drawable/ic_close" />
 </LinearLayout>

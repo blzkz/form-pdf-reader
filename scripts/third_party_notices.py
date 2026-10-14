@@ -91,6 +91,10 @@ def read(path):
         return f.read().replace("\r\n", "\n").strip() + "\n"
 
 
+# Workspace crates copied from other projects (with their licence files).
+VENDORED = {"egui_software_backend"}
+
+
 def crates(package, target):
     """(name, version) of the crates compiled into `package` for `target`."""
     meta = json.loads(subprocess.check_output(["cargo", "metadata", "--format-version", "1", "--locked"], cwd=ROOT))
@@ -105,7 +109,8 @@ def crates(package, target):
         if not m or "(proc-macro)" in line:
             continue
         p = packages[(m[1], m[2])]
-        if p["source"] is not None:  # workspace crates are this project
+        # Workspace crates are this project, except copies of other projects.
+        if p["source"] is not None or p["name"] in VENDORED:
             found.add((m[1], m[2]))
     return sorted(found), packages
 
@@ -147,6 +152,8 @@ def license_texts(p):
         return [read(os.path.join(STANDARD, "MPL-2.0.txt"))]
     if "Apache-2.0" in expr:
         return [read(os.path.join(STANDARD, "Apache-2.0.txt"))]
+    if "BSL-1.0" in expr:
+        return [read(os.path.join(STANDARD, "BSL-1.0.txt"))]
     sys.exit(f"{p['name']} {p['version']}: no licence file and no standard text for '{expr}'")
 
 

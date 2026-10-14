@@ -10,7 +10,7 @@
 //! single-thread executor). The `Mutex` only serialises calls; it does not
 //! make PDFium usable from several threads.
 
-use form_pdf_reader::pdfium::{self, AlertAnswer as CoreAnswer, AlertButtons as CoreButtons, Document, FormKind, OpenOptions, keys};
+use form_pdf_reader::pdfium::{self, AlertAnswer as CoreAnswer, AlertButtons as CoreButtons, Document, FormKind, OpenOptions, PasswordRequired, keys};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -26,12 +26,16 @@ uniffi::setup_scaffolding!();
 pub enum PdfError {
     Open(String),
     Save(String),
+    /// The PDF needs a password to open (open it again with one).
+    Password(String),
+    /// The password given is not correct.
+    WrongPassword(String),
 }
 
 impl std::fmt::Display for PdfError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PdfError::Open(m) | PdfError::Save(m) => f.write_str(m),
+            PdfError::Open(m) | PdfError::Save(m) | PdfError::Password(m) | PdfError::WrongPassword(m) => f.write_str(m),
         }
     }
 }
@@ -259,10 +263,16 @@ impl PdfDocument {
 impl PdfDocument {
     /// Opens a PDF. `continuous_xfa`: show dynamic XFA forms as one long
     /// page (recommended; PDFium's XFA pagination loses sections).
+    /// `password`: for PDFs that need one to open (`PdfError::Password`
+    /// asks for it, `PdfError::WrongPassword` says it was not correct).
     #[uniffi::constructor]
-    pub fn open(path: String, continuous_xfa: bool) -> Result<Arc<Self>, PdfError> {
+    pub fn open(path: String, continuous_xfa: bool, password: Option<String>) -> Result<Arc<Self>, PdfError> {
         pdfium::init();
-        let doc = Document::open_with(Path::new(&path), OpenOptions { continuous_xfa }).map_err(|e| PdfError::Open(format!("{e:#}")))?;
+        let doc = Document::open_with(Path::new(&path), OpenOptions { continuous_xfa, password }).map_err(|e| match e.downcast_ref::<PasswordRequired>() {
+            Some(p) if p.wrong => PdfError::WrongPassword(e.to_string()),
+            Some(_) => PdfError::Password(e.to_string()),
+            None => PdfError::Open(format!("{e:#}")),
+        })?;
         Ok(Arc::new(PdfDocument { doc: Mutex::new(doc) }))
     }
 
@@ -590,10 +600,10 @@ mod tests {
     #[test]
     fn uso_desde_la_app() {
         init_pdfium();
-        assert!(PdfDocument::open("/no/existe.pdf".into(), true).is_err());
+        assert!(PdfDocument::open("/no/existe.pdf".into(), true, None).is_err());
 
         // Normal PDF: pages, render, text.
-        let d = PdfDocument::open(fixture("normal.pdf"), true).unwrap();
+        let d = PdfDocument::open(fixture("normal.pdf"), true, None).unwrap();
         d.set_handler(Box::new(Auto));
         assert_eq!(d.kind(), DocKind::Pdf);
         assert_eq!(d.page_count(), 3);
@@ -624,7 +634,7 @@ mod tests {
         assert!(d.search("no aparece".into()).is_empty());
 
         // AcroForm: tap a text field, type, save, reopen.
-        let f = PdfDocument::open(fixture("acroform.pdf"), true).unwrap();
+        let f = PdfDocument::open(fixture("acroform.pdf"), true, None).unwrap();
         f.set_handler(Box::new(Auto));
         assert_eq!(f.kind(), DocKind::AcroForm);
         let ps = f.page_size(0);
@@ -651,7 +661,7 @@ mod tests {
         f.save(out.display().to_string()).unwrap();
         assert!(!f.save_bytes().unwrap().is_empty());
         drop(f);
-        let g = PdfDocument::open(out.display().to_string(), true).unwrap();
+        let g = PdfDocument::open(out.display().to_string(), true, None).unwrap();
         g.tap(0, pw, ph, x, y);
         assert_eq!(g.focused_text(), "Hola Androi");
         let _ = std::fs::remove_file(out);
