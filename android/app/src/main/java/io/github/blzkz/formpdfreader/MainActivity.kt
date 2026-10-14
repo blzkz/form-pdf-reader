@@ -1261,11 +1261,12 @@ class MainActivity : AppCompatActivity() {
     /** Asks where to save the signed copy, signs and opens it in place of the document. */
     private fun saveSigned(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, signer: CertSigner?) {
         val d = t.doc ?: return
+        // The DNIe first (while it is held against the phone), then where to save.
+        if (signer == null) return dnieSign(t, o, placement, error = null)
         val stem = t.item.name.substringBeforeLast('.')
         signedCallback = cb@{ uri ->
             if (uri == null || t !in docs) return@cb
             val target = itemFor(uri)
-            if (signer == null) return@cb dnieSign(t, o, placement, target, error = null)
             val lib = Signatures.library(this)
             PdfEngine.run({
                 d.prepareDigitalSignature(placement, o.reason, o.location, lib, o.handwrittenId, signer.chain)
@@ -1285,6 +1286,19 @@ class MainActivity : AppCompatActivity() {
         createSigned.launch(getString(R.string.dsig_signed_name, stem))
     }
 
+    /** Asks where to save the signed PDF [bytes] and saves it. */
+    private fun saveSignedBytes(t: DocTab, bytes: ByteArray) {
+        signedCallback = cb@{ uri ->
+            if (uri == null || t !in docs) return@cb
+            val target = itemFor(uri)
+            Io.run({ writeDocument(target, bytes) }) { w ->
+                w.onSuccess { signedDone(t, target, bytes.size.toLong()) }
+                    .onFailure { e -> showError(getString(R.string.dsig_failed, e.message ?: "")) }
+            }
+        }
+        createSigned.launch(getString(R.string.dsig_signed_name, t.item.name.substringBeforeLast('.')))
+    }
+
     /** The signed copy is saved: it has the changes, so the tab shows it now. */
     private fun signedDone(t: DocTab, target: DocItem, size: Long) {
         remember(target, size)
@@ -1294,8 +1308,11 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, R.string.dsig_done, Toast.LENGTH_LONG).show()
     }
 
-    /** Signs with the DNIe over NFC: asks the CAN and the PIN, then the card does the rest. */
-    private fun dnieSign(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, target: DocItem, error: String?) {
+    /**
+     * Signs with the DNIe over NFC: asks the CAN and the PIN, the card does
+     * the rest, and then where to save the signed copy.
+     */
+    private fun dnieSign(t: DocTab, o: DigitalSign.Options, placement: DigitalPlacement, error: String?) {
         val d = t.doc ?: return
         val lib = Signatures.library(this)
         DnieReader.askCodes(this, error) { can, pin ->
@@ -1305,16 +1322,14 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: java.util.concurrent.ExecutionException) {
                     throw e.cause ?: e
                 }
-                val bytes = pending.finish(sign(pending.dataToSign()))
-                writeDocument(target, bytes)
-                bytes
+                pending.finish(sign(pending.dataToSign()))
             }) { r, retry ->
                 if (r == null || t !in docs) return@sign
                 t.view.refreshSignatures()
                 val e = r.exceptionOrNull()
                 when {
-                    e == null -> signedDone(t, target, r.getOrThrow().size.toLong())
-                    retry -> dnieSign(t, o, placement, target, e.message)
+                    e == null -> saveSignedBytes(t, r.getOrThrow())
+                    retry -> dnieSign(t, o, placement, e.message)
                     else -> showError(getString(R.string.dsig_failed, e.message ?: ""))
                 }
             }
