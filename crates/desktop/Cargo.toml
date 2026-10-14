@@ -18,14 +18,20 @@ log.workspace = true
 env_logger.workspace = true
 png.workspace = true
 rfd = "0.17"
+# Dibujo por CPU cuando no hay tarjeta gráfica (soft.rs).
+bytemuck = "1"
+egui-winit = { version = "0.36", default-features = false, features = ["accesskit", "clipboard", "links"] }
+egui_software_backend = { path = "../egui_software_backend", features = ["rayon"] }
+softbuffer = "0.4"
 
-# Linux: OpenGL (glow). Windows: wgpu (Direct3D 12, con el adaptador por
-# software de Windows si no hay tarjeta gráfica, como en máquinas virtuales).
+# Linux: OpenGL (glow). Windows: wgpu (Direct3D 12); sin tarjeta gráfica,
+# dibujo por CPU (soft.rs).
 [target.'cfg(not(windows))'.dependencies]
 eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 
 [target.'cfg(windows)'.dependencies]
 eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "wgpu"] }
+pollster = "0.4"
 
 # Icono y datos de versión del .exe.
 [target.'cfg(windows)'.build-dependencies]

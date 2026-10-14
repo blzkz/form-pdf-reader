@@ -199,6 +199,11 @@ On Windows the installer adds Form PDF Reader to the Start menu and to
 are not signed with a code-signing certificate, so Windows SmartScreen may
 warn the first time: choose "More info" and "Run anyway".
 
+Without a graphics card (virtual machines, remote desktops), Windows only
+offers Direct3D in software, which is very slow for a window this size. The
+app detects it and draws the interface with the CPU straight to the window
+instead. `FORM_PDF_READER_SOFTWARE=1` forces this mode on any system.
+
 On Arch Linux and CachyOS it can also come from the AUR: `form-pdf-reader-bin`
 (the release build) or `form-pdf-reader` (built from source), for example with
 `yay -S form-pdf-reader-bin`. Their `PKGBUILD`s are in `packaging/aur/`.
@@ -366,10 +371,13 @@ crates/core/      form-pdf-reader-core: the library (imported as form_pdf_reader
   tests/            integration test and sample PDFs
   examples/         diagnostic tools (probe, packet dump)
 crates/ffi/       form-pdf-reader-ffi: UniFFI bridge used by the Android app
-crates/desktop/   form-pdf-reader: the Linux desktop application (egui)
+crates/desktop/   form-pdf-reader: the desktop application (egui)
   src/viewer.rs     view: tiles, mouse and keyboard to PDFium, tools, layouts
   src/app.rs        application: tabs, menus, dialogs, saving, printing
+  src/soft.rs       window drawn with the CPU when there is no graphics card
   src/autotest.rs   UI test driver
+crates/egui_software_backend/   CPU renderer for egui (a copy of the crate
+                    of the same name, adapted to this egui version)
 android/          Android app (Kotlin) on top of the Rust core
 assets/           icons and .desktop file
 packaging/ scripts/   packages, PDFium download, install scripts

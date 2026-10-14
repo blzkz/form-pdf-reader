@@ -8,11 +8,12 @@ use form_pdf_reader::t;
 mod autotest;
 mod platform;
 mod settings;
+mod soft;
 mod viewer;
 
 use std::path::PathBuf;
 
-fn main() -> eframe::Result<()> {
+fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,lopdf=error")).init();
 
     // Idioma elegido en los ajustes (antes del primer texto).
@@ -43,27 +44,26 @@ fn main() -> eframe::Result<()> {
     // PDFium y V8 se inicializan en este hilo, que es el de la interfaz.
     form_pdf_reader::pdfium::init();
 
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("Form PDF Reader")
-            .with_app_id("form-pdf-reader")
-            // Icono propio de la ventana (X11; en Wayland el panel lo toma
-            // del .desktop a partir del app_id).
-            .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icons/256/form-pdf-reader.png")).unwrap_or_default())
-            .with_inner_size([1100.0, 900.0])
-            .with_min_inner_size([480.0, 360.0])
-            .with_drag_and_drop(true),
-        // Windows sin tarjeta gráfica (máquinas virtuales): con sincronía
-        // vertical, cada fotograma se mostraba un evento tarde y la ventana
-        // parecía ir a cámara lenta. Se presenta en cuanto está dibujado.
-        #[cfg(windows)]
-        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
-            surface: eframe::egui_wgpu::SurfaceConfig { present_mode: eframe::wgpu::PresentMode::AutoNoVsync, desired_maximum_frame_latency: Some(1) },
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    eframe::run_native("form-pdf-reader", options, Box::new(move |cc| Ok(Box::new(app::PdfApp::new(cc, file)))))
+    let viewport = eframe::egui::ViewportBuilder::default()
+        .with_title("Form PDF Reader")
+        .with_app_id("form-pdf-reader")
+        // Icono propio de la ventana (X11; en Wayland el panel lo toma
+        // del .desktop a partir del app_id).
+        .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icons/256/form-pdf-reader.png")).unwrap_or_default())
+        .with_inner_size([1100.0, 900.0])
+        .with_min_inner_size([480.0, 360.0])
+        .with_drag_and_drop(true);
+
+    // Sin tarjeta gráfica, la interfaz se dibuja con la CPU (ver soft.rs).
+    // FORM_PDF_READER_SOFTWARE=1 lo fuerza en cualquier sistema.
+    if std::env::var_os("FORM_PDF_READER_SOFTWARE").is_some() || !platform::has_gpu() {
+        log::info!("Dibujo por CPU, sin tarjeta gráfica");
+        return soft::run(viewport, move |ctx| app::PdfApp::new(ctx, file));
+    }
+    let options = eframe::NativeOptions { viewport, ..Default::default() };
+    eframe::run_native("form-pdf-reader", options, Box::new(move |cc| Ok(Box::new(app::PdfApp::new(&cc.egui_ctx, file)))))
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(())
 }
 
 

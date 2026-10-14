@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/desktop", "crates/ffi"]
+members = ["crates/core", "crates/desktop", "crates/egui_software_backend", "crates/ffi"]
 # `cargo build` en la raíz compila la app de escritorio; el puente de Android
 # (crates/ffi) se compila aparte con -p form-pdf-reader-ffi.
 default-members = ["crates/core", "crates/desktop"]

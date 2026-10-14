@@ -79,8 +79,6 @@ pub struct DocView {
     pending_rects: Vec<(usize, [f64; 4])>,
     /// Cuándo repintar todo tras haber repintado solo el campo al escribir.
     reconcile_at: Option<Instant>,
-    /// La ventana se dibuja por software (ver `set_software_render`).
-    software_render: bool,
     /// Rectángulos de página en pantalla del último fotograma.
     page_rects: Vec<(usize, Rect)>,
     scale_px: f32,
@@ -122,7 +120,6 @@ impl DocView {
             tiles: HashMap::new(),
             pending_rects: Vec::new(),
             reconcile_at: None,
-            software_render: false,
             page_rects: Vec::new(),
             scale_px: 1.0,
             scroll_to: None,
@@ -399,12 +396,7 @@ impl DocView {
             wake_at(ctx, at);
         }
         self.apply_updates(ctx, ev, u, drawn_after);
-        let next = self.doc.process_timers();
-        // Sin tarjeta gráfica cada fotograma cuesta mucho: el cursor de un
-        // campo no parpadea (los timers se atienden con la siguiente entrada).
-        if let Some(next) = next
-            && !(self.software_render && self.doc.editing_text())
-        {
+        if let Some(next) = self.doc.process_timers() {
             wake_at(ctx, Instant::now() + next.max(Duration::from_millis(10)));
         }
         // El parpadeo del cursor de un campo XFA también invalida la página
@@ -426,11 +418,6 @@ impl DocView {
         }
         u.invalid_rects = vec![(p, [b[0] - 4.0, b[1].min(b[3]) - 4.0, b[2] + 4.0, b[1].max(b[3]) + 4.0])];
         true
-    }
-
-    /// Dibujo por software (Windows sin tarjeta gráfica): menos fotogramas.
-    pub fn set_software_render(&mut self, on: bool) {
-        self.software_render = on;
     }
 
     fn apply_updates(&mut self, ctx: &egui::Context, ev: &mut ViewEvents, u: Updates, drawn_after: bool) {
@@ -1056,7 +1043,11 @@ impl DocView {
         for t in 0..ntiles {
             let ty = t * TILE_PX;
             let th = TILE_PX.min(shown_h - ty);
-            let tile_rect = Rect::from_min_size(pr.min + Vec2::new(0.0, ty as f32 / ppp), Vec2::new(pr.width(), th as f32 / ppp));
+            // Un píxel de la tesela en un píxel de pantalla: más nítido, y sin
+            // tarjeta gráfica (soft.rs) se copia sin filtrar.
+            let min = pr.min + Vec2::new(0.0, ty as f32 / ppp);
+            let min = Pos2::new((min.x * ppp).round() / ppp, (min.y * ppp).round() / ppp);
+            let tile_rect = Rect::from_min_size(min, Vec2::new(page_w as f32 / ppp, th as f32 / ppp));
             if !tile_rect.intersects(visible.expand(300.0)) {
                 continue;
             }
@@ -1204,3 +1195,4 @@ fn wake_at(ctx: &egui::Context, at: Instant) {
     });
     let _ = tx.lock().map(|t| t.send(at));
 }
+

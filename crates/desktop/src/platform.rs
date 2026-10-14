@@ -21,6 +21,25 @@ pub fn config_dir() -> Option<PathBuf> {
     imp::config_dir().map(|d| d.join("form-pdf-reader"))
 }
 
+/// false si solo hay adaptadores gráficos por software (máquinas virtuales y
+/// escritorios remotos sin tarjeta gráfica, con el "Microsoft Basic Render
+/// Driver" de Direct3D). En Linux se deja a OpenGL (Mesa).
+pub fn has_gpu() -> bool {
+    #[cfg(windows)]
+    {
+        use eframe::wgpu;
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::DX12, ..wgpu::InstanceDescriptor::new_without_display_handle() });
+        let adapters = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::DX12));
+        for a in &adapters {
+            let info = a.get_info();
+            log::info!("Adaptador gráfico: {} ({:?})", info.name, info.device_type);
+        }
+        adapters.iter().any(|a| a.get_info().device_type != wgpu::DeviceType::Cpu)
+    }
+    #[cfg(not(windows))]
+    true
+}
+
 /// En Windows el ejecutable no abre consola; las órdenes de línea de
 /// comandos escriben en la de quien lo lanzó.
 pub fn attach_console() {
