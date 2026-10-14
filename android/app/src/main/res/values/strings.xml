@@ -137,7 +137,7 @@
     <string name="dsig_menu">Sign with certificate…</string>
     <string name="dsig_title">Sign with certificate</string>
     <string name="dsig_certificate">Certificate</string>
-    <string name="dsig_device">Installed on this device</string>
+    <string name="dsig_device">Installed on this device (beta)</string>
     <string name="dsig_file">Certificate file (.p12, .pfx)</string>
     <string name="dsig_appearance">Appearance</string>
     <string name="dsig_visible">Visible</string>
@@ -166,7 +166,7 @@
     <string name="dsig_no_device_title">No certificates on the device</string>
     <string name="dsig_no_device">You did not choose a certificate, or there is none installed. You can install yours in Settings › Security › Encryption &amp; credentials › Install a certificate, or use the certificate file (.p12, .pfx).</string>
     <string name="dsig_use_file">Use a file</string>
-    <string name="dsig_dnie">DNIe (Spanish ID card) over NFC</string>
+    <string name="dsig_dnie">DNIe (Spanish ID card) over NFC (beta)</string>
     <string name="dnie_title">DNIe over NFC</string>
     <string name="dnie_no_nfc">This device has no NFC.</string>
     <string name="dnie_nfc_off">NFC is turned off. Turn it on to read the DNIe.</string>
@@ -183,4 +183,5 @@
     <string name="dnie_pin_locked">The PIN of the DNIe is blocked. Unblock it at a DNIe point of the Policía Nacional.</string>
     <string name="dnie_lost">The connection with the DNIe was lost. Try again holding it still against the phone.</string>
     <string name="dnie_error">DNIe error: %1$s</string>
+    <string name="dnie_cert_expired">The signing certificate of the DNIe expired on %1$s. Renew it at a DNIe point of the Policía Nacional.</string>
 </resources>

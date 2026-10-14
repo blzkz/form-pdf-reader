@@ -136,7 +136,7 @@
     <string name="dsig_menu">Firmar con certificado…</string>
     <string name="dsig_title">Firmar con certificado</string>
     <string name="dsig_certificate">Certificado</string>
-    <string name="dsig_device">Instalado en el dispositivo</string>
+    <string name="dsig_device">Instalado en el dispositivo (beta)</string>
     <string name="dsig_file">Fichero de certificado (.p12, .pfx)</string>
     <string name="dsig_appearance">Aspecto</string>
     <string name="dsig_visible">Visible</string>
@@ -165,7 +165,7 @@
     <string name="dsig_no_device_title">No hay certificados en el dispositivo</string>
     <string name="dsig_no_device">No has elegido ningún certificado o no hay ninguno instalado. Puedes instalar el tuyo en Ajustes › Seguridad › Cifrado y credenciales › Instalar un certificado, o usar el fichero del certificado (.p12, .pfx).</string>
     <string name="dsig_use_file">Usar un fichero</string>
-    <string name="dsig_dnie">DNIe por NFC</string>
+    <string name="dsig_dnie">DNIe por NFC (beta)</string>
     <string name="dnie_title">DNIe por NFC</string>
     <string name="dnie_no_nfc">Este dispositivo no tiene NFC.</string>
     <string name="dnie_nfc_off">El NFC está desactivado. Actívalo para leer el DNIe.</string>
@@ -182,4 +182,5 @@
     <string name="dnie_pin_locked">El PIN del DNIe está bloqueado. Desbloquéalo en un punto de actualización del DNIe de la Policía Nacional.</string>
     <string name="dnie_lost">Se perdió la conexión con el DNIe. Vuelve a intentarlo sin moverlo del móvil.</string>
     <string name="dnie_error">Error del DNIe: %1$s</string>
+    <string name="dnie_cert_expired">El certificado de firma del DNIe caducó el %1$s. Renuévalo en un punto de actualización del DNIe de la Policía Nacional.</string>
 </resources>

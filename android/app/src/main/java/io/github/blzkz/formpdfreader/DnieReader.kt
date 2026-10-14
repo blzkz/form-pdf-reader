@@ -31,6 +31,7 @@ import java.security.cert.X509Certificate
 import javax.security.auth.callback.CallbackHandler
 import javax.security.auth.callback.PasswordCallback
 import javax.security.auth.callback.UnsupportedCallbackException
+import uniffi.form_pdf_reader_ffi.certificateInfo
 
 /**
  * The DNIe (Spanish national ID card) over NFC, with jmulticard, the
@@ -185,13 +186,18 @@ object DnieReader {
         }
         val dnie: Dnie = DnieFactory.getDnieNfc(conn, BcCryptoHelper(), handler)
         val cert: X509Certificate = dnie.getCertificate(SIGN_ALIAS) ?: error("no signing certificate")
+        // Before the PIN: an expired certificate would waste an attempt for nothing.
+        certificateInfo(cert.encoded)?.takeIf { it.expired }?.let { throw CertificateExpired(it.validTo) }
         val key = dnie.getPrivateKey(SIGN_ALIAS)
         return work.run(listOf(cert.encoded)) { data -> dnie.sign(data, "SHA256withRSA", key) }
     }
 
+    private class CertificateExpired(val date: String) : Exception(date)
+
     /** The error in the user's terms. */
     private fun friendly(c: Context, e: Throwable): Throwable {
         val msg = when {
+            e is CertificateExpired -> c.getString(R.string.dnie_cert_expired, e.date)
             e is InvalidAccessCodeException -> c.getString(R.string.dnie_can_wrong)
             e is BadPinException -> c.getString(R.string.dnie_pin_wrong, e.remainingRetries)
             e is AuthenticationModeLockedException -> c.getString(R.string.dnie_pin_locked)

@@ -159,6 +159,26 @@ fn prop(ctx: *const CertContext, id: u32) -> Option<Vec<u8>> {
     (unsafe { CertGetCertificateContextProperty(ctx, id, v.as_mut_ptr() as *mut c_void, &mut len) } != 0).then_some(v)
 }
 
+/// Proveedor de la clave (CRYPT_KEY_PROV_INFO.pwszProvName): dice si está
+/// en una tarjeta ("Microsoft Smart Card Key Storage Provider", el del DNIe…).
+fn provider_name(ctx: *const CertContext) -> Option<String> {
+    let buf = prop(ctx, CERT_KEY_PROV_INFO_PROP_ID)?;
+    if buf.len() < 2 * size_of::<usize>() {
+        return None;
+    }
+    // Primer campo: nombre del contenedor; segundo: nombre del proveedor.
+    let p = usize::from_ne_bytes(buf[size_of::<usize>()..2 * size_of::<usize>()].try_into().ok()?) as *const u16;
+    if p.is_null() {
+        return None;
+    }
+    let mut n = 0;
+    // La cadena está dentro del propio bloque devuelto.
+    while unsafe { *p.add(n) } != 0 && n < 512 {
+        n += 1;
+    }
+    Some(String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(p, n) }))
+}
+
 /// La cadena del certificado según Windows (sin la raíz).
 fn chain_of(ctx: *const CertContext) -> Vec<Vec<u8>> {
     let mut out = vec![unsafe { der_of(ctx) }];
@@ -204,7 +224,13 @@ pub fn list() -> Vec<CertEntry> {
         if !info.for_signing {
             continue;
         }
-        out.push(CertEntry { info, chain: chain_of(ctx), source: Source::System(Handle { thumbprint }), secret: Secret::None, origin: t!("dsig.origin_windows") });
+        // Clave en una tarjeta (DNIe y otras, por su minidriver): en pruebas.
+        let card = provider_name(ctx).is_some_and(|p| {
+            let p = p.to_lowercase();
+            p.contains("smart card") || p.contains("dnie") || p.contains("tarjeta")
+        });
+        let origin = if card { t!("dsig.origin_windows_card") } else { t!("dsig.origin_windows") };
+        out.push(CertEntry { info, chain: chain_of(ctx), source: Source::System(Handle { thumbprint }), secret: Secret::None, origin, beta: card });
     }
     out
 }

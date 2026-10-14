@@ -106,6 +106,11 @@ made-up data and the public US Form I-9.
     the certificates installed on the device and the DNIe over NFC (with
     its CAN and PIN, holding it against the phone).
 
+  Smart cards and the DNIe (with a reader or over NFC) and the certificates
+  installed on Android are marked **beta**: they could not be tested with
+  every card and device. Certificate files, the browsers' certificates and
+  the Windows store's own certificates are tested.
+
   The private key never leaves where it is (the system or the card signs);
   the key of a file is only in memory while signing. The signature can be
   visible (a box with the name and the date, and your handwritten signature

@@ -136,7 +136,7 @@
     <string name="dsig_menu">Mit Zertifikat signieren…</string>
     <string name="dsig_title">Mit Zertifikat signieren</string>
     <string name="dsig_certificate">Zertifikat</string>
-    <string name="dsig_device">Auf diesem Gerät installiert</string>
+    <string name="dsig_device">Auf diesem Gerät installiert (Beta)</string>
     <string name="dsig_file">Zertifikatsdatei (.p12, .pfx)</string>
     <string name="dsig_appearance">Darstellung</string>
     <string name="dsig_visible">Sichtbar</string>
@@ -165,7 +165,7 @@
     <string name="dsig_no_device_title">Keine Zertifikate auf dem Gerät</string>
     <string name="dsig_no_device">Sie haben kein Zertifikat gewählt oder es ist keines installiert. Sie können Ihres unter Einstellungen › Sicherheit › Verschlüsselung und Anmeldedaten › Zertifikat installieren hinzufügen oder die Zertifikatsdatei (.p12, .pfx) verwenden.</string>
     <string name="dsig_use_file">Datei verwenden</string>
-    <string name="dsig_dnie">DNIe (spanischer Ausweis) über NFC</string>
+    <string name="dsig_dnie">DNIe (spanischer Ausweis) über NFC (Beta)</string>
     <string name="dnie_title">DNIe über NFC</string>
     <string name="dnie_no_nfc">Dieses Gerät hat kein NFC.</string>
     <string name="dnie_nfc_off">NFC ist ausgeschaltet. Schalten Sie es ein, um den DNIe zu lesen.</string>
@@ -182,4 +182,5 @@
     <string name="dnie_pin_locked">Die PIN des DNIe ist gesperrt. Entsperren Sie sie an einem DNIe-Terminal der Policía Nacional.</string>
     <string name="dnie_lost">Die Verbindung zum DNIe ist abgebrochen. Versuchen Sie es erneut, ohne ihn vom Telefon zu entfernen.</string>
     <string name="dnie_error">DNIe-Fehler: %1$s</string>
+    <string name="dnie_cert_expired">Das Signaturzertifikat des DNIe ist am %1$s abgelaufen. Erneuern Sie es an einem DNIe-Terminal der Policía Nacional.</string>
 </resources>

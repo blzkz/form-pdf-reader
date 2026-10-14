@@ -333,3 +333,6 @@ dsig.timestamp_note = Es wird nur ein Hashwert der Signatur an den Server gesend
 pades.tsa_failed = Zeitstempel von {0} konnte nicht abgerufen werden
 pades.tsa_rejected = Der Zeitstempeldienst hat die Anfrage abgelehnt (Status {0}).
 pades.tsa_http_only = Nur http://-Zeitstempeldienste werden unterstützt (der Zeitstempel ist bereits vom Server signiert).
+dsig.origin_windows_card = Windows-Zertifikatspeicher (Karte)
+dsig.beta = BETA
+dsig.beta_tip = Experimentell: konnte nicht mit allen Karten getestet werden. Falls es nicht klappt, verwenden Sie die Zertifikatsdatei.

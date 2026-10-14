@@ -333,3 +333,6 @@ dsig.timestamp_note = Seul un condensé de la signature est envoyé au serveur, 
 pades.tsa_failed = Impossible d’obtenir l’horodatage de {0}
 pades.tsa_rejected = Le serveur d’horodatage a refusé la demande (état {0}).
 pades.tsa_http_only = Seuls les serveurs d’horodatage http:// sont pris en charge (l’horodatage est déjà signé par le serveur).
+dsig.origin_windows_card = Magasin de certificats Windows (carte)
+dsig.beta = BÊTA
+dsig.beta_tip = Expérimental : impossible de le tester avec toutes les cartes. En cas d’échec, utilisez le fichier du certificat.

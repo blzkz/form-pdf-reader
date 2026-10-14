@@ -164,7 +164,13 @@ impl DigitalSignDialog {
                             ui.label(RichText::new(glyph).size(22.0).color(if c.info.expired { p.text_weak } else { p.accent_text }));
                             ui.vertical(|ui| {
                                 ui.spacing_mut().item_spacing.y = 2.0;
-                                ui.label(RichText::new(&c.info.subject).strong().color(if c.info.expired { p.text_weak } else { p.text }));
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(&c.info.subject).strong().color(if c.info.expired { p.text_weak } else { p.text }));
+                                    if c.beta {
+                                        ui.label(RichText::new(t!("dsig.beta")).small().strong().color(p.on_accent).background_color(p.accent))
+                                            .on_hover_text(t!("dsig.beta_tip"));
+                                    }
+                                });
                                 let valid = if c.info.expired { RichText::new(t!("dsig.expired", &c.info.valid_to)).color(p.danger) } else { RichText::new(t!("dsig.valid_to", &c.info.valid_to)).color(p.text_weak) };
                                 ui.horizontal_wrapped(|ui| {
                                     ui.spacing_mut().item_spacing.x = 4.0;

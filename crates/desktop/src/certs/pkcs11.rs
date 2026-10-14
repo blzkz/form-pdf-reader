@@ -262,6 +262,8 @@ fn collect(m: &Module, module: &Path, nss_dir: Option<&Path>, origin: &str, out:
                     (true, false) => Secret::Pin,
                 },
                 origin: shown,
+                // Las tarjetas (OpenSC, DNIe) están en pruebas; las bases NSS no.
+                beta: nss_dir.is_none(),
             });
         }
         let _ = call!(m, C_CloseSession(s));
