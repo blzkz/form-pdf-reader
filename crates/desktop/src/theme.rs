@@ -167,7 +167,8 @@ pub fn primary_button(ui: &mut Ui, text: impl Into<String>) -> Response {
 }
 
 /// Control segmentado: varias opciones juntas, una elegida.
-pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, &str, String, String)]) {
+/// Con `labels` false, solo los iconos (el texto queda en la ayuda).
+pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, &str, String, String)], labels: bool) {
     let p = palette(ui);
     let frame = egui::Frame::new().fill(p.hover).corner_radius(8).inner_margin(Margin::same(2));
     frame.show(ui, |ui| {
@@ -175,11 +176,13 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T,
         ui.horizontal(|ui| {
             for (opt, glyph, label, tip) in options {
                 let on = *value == *opt;
-                let text = RichText::new(format!("{glyph}  {label}")).color(if on { p.text } else { p.text_weak });
+                let shown = if labels { format!("{glyph}  {label}") } else { glyph.to_string() };
+                let text = RichText::new(shown).color(if on { p.text } else { p.text_weak });
                 let mut b = egui::Button::new(text).frame_when_inactive(on).min_size(Vec2::new(0.0, 28.0)).corner_radius(6);
                 if on {
                     b = b.fill(p.surface).stroke(Stroke::new(1.0, p.border));
                 }
+                let tip = if labels { tip.clone() } else { format!("{label}: {tip}") };
                 if ui.add(b).on_hover_text(tip).clicked() {
                     *value = *opt;
                 }

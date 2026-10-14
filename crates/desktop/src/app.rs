@@ -521,6 +521,18 @@ impl PdfApp {
             let status = &mut self.status;
             let Some(Tab { view: v, search, .. }) = self.tabs.get_mut(self.active) else { return };
             separator(ui);
+            let n = v.page_count();
+            let cur = (v.current_page + 1).min(n);
+            let text_w = |s: &str| ui.fonts_mut(|f| f.layout_no_wrap(s.to_string(), egui::FontId::proportional(14.0), Color32::WHITE).size().x);
+            let tools = [(icon::CURSOR_CLICK, t!("toolbar.form")), (icon::CURSOR_TEXT, t!("toolbar.text")), (icon::HAND, t!("toolbar.hand"))];
+            let widths = ToolbarWidths {
+                tools_labels: 4.0 + tools.iter().map(|(g, l)| 22.0 + text_w(&format!("{g}  {l}"))).sum::<f32>(),
+                tools_icons: 4.0 + tools.iter().map(|(g, _)| 22.0 + text_w(g)).sum::<f32>(),
+                page_long: 4.0 + text_w(&t!("toolbar.page_of", cur, n)),
+                page_short: 4.0 + text_w(&format!("{cur} / {n}")),
+                search_results: if v.search_hits.is_empty() { 0.0 } else { 76.0 + text_w(&format!("{}/{}", v.search_index + 1, v.search_hits.len())) },
+            };
+            let fit = ToolbarFit::new(ui.available_width(), !v.doc.is_continuous(), &widths);
 
             // Herramienta del ratón.
             let mut t = v.tool;
@@ -532,25 +544,28 @@ impl PdfApp {
                     (Tool::Text, icon::CURSOR_TEXT, t!("toolbar.text"), t!("toolbar.text_tip")),
                     (Tool::Hand, icon::HAND, t!("toolbar.hand"), t!("toolbar.hand_tip")),
                 ],
+                fit.tool_labels,
             );
             v.set_tool(t);
 
             // Disposición y páginas (las XFA continuas son una sola página).
-            if !v.doc.is_continuous() {
+            if !v.doc.is_continuous() && fit.page_nav {
                 separator(ui);
-                let mut l = v.layout;
-                for (opt, glyph) in [(PageLayout::Continuous, icon::ROWS), (PageLayout::Single, icon::FILE), (PageLayout::TwoColumns, icon::BOOK_OPEN)] {
-                    if theme::icon_toggle(ui, l == opt, glyph, layout_name(opt)).clicked() {
-                        l = opt;
+                if fit.layouts {
+                    let mut l = v.layout;
+                    for (opt, glyph) in [(PageLayout::Continuous, icon::ROWS), (PageLayout::Single, icon::FILE), (PageLayout::TwoColumns, icon::BOOK_OPEN)] {
+                        if theme::icon_toggle(ui, l == opt, glyph, layout_name(opt)).clicked() {
+                            l = opt;
+                        }
                     }
+                    v.set_layout(l);
                 }
-                v.set_layout(l);
-                let n = v.page_count();
                 if theme::icon_button(ui, icon::CARET_LEFT, t!("toolbar.prev_page")).clicked() && v.current_page > 0 {
                     let p = v.current_page - 1;
                     v.go_to_page(p);
                 }
-                ui.label(RichText::new(t!("toolbar.page_of", (v.current_page + 1).min(n), n)).color(p.text_weak));
+                let page = if fit.page_long { t!("toolbar.page_of", cur, n) } else { format!("{cur} / {n}") };
+                ui.label(RichText::new(page).color(p.text_weak));
                 if theme::icon_button(ui, icon::CARET_RIGHT, t!("toolbar.next_page")).clicked() && v.current_page + 1 < n {
                     let p = v.current_page + 1;
                     v.go_to_page(p);
@@ -578,7 +593,7 @@ impl PdfApp {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(icon::MAGNIFYING_GLASS).color(p.text_weak));
-                            ui.add(egui::TextEdit::singleline(search).hint_text(t!("toolbar.search_hint")).frame(egui::Frame::NONE).desired_width(170.0))
+                            ui.add(egui::TextEdit::singleline(search).hint_text(t!("toolbar.search_hint")).frame(egui::Frame::NONE).desired_width(fit.search_width))
                         })
                         .inner
                     })
@@ -609,12 +624,14 @@ impl PdfApp {
                 if theme::icon_toggle(ui, v.fit_width, fit_icon, fit_tip).clicked() {
                     v.fit_width = !v.fit_width;
                 }
-                if theme::icon_button(ui, icon::MAGNIFYING_GLASS_PLUS, format!("{} (Ctrl++)", t!("toolbar.zoom_in"))).clicked() {
-                    v.set_zoom(v.zoom * 1.2);
-                }
-                ui.add_sized([44.0, 20.0], egui::Label::new(RichText::new(format!("{:.0} %", v.zoom * 100.0)).color(p.text_weak)));
-                if theme::icon_button(ui, icon::MAGNIFYING_GLASS_MINUS, format!("{} (Ctrl+−)", t!("toolbar.zoom_out"))).clicked() {
-                    v.set_zoom(v.zoom / 1.2);
+                if fit.zoom {
+                    if theme::icon_button(ui, icon::MAGNIFYING_GLASS_PLUS, format!("{} (Ctrl++)", t!("toolbar.zoom_in"))).clicked() {
+                        v.set_zoom(v.zoom * 1.2);
+                    }
+                    ui.add_sized([44.0, 20.0], egui::Label::new(RichText::new(format!("{:.0} %", v.zoom * 100.0)).color(p.text_weak)));
+                    if theme::icon_button(ui, icon::MAGNIFYING_GLASS_MINUS, format!("{} (Ctrl+−)", t!("toolbar.zoom_out"))).clicked() {
+                        v.set_zoom(v.zoom / 1.2);
+                    }
                 }
             });
         });
@@ -972,6 +989,67 @@ impl PdfApp {
             open = theme::primary_button(ui, format!("{}  {}", icon::FOLDER_OPEN, t!("toolbar.open"))).clicked();
         });
         open
+    }
+}
+
+/// Qué cabe en la barra de herramientas: con poco ancho se compactan
+/// cosas, en este orden, para que nada se monte encima de otra cosa. Lo que
+/// se oculta sigue en el menú ☰ (Ver) o con el teclado.
+struct ToolbarFit {
+    tool_labels: bool,
+    page_long: bool,
+    search_width: f32,
+    layouts: bool,
+    page_nav: bool,
+    zoom: bool,
+}
+
+/// Anchos de las partes de la barra que dependen del texto.
+struct ToolbarWidths {
+    tools_labels: f32,
+    tools_icons: f32,
+    page_long: f32,
+    page_short: f32,
+    search_results: f32,
+}
+
+impl ToolbarFit {
+    /// `avail`: ancho tras ☰, abrir, guardar e imprimir; `paged`: el
+    /// documento tiene páginas (no es una XFA continua).
+    fn new(avail: f32, paged: bool, w: &ToolbarWidths) -> Self {
+        let mut f = ToolbarFit { tool_labels: true, page_long: true, search_width: 170.0, layouts: true, page_nav: true, zoom: true };
+        const BUTTON: f32 = 36.0;
+        const SEP: f32 = 13.0;
+        let need = |f: &ToolbarFit| {
+            let mut n = SEP + if f.tool_labels { w.tools_labels } else { w.tools_icons };
+            if paged && f.page_nav {
+                n += SEP + 2.0 * BUTTON + if f.page_long { w.page_long } else { w.page_short };
+                if f.layouts {
+                    n += 3.0 * BUTTON;
+                }
+            }
+            // Ajustar, separador y, si caben, alejar, porcentaje y acercar.
+            n += BUTTON + SEP + if f.zoom { 2.0 * BUTTON + 48.0 } else { 0.0 };
+            // Búsqueda: marco, lupa y resultados.
+            // Y un hueco entre la parte izquierda y la derecha.
+            n + f.search_width + 50.0 + w.search_results + 24.0
+        };
+        let steps: [fn(&mut ToolbarFit); 7] = [
+            |f| f.tool_labels = false,
+            |f| f.page_long = false,
+            |f| f.search_width = 120.0,
+            |f| f.layouts = false,
+            |f| f.page_nav = false,
+            |f| f.zoom = false,
+            |f| f.search_width = 70.0,
+        ];
+        for step in steps {
+            if need(&f) <= avail {
+                break;
+            }
+            step(&mut f);
+        }
+        f
     }
 }
 
