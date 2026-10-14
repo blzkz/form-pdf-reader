@@ -1614,6 +1614,7 @@ dependencies = [
  "log",
  "png",
  "pollster 0.4.0",
+ "raw-window-handle",
  "rfd",
  "softbuffer",
  "winresource",

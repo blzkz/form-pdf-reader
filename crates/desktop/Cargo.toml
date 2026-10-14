@@ -34,6 +34,7 @@ eframe = { version = "0.36", default-features = false, features = ["accesskit", 
 [target.'cfg(windows)'.dependencies]
 eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "wgpu"] }
 pollster = "0.4"
+raw-window-handle = "0.6"
 
 # Icono y datos de versión del .exe.
 [target.'cfg(windows)'.build-dependencies]

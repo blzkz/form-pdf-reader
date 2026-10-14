@@ -182,7 +182,17 @@ fn window_buttons(ui: &mut Ui, area: Rect) {
         let resp = ui.interact(r, Id::new(("ventana", k)), Sense::click()).on_hover_text(form_pdf_reader::t!(tip));
         let is_close = k == 2;
         let mut ink = p.text;
-        if resp.hovered() {
+        // Windows 11: el botón de maximizar lo atiende el sistema (snap.rs).
+        #[cfg(windows)]
+        let hovered = if k == 1 {
+            crate::snap::set_max_button(r, ctx.pixels_per_point());
+            resp.hovered() || crate::snap::max_hovered()
+        } else {
+            resp.hovered()
+        };
+        #[cfg(not(windows))]
+        let hovered = resp.hovered();
+        if hovered {
             painter.rect_filled(r, 0.0, if is_close { p.close_hover } else { p.hover });
             if is_close {
                 ink = Color32::WHITE;
@@ -204,8 +214,10 @@ pub fn resize_edges(ctx: &egui::Context) {
     let screen = ctx.content_rect();
     let Some(pos) = ctx.input(|i| i.pointer.latest_pos()) else { return };
     const M: f32 = 6.0;
-    let (l, r) = (pos.x - screen.left() < M, screen.right() - pos.x < M);
-    let (t, b) = (pos.y - screen.top() < M, screen.bottom() - pos.y < M);
+    // En Windows los demás bordes son del sistema (snap.rs): solo el de arriba.
+    let own = !cfg!(windows);
+    let (l, r) = (own && pos.x - screen.left() < M, own && screen.right() - pos.x < M);
+    let (t, b) = (pos.y - screen.top() < M, own && screen.bottom() - pos.y < M);
     let dir = match (l, r, t, b) {
         (true, _, true, _) => (ResizeDirection::NorthWest, CursorIcon::ResizeNorthWest),
         (_, true, true, _) => (ResizeDirection::NorthEast, CursorIcon::ResizeNorthEast),
@@ -226,7 +238,8 @@ pub fn resize_edges(ctx: &egui::Context) {
 /// Borde fino alrededor de la ventana, que sin la decoración del sistema
 /// se confundiría con lo que hay detrás.
 pub fn window_border(ctx: &egui::Context) {
-    if maximized(ctx) {
+    // En Windows el borde y la sombra los pone el sistema (snap.rs).
+    if cfg!(windows) || maximized(ctx) {
         return;
     }
     let p = theme::palette_of(ctx.global_style().visuals.dark_mode);

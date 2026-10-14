@@ -9,6 +9,8 @@ use form_pdf_reader::t;
 mod autotest;
 mod platform;
 mod settings;
+#[cfg(windows)]
+mod snap;
 mod soft;
 mod theme;
 mod viewer;
@@ -65,7 +67,11 @@ fn main() -> anyhow::Result<()> {
         return soft::run(viewport, move |ctx| app::PdfApp::new(ctx, file));
     }
     let options = eframe::NativeOptions { viewport, ..Default::default() };
-    eframe::run_native("form-pdf-reader", options, Box::new(move |cc| Ok(Box::new(app::PdfApp::new(&cc.egui_ctx, file)))))
+    eframe::run_native("form-pdf-reader", options, Box::new(move |cc| {
+        #[cfg(windows)]
+        snap::install(cc, &cc.egui_ctx);
+        Ok(Box::new(app::PdfApp::new(&cc.egui_ctx, file)))
+    }))
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(())
 }
