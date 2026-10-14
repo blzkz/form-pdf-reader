@@ -43,6 +43,8 @@ pub struct PdfApp {
     show_about: bool,
     show_settings: bool,
     password_prompt: Option<PasswordPrompt>,
+    /// Windows sin tarjeta gráfica: Direct3D por software (WARP).
+    software_render: bool,
     settings: crate::settings::Settings,
     show_xfa_info: bool,
     show_attachments: bool,
@@ -65,6 +67,7 @@ impl PdfApp {
             show_about: false,
             show_settings: false,
             password_prompt: None,
+            software_render: software_render(cc),
             settings: crate::settings::Settings::load(),
             show_xfa_info: false,
             show_attachments: false,
@@ -117,7 +120,9 @@ impl PdfApp {
                 install_handlers(&doc);
                 let kind = describe(&doc);
                 let is_xfa_dyn = doc.is_dynamic_xfa();
-                self.tabs.push(Tab { view: DocView::new(doc), dirty: false, search: String::new() });
+                let mut view = DocView::new(doc);
+                view.set_software_render(self.software_render);
+                self.tabs.push(Tab { view, dirty: false, search: String::new() });
                 self.active = self.tabs.len() - 1;
                 self.error = None;
                 self.status = t!("status.opened", file_name(path), kind);
@@ -933,6 +938,23 @@ fn layout_name(l: PageLayout) -> String {
         PageLayout::Single => t!("layout.single"),
         PageLayout::TwoColumns => t!("layout.two"),
     }
+}
+
+/// true si la ventana se dibuja con el adaptador por software de Direct3D
+/// (máquinas virtuales y escritorios remotos sin tarjeta gráfica).
+fn software_render(cc: &eframe::CreationContext<'_>) -> bool {
+    // Para probarlo en cualquier sistema.
+    if std::env::var_os("FORM_PDF_READER_SOFTWARE").is_some() {
+        return true;
+    }
+    #[cfg(windows)]
+    if let Some(rs) = &cc.wgpu_render_state {
+        let info = rs.adapter.get_info();
+        log::info!("Adaptador gráfico: {} ({:?}, {:?})", info.name, info.device_type, info.backend);
+        return info.device_type == eframe::wgpu::DeviceType::Cpu;
+    }
+    let _ = cc;
+    false
 }
 
 fn file_name(p: &Path) -> String {

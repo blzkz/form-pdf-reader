@@ -77,6 +77,10 @@ pub struct DocView {
     /// Zonas cambiadas por PDFium (página, rectángulo en coordenadas de
     /// página) que hay que volver a dibujar en las teselas ya hechas.
     pending_rects: Vec<(usize, [f64; 4])>,
+    /// Cuándo repintar todo tras haber repintado solo el campo al escribir.
+    reconcile_at: Option<Instant>,
+    /// La ventana se dibuja por software (ver `set_software_render`).
+    software_render: bool,
     /// Rectángulos de página en pantalla del último fotograma.
     page_rects: Vec<(usize, Rect)>,
     scale_px: f32,
@@ -117,6 +121,8 @@ impl DocView {
             fit_width: true,
             tiles: HashMap::new(),
             pending_rects: Vec::new(),
+            reconcile_at: None,
+            software_render: false,
             page_rects: Vec::new(),
             scale_px: 1.0,
             scroll_to: None,
@@ -371,26 +377,60 @@ impl DocView {
     /// `drawn_after`: lo que cambie se dibuja en este mismo fotograma (la
     /// llamada de antes de dibujar), así que no hace falta pedir otro.
     fn pump(&mut self, ctx: &egui::Context, ev: &mut ViewEvents, drawn_after: bool) {
-        // Lo pendiente de la entrada del usuario, y aparte lo de los timers.
-        let u = self.doc.take_updates();
+        // Repintado completo pendiente tras escribir (ver más abajo).
+        match self.reconcile_at {
+            Some(t) if Instant::now() >= t => {
+                self.reconcile_at = None;
+                self.invalidate_all();
+                ctx.request_repaint();
+            }
+            // Cada tecla la retrasa: el aviso ya programado puede llegar antes.
+            Some(t) => wake_at(ctx, t),
+            None => {}
+        }
+        // Lo pendiente de la entrada del usuario. Al escribir en un campo XFA
+        // PDFium invalida la página entera en cada tecla: se repinta solo el
+        // campo, y al dejar de escribir, la página entera por si los scripts
+        // del formulario cambiaron otra cosa.
+        let mut u = self.doc.take_updates();
+        if self.limit_to_focused_field(&mut u) {
+            let at = Instant::now() + Duration::from_millis(500);
+            self.reconcile_at = Some(at);
+            wake_at(ctx, at);
+        }
         self.apply_updates(ctx, ev, u, drawn_after);
-        if let Some(next) = self.doc.process_timers() {
+        let next = self.doc.process_timers();
+        // Sin tarjeta gráfica cada fotograma cuesta mucho: el cursor de un
+        // campo no parpadea (los timers se atienden con la siguiente entrada).
+        if let Some(next) = next
+            && !(self.software_render && self.doc.editing_text())
+        {
             wake_at(ctx, Instant::now() + next.max(Duration::from_millis(10)));
         }
+        // El parpadeo del cursor de un campo XFA también invalida la página
+        // entera cada 600 ms: basta con repintar el campo.
         let mut u = self.doc.take_updates();
-        // El parpadeo del cursor de un campo XFA invalida la página entera
-        // cada 600 ms. Basta con repintar el campo, que es donde está el
-        // cursor: sin tarjeta gráfica, repintar la página entera gastaba
-        // varios núcleos sin tocar nada.
-        if u.invalidated.len() == 1
-            && !u.layout_changed
-            && !u.invalidate_all
-            && let Some((p, b)) = self.doc.focused_text_field()
-            && u.invalidated == [p]
-        {
-            u.invalid_rects = vec![(p, [b[0] - 4.0, b[1].min(b[3]) - 4.0, b[2] + 4.0, b[1].max(b[3]) + 4.0])];
-        }
+        self.limit_to_focused_field(&mut u);
         self.apply_updates(ctx, ev, u, drawn_after);
+    }
+
+    /// Si `u` solo invalida la página del campo de texto enfocado, deja como
+    /// zona a repintar el propio campo. true si lo ha hecho.
+    fn limit_to_focused_field(&self, u: &mut Updates) -> bool {
+        if u.invalidated.len() != 1 || u.layout_changed || u.invalidate_all {
+            return false;
+        }
+        let Some((p, b)) = self.doc.focused_text_field() else { return false };
+        if u.invalidated != [p] {
+            return false;
+        }
+        u.invalid_rects = vec![(p, [b[0] - 4.0, b[1].min(b[3]) - 4.0, b[2] + 4.0, b[1].max(b[3]) + 4.0])];
+        true
+    }
+
+    /// Dibujo por software (Windows sin tarjeta gráfica): menos fotogramas.
+    pub fn set_software_render(&mut self, on: bool) {
+        self.software_render = on;
     }
 
     fn apply_updates(&mut self, ctx: &egui::Context, ev: &mut ViewEvents, u: Updates, drawn_after: bool) {
