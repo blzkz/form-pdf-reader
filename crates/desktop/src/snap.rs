@@ -66,6 +66,7 @@ unsafe extern "system" {
 }
 
 static OLD_PROC: AtomicIsize = AtomicIsize::new(0);
+static HWND: AtomicIsize = AtomicIsize::new(0);
 static CTX: OnceLock<egui::Context> = OnceLock::new();
 /// Botón de maximizar en píxeles de la ventana: izquierda, arriba, derecha, abajo.
 static BUTTON: Mutex<Option<[f32; 4]>> = Mutex::new(None);
@@ -79,6 +80,7 @@ pub fn install(window: &impl HasWindowHandle, ctx: &egui::Context) {
         return;
     }
     let hwnd = h.hwnd.get();
+    HWND.store(hwnd, Ordering::SeqCst);
     let old = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, proc as WndProc as usize as isize) };
     OLD_PROC.store(old, Ordering::SeqCst);
     unsafe {
@@ -89,6 +91,12 @@ pub fn install(window: &impl HasWindowHandle, ctx: &egui::Context) {
         const SWP_NOMOVE_NOSIZE_NOZORDER_NOACTIVATE: u32 = 0x0002 | 0x0001 | 0x0004 | 0x0010;
         SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE_NOSIZE_NOZORDER_NOACTIVATE);
     }
+}
+
+/// La ventana de la aplicación (0 si aún no está), para los diálogos del
+/// sistema que se abren encima.
+pub fn hwnd() -> isize {
+    HWND.load(Ordering::SeqCst)
 }
 
 /// Dónde está el botón de maximizar este fotograma (en puntos de egui).

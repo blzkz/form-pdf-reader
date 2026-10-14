@@ -100,8 +100,15 @@ made-up data and the public US Form I-9.
   trusted authority is not checked yet.
 - **Saving:** Ctrl+S and Save As, with a warning about unsaved changes.
   Saving keeps the original file intact (see below).
-- **Export and print:** a "flat" (image) PDF on A4 pages. Printing opens that
-  PDF in the system viewer.
+- **Printing:** a print dialog with the installed printers, pages (all,
+  current or a range such as `1-3, 5`), copies, color or black and white,
+  two-sided printing and a preview. On Linux it prints through CUPS, on
+  Windows straight to the printer (with its own preferences dialog), and on
+  Android with the system's print screen (printers and "Save as PDF").
+  What is printed is the document as it is shown, with the form data and
+  the signatures; a dynamic XFA form is cut into A4 sheets. "Open as PDF"
+  in the dialog still opens a flat copy in the system viewer.
+- **Export:** a "flat" (image) PDF, with A4 sheets for dynamic XFA forms.
 
 ## How dynamic XFA forms are handled
 
@@ -426,6 +433,7 @@ crates/desktop/   form-pdf-reader: the desktop application (egui)
   src/theme.rs      fonts, icons and light/dark colours
   src/snap.rs       Windows: system frame and snap layouts
   src/signatures.rs saved signatures menu and "Create signature" dialog
+  src/print.rs      print dialog and job; print/cups.rs (Linux), print/win.rs
   src/soft.rs       window drawn with the CPU when there is no graphics card
   src/autotest.rs   UI test driver
 crates/egui_software_backend/   CPU renderer for egui (a copy of the crate

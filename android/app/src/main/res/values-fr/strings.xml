@@ -3,6 +3,7 @@
     <string name="open">Ouvrir</string>
     <string name="save">Enregistrer</string>
     <string name="save_as">Enregistrer sous…</string>
+    <string name="print">Imprimer</string>
     <string name="attachments">Pièces jointes du PDF</string>
     <string name="copy_page_text">Copier le texte de la page</string>
     <string name="about">À propos</string>

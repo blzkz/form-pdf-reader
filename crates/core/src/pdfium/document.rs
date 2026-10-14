@@ -15,8 +15,10 @@ use std::time::{Duration, Instant};
 pub use super::host::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest};
 
 mod digital;
+mod print;
 mod signatures;
 pub use digital::{DigitalSignature, SignedState};
+pub use print::{FlatPdf, Sheet, parse_page_ranges};
 pub use signatures::{PlacedSignature, render_signature, signature_size};
 
 /// Tipo de formulario que contiene el documento.
@@ -1181,33 +1183,6 @@ impl Document {
         Ok(())
     }
 
-    /// Trozos de página que forman cada hoja del PDF plano:
-    /// (página origen, y0, y1, ancho hoja, alto hoja), en puntos.
-    fn flat_sheets(&self) -> Vec<(usize, f32, f32, f32, f32)> {
-        let mut v = Vec::new();
-        for i in 0..self.page_count() {
-            let (w, h) = self.page_size(i);
-            if !self.is_continuous() {
-                v.push((i, 0.0, h, w, h));
-                continue;
-            }
-            // Vista continua: trocear en hojas con proporción A4, cortando
-            // por una franja en blanco para no partir campos ni líneas.
-            let end = self.content_height(i);
-            let sheet_h = w * 297.0 / 210.0;
-            let mut y0 = 0.0f32;
-            while y0 < end - 1.0 {
-                let mut y1 = (y0 + sheet_h).min(end);
-                if y1 < end {
-                    y1 = self.find_blank_row(i, w, h, y1, sheet_h * 0.3).unwrap_or(y1);
-                }
-                v.push((i, y0, y1, w, sheet_h));
-                y0 = y1;
-            }
-        }
-        v
-    }
-
     /// Busca, subiendo desde `y` hasta `max_up` puntos, una fila completamente
     /// blanca. Devuelve su posición en puntos.
     fn find_blank_row(&self, idx: usize, w: f32, h: f32, y: f32, max_up: f32) -> Option<f32> {
@@ -1219,69 +1194,6 @@ impl Document {
         // Ignorar márgenes laterales (10 %).
         let (a, b) = (pw as usize / 10, pw as usize * 9 / 10);
         (0..rh as usize).rev().find(|&r| px[r * row + a * 4..r * row + b * 4].chunks(4).all(|c| c[0] > 250 && c[1] > 250 && c[2] > 250)).map(|r| (top + r as i32) as f32)
-    }
-
-    /// Crea un PDF "plano" (cada hoja es una imagen) a `dpi`. Sirve para
-    /// imprimir o enviar el formulario a quien no tenga un visor XFA. En vista
-    /// continua se trocea en hojas A4.
-    pub fn export_flat(&mut self, path: &Path, dpi: f32) -> Result<()> {
-        self.commit_signatures()?;
-        let sheets = self.flat_sheets();
-        let k = dpi / 72.0;
-        unsafe {
-            let out = sys::FPDF_CreateNewDocument();
-            if out.is_null() {
-                bail!("{}", crate::t!("err.create_output"));
-            }
-            let result = (|| -> Result<()> {
-                for (n, &(src, y0, y1, sw, sh)) in sheets.iter().enumerate() {
-                    let (pw, ph) = self.page_size(src);
-                    let (full_w, full_h) = ((pw * k).round() as i32, (ph * k).round() as i32);
-                    let (bw, bh) = ((sw * k).round() as i32, (sh * k).round() as i32);
-                    let (ry, rh) = ((y0 * k).round() as i32, ((y1 - y0) * k).round().min(bh as f32) as i32);
-                    let rgba = self.render_region_ex(src, full_w, full_h, 0, ry, full_w.min(bw), rh, true).ok_or_else(|| anyhow::anyhow!("{}", crate::t!("err.rasterize", n + 1)))?;
-                    let bmp = sys::FPDFBitmap_Create(bw, bh, 0);
-                    if bmp.is_null() {
-                        bail!("{}", crate::t!("err.rasterize_mem", n + 1));
-                    }
-                    sys::FPDFBitmap_FillRect(bmp, 0, 0, bw, bh, 0xFFFF_FFFF);
-                    let stride = sys::FPDFBitmap_GetStride(bmp) as usize;
-                    let dst = sys::FPDFBitmap_GetBuffer(bmp) as *mut u8;
-                    let cw = full_w.min(bw) as usize;
-                    for r in 0..rh as usize {
-                        for c in 0..cw {
-                            let s = &rgba[(r * cw + c) * 4..(r * cw + c) * 4 + 4];
-                            let d = dst.add(r * stride + c * 4);
-                            *d = s[2];
-                            *d.add(1) = s[1];
-                            *d.add(2) = s[0];
-                            *d.add(3) = 255;
-                        }
-                    }
-                    let newp = sys::FPDFPage_New(out, n as c_int, sw as f64, sh as f64);
-                    let img = sys::FPDFPageObj_NewImageObj(out);
-                    let mut pages = [newp];
-                    let ok = sys::FPDFImageObj_SetBitmap(pages.as_mut_ptr(), 1, img, bmp);
-                    sys::FPDFBitmap_Destroy(bmp);
-                    if ok == 0 {
-                        sys::FPDFPageObj_Destroy(img);
-                        sys::FPDF_ClosePage(newp);
-                        bail!("{}", crate::t!("err.insert_image", n + 1));
-                    }
-                    sys::FPDFImageObj_SetMatrix(img, sw as f64, 0.0, 0.0, sh as f64, 0.0, 0.0);
-                    sys::FPDFPage_InsertObject(newp, img);
-                    sys::FPDFPage_GenerateContent(newp);
-                    sys::FPDF_ClosePage(newp);
-                }
-                let mut w = Writer::new();
-                if sys::FPDF_SaveAsCopy(out, &mut w.base, sys::FPDF_NO_INCREMENTAL as sys::FPDF_DWORD) == 0 {
-                    bail!("{}", crate::t!("err.serialize_flat"));
-                }
-                write_atomic(path, &w.buf)
-            })();
-            sys::FPDF_CloseDocument(out);
-            result
-        }
     }
 
     // -----------------------------------------------------------------------
