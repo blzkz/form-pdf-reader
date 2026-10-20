@@ -183,4 +183,8 @@
     <string name="dnie_lost">La connessione con il DNIe si è interrotta. Riprova senza muoverlo dal telefono.</string>
     <string name="dnie_error">Errore del DNIe: %1$s</string>
     <string name="dnie_cert_expired">Il certificato di firma del DNIe è scaduto il %1$s. Rinnovalo in un punto DNIe della Policía Nacional.</string>
+    <string name="dsig_lock">Blocca il documento dopo la firma</string>
+    <string name="dsig_lock_note">Se è la prima firma, il documento viene certificato senza modifiche consentite; se aveva già firme, viene bloccato alla firma. Nessuno potrà modificarlo né firmarlo di nuovo senza invalidare la firma.</string>
+    <string name="dsig_locked">Documento bloccato da una firma digitale: non si può modificare né firmare di nuovo.</string>
+    <string name="dsig_locked_save">Questo documento è bloccato da una firma digitale: non si può modificare né salvare. Puoi condividerlo o stamparlo.</string>
 </resources>

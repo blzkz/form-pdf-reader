@@ -789,7 +789,7 @@ fn firma_digital_pades() {
     for (i, (src, placement, use_ec, firmas)) in casos.into_iter().enumerate() {
         let key = if use_ec { &mut k_ec } else { &mut k_rsa };
         let base = std::fs::read(src).unwrap();
-        let req = Request { placement, reason: Some("Prueba de firma ñ".into()), location: Some("Madrid".into()), handwritten: None, timestamp: None };
+        let req = Request { placement, reason: Some("Prueba de firma ñ".into()), location: Some("Madrid".into()), handwritten: None, timestamp: None, lock: false };
         let firmado = pades::sign(&base, None, &req, key).unwrap_or_else(|e| panic!("{src}: {e:#}"));
         assert!(firmado.starts_with(&base), "{src}: actualización incremental");
         let p = tmp(&format!("pades-{i}.pdf"));
@@ -811,6 +811,31 @@ fn firma_digital_pades() {
         if let Ok(out) = std::process::Command::new("pdfsig").arg(&p).output() {
             let s = String::from_utf8_lossy(&out.stdout);
             assert!(s.contains("Signature Validation: Signature is Valid."), "{src}: pdfsig:\n{s}");
+        }
+    }
+}
+
+/// Firmar bloqueando el documento: la primera firma es de certificación
+/// (DocMDP 1); sobre un documento ya firmado, bloquea el campo (/Lock /P 1).
+#[test]
+fn firma_digital_bloqueo() {
+    use form_pdf_reader::pades::{self, P12Key, Placement, Request};
+    let mut key = P12Key::open(&std::fs::read("tests/fixtures/certs/prueba-rsa.p12").unwrap(), "prueba").unwrap();
+    for (i, (src, certifica)) in [("tests/fixtures/normal.pdf", true), ("tests/fixtures/firmado-pdfjs.pdf", false)].into_iter().enumerate() {
+        let base = std::fs::read(src).unwrap();
+        assert_eq!(pades::lock_permission(&base, None), None, "{src}");
+        let req = Request { placement: Placement::Invisible, reason: None, location: None, handwritten: None, timestamp: None, lock: true };
+        let firmado = pades::sign(&base, None, &req, &mut key).unwrap();
+        assert_eq!(pades::lock_permission(&firmado, None), Some(1), "{src}");
+        let p = tmp(&format!("bloqueado-{i}.pdf"));
+        std::fs::write(&p, &firmado).unwrap();
+        let doc = Document::open(&p).unwrap();
+        assert!(doc.locked_by_signature(), "{src}");
+        let firmas = doc.digital_signatures();
+        assert_eq!(firmas.last().unwrap().certification, certifica.then_some(1), "{src}");
+        if let Ok(out) = std::process::Command::new("pdfsig").arg(&p).output() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            assert!(s.matches("Signature is Valid.").count() >= 1, "{src}: pdfsig:\n{s}");
         }
     }
 }

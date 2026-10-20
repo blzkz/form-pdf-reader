@@ -852,6 +852,12 @@ impl PdfDocument {
         self.lock().export_flat(Path::new(&path), dpi).map_err(|e| PdfError::Save(format!("{e:#}")))
     }
 
+    /// Locked by a digital signature: it accepts no changes nor more
+    /// signatures (certified with no changes allowed, or a field lock).
+    pub fn locked_by_signature(&self) -> bool {
+        self.lock().locked_by_signature()
+    }
+
     /// The signature fields of the document (empty or signed).
     pub fn signature_fields(&self) -> Vec<SignatureFieldInfo> {
         self.lock().signature_fields().into_iter().map(|f| SignatureFieldInfo { name: f.name, page: f.page.map(|p| p as u32), signed: f.signed }).collect()
@@ -861,7 +867,8 @@ impl PdfDocument {
     /// form data and the handwritten signatures), with the certificate
     /// `chain` (signer first). The returned object gives what the key has
     /// to sign; `finish` with that signature gives the signed PDF.
-    pub fn prepare_digital_signature(
+#[allow(clippy::too_many_arguments)]
+        pub fn prepare_digital_signature(
         &self,
         placement: DigitalPlacement,
         reason: Option<String>,
@@ -869,6 +876,7 @@ impl PdfDocument {
         library: Option<Arc<SignatureLibrary>>,
         handwritten_id: Option<String>,
         chain: Vec<Vec<u8>>,
+        lock: bool,
     ) -> Result<Arc<PendingSignature>, PdfError> {
         use form_pdf_reader::pades::{Placement, Request};
         let mut doc = self.lock();
@@ -888,7 +896,7 @@ impl PdfDocument {
             (Some(l), Some(id)) => l.get(&id),
             _ => None,
         };
-        let req = Request { placement, reason: reason.filter(|s| !s.trim().is_empty()), location: location.filter(|s| !s.trim().is_empty()), handwritten, timestamp: None };
+        let req = Request { placement, reason: reason.filter(|s| !s.trim().is_empty()), location: location.filter(|s| !s.trim().is_empty()), handwritten, timestamp: None, lock };
         let prepared = doc.prepare_digital(&req, &chain).map_err(|e| PdfError::Sign(format!("{e:#}")))?;
         let to_sign = prepared.data_to_sign().to_vec();
         Ok(Arc::new(PendingSignature { prepared: Mutex::new(Some(prepared)), to_sign }))

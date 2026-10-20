@@ -36,11 +36,13 @@ struct Tab {
     /// al abrir y al guardar).
     digital: Vec<DigitalSignature>,
     usage_rights: bool,
+    /// Bloqueado por una firma: no se puede modificar, guardar ni firmar.
+    locked: bool,
 }
 
 impl Tab {
     fn new(view: DocView) -> Tab {
-        let mut t = Tab { view, dirty: false, search: String::new(), digital: Vec::new(), usage_rights: false };
+        let mut t = Tab { view, dirty: false, search: String::new(), digital: Vec::new(), usage_rights: false, locked: false };
         t.read_signatures();
         t
     }
@@ -48,6 +50,8 @@ impl Tab {
     fn read_signatures(&mut self) {
         self.digital = self.view.doc.digital_signatures();
         self.usage_rights = self.view.doc.has_usage_rights();
+        self.locked = self.view.doc.locked_by_signature();
+        self.view.set_read_only(self.locked);
     }
 }
 
@@ -79,6 +83,13 @@ pub struct PdfApp {
     digital_requested: bool,
     /// Firma digital esperando a que se elija el sitio en la página.
     digital_pending: Option<Box<crate::digital_sign::SignPlan>>,
+    update_dialog: Option<crate::update::UpdateDialog>,
+    /// La búsqueda de versiones nuevas al abrir el programa.
+    update_check: Option<std::sync::mpsc::Receiver<anyhow::Result<Option<crate::update::Release>>>>,
+    /// Preguntar si abrir los PDF con esta aplicación (Linux, la primera vez).
+    ask_pdf_default: bool,
+    /// Si abre los PDF por defecto (se mira al abrir los ajustes).
+    pdf_default: Option<Option<bool>>,
 }
 
 impl PdfApp {
@@ -111,7 +122,14 @@ impl PdfApp {
             digital_dialog: None,
             digital_requested: false,
             digital_pending: None,
+            update_dialog: None,
+            update_check: None,
+            ask_pdf_default: false,
+            pdf_default: None,
         };
+        if app.autotest.is_none() || std::env::var_os("PDFRE_AUTOTEST_STARTUP").is_some() {
+            app.startup_checks();
+        }
         // El fichero de la línea de órdenes se abre tras el primer fotograma:
         // así la ventana sale enseguida aunque abrirlo tarde (formularios
         // XFA grandes en equipos lentos).
@@ -120,6 +138,21 @@ impl PdfApp {
             app.pending_open = Some(p);
         }
         app
+    }
+
+    /// Al abrir: buscar versiones nuevas (una vez al día) y, en Linux, si
+    /// abrir los PDF con esta aplicación (una sola vez).
+    fn startup_checks(&mut self) {
+        std::thread::spawn(crate::update::clean_old_downloads);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        if !self.settings.updates_off && now.saturating_sub(self.settings.update_checked) >= 24 * 3600 {
+            self.update_check = Some(crate::update::check_in_background());
+            self.settings.update_checked = now;
+            self.settings.save();
+        }
+        if cfg!(not(windows)) && !self.settings.pdf_default_asked && crate::platform::is_pdf_default() == Some(false) {
+            self.ask_pdf_default = true;
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -255,6 +288,10 @@ impl PdfApp {
 
     fn save(&mut self, path: Option<PathBuf>) -> bool {
         let Some(tab) = self.cur_mut() else { return false };
+        if tab.locked {
+            self.error = Some(t!("dsig.locked_save"));
+            return false;
+        }
         let target = match path {
             Some(p) => p,
             None => tab.view.doc.path().to_path_buf(),
@@ -484,6 +521,7 @@ impl PdfApp {
                 if ui.add(egui::Button::new(mi(icon::GEAR, t!("menu.settings")))).clicked() {
                     ui.close();
                     self.show_settings = true;
+                    self.pdf_default = None;
                 }
                 ui.separator();
                 if ui.add_enabled(has, egui::Button::new(mi(icon::X, t!("menu.close"))).shortcut_text("Ctrl+W")).clicked() {
@@ -537,6 +575,10 @@ impl PdfApp {
                 }
             });
             ui.menu_button(mi(icon::QUESTION, t!("menu.help")), |ui| {
+                if ui.add(egui::Button::new(mi(icon::CLOUD_ARROW_DOWN, t!("menu.check_updates")))).clicked() {
+                    ui.close();
+                    self.update_dialog = Some(crate::update::UpdateDialog::checking());
+                }
                 if ui.add(egui::Button::new(mi(icon::FILE_TEXT, t!("menu.xfa_info")))).clicked() {
                     ui.close();
                     self.show_xfa_info = true;
@@ -614,9 +656,14 @@ impl PdfApp {
             if v.is_placing() {
                 sign_button = sign_button.fill(theme::palette(ui).accent.gamma_multiply(0.16));
             }
-            let (r, inner) = theme::flat(ui, |ui| egui::containers::menu::MenuButton::from_button(sign_button).ui(ui, |ui| self.signatures.menu(ui, can_sign)));
-            r.on_hover_text(t!("sign.button_tip"));
-            let action = inner.and_then(|i| i.inner);
+            // Bloqueado por una firma: ni manuscritas ni digitales.
+            let locked = v.is_read_only();
+            let mut action = None;
+            ui.add_enabled_ui(!locked, |ui| {
+                let (r, inner) = theme::flat(ui, |ui| egui::containers::menu::MenuButton::from_button(sign_button).ui(ui, |ui| self.signatures.menu(ui, can_sign)));
+                r.on_hover_text(t!("sign.button_tip")).on_disabled_hover_text(t!("dsig.locked"));
+                action = inner.and_then(|i| i.inner);
+            });
             match action {
                 Some(crate::signatures::Action::Digital) => *digital_requested = true,
                 Some(crate::signatures::Action::Place(sig)) => {
@@ -732,6 +779,10 @@ impl PdfApp {
                 let r = ui.add(egui::Label::new(RichText::new(format!("{glyph} {text}")).size(12.0).color(color)).sense(egui::Sense::click()));
                 open_digital = r.on_hover_text(t!("digital.menu")).clicked();
                 ui.label(small("·".into()));
+                if t.locked {
+                    ui.label(RichText::new(format!("{} {}", icon::LOCK, t!("dsig.locked_status"))).size(12.0).color(p.text_weak)).on_hover_text(t!("dsig.locked"));
+                    ui.label(small("·".into()));
+                }
             }
             if open_digital {
                 self.show_digital = true;
@@ -795,6 +846,8 @@ impl PdfApp {
             self.digital_window(ctx);
         }
         self.print_window(ctx);
+        self.update_window(ctx);
+        self.pdf_default_window(ctx);
         self.sign_digital_window(ctx);
         if let Some((sig, name)) = self.signatures.create_window(ctx) {
             if !name.is_empty() && self.settings.signer_name.as_deref() != Some(&name) {
@@ -977,6 +1030,7 @@ impl PdfApp {
             location: Some(plan.location).filter(|s| !s.is_empty()),
             handwritten: plan.handwritten,
             timestamp: plan.timestamp,
+            lock: plan.lock,
         };
         let Some(view) = self.view_mut() else { return };
         view.commit_focus();
@@ -993,6 +1047,81 @@ impl PdfApp {
                     self.error = Some(t!("dsig.failed", msg));
                 }
             }
+        }
+    }
+
+    fn update_window(&mut self, ctx: &egui::Context) {
+        use crate::update::{Outcome, UpdateDialog};
+        if let Some(rx) = &self.update_check {
+            match rx.try_recv() {
+                Ok(r) => {
+                    self.update_check = None;
+                    match r {
+                        Ok(Some(r)) if self.settings.update_skipped.as_deref() != Some(&r.version) => {
+                            if self.update_dialog.is_none() {
+                                self.update_dialog = Some(UpdateDialog::available(r));
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(e) => log::info!("no se pudo buscar actualizaciones: {e}"),
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => ctx.request_repaint_after(std::time::Duration::from_millis(500)),
+                Err(_) => self.update_check = None,
+            }
+        }
+        let dirty = self.tabs.iter().any(|t| t.dirty);
+        let Some(d) = self.update_dialog.as_mut() else { return };
+        let out = d.show(ctx, dirty);
+        if d.must_quit() {
+            // El instalador de Windows está en marcha y abrirá la versión nueva.
+            self.update_dialog = None;
+            self.allow_quit = true;
+            return;
+        }
+        let Some(out) = out else { return };
+        self.update_dialog = None;
+        match out {
+            Outcome::Closed => {}
+            Outcome::Skip(v) => {
+                self.settings.update_skipped = Some(v);
+                self.settings.save();
+            }
+            Outcome::Restart => {
+                crate::update::restart(self.view().map(|v| v.doc.path()));
+                self.allow_quit = true;
+            }
+        }
+    }
+
+    /// Linux, la primera vez: abrir los PDF con esta aplicación.
+    fn pdf_default_window(&mut self, ctx: &egui::Context) {
+        if !self.ask_pdf_default || self.update_dialog.is_some() {
+            return;
+        }
+        theme::modal(ctx, "pdf_predeterminada").show(ctx, |ui| {
+            ui.set_max_width(420.0);
+            ui.heading(t!("assoc.title"));
+            ui.add_space(6.0);
+            ui.label(t!("assoc.question"));
+            let answer = theme::dialog_footer(ui, &[(t!("assoc.yes"), true, true), (t!("assoc.no"), false, true)]);
+            if let Some(i) = answer {
+                self.ask_pdf_default = false;
+                self.settings.pdf_default_asked = true;
+                self.settings.save();
+                if i == 0 {
+                    self.make_pdf_default();
+                }
+            }
+        });
+    }
+
+    fn make_pdf_default(&mut self) {
+        self.pdf_default = None;
+        match crate::platform::make_pdf_default() {
+            Ok(true) => self.status = t!("assoc.done"),
+            Ok(false) => self.status = t!("assoc.confirm_windows"),
+            Err(e) => self.error = Some(t!("assoc.failed", e)),
         }
     }
 
@@ -1141,6 +1270,33 @@ impl PdfApp {
                 self.settings.theme = theme;
                 self.settings.apply_theme(ui.ctx());
                 self.settings.save();
+            }
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(6.0);
+            let mut check = !self.settings.updates_off;
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut check, t!("settings.update_check"));
+                ui.add_space(8.0);
+                if ui.button(t!("settings.update_now")).clicked() {
+                    self.update_dialog = Some(crate::update::UpdateDialog::checking());
+                }
+            });
+            if check == self.settings.updates_off {
+                self.settings.updates_off = !check;
+                self.settings.save();
+            }
+            ui.label(RichText::new(t!("settings.version", crate::update::current_version())).size(12.0).color(theme::palette(ui).text_weak));
+            ui.add_space(6.0);
+            match *self.pdf_default.get_or_insert_with(crate::platform::is_pdf_default) {
+                Some(true) => {
+                    ui.label(format!("{}  {}", icon::CHECK, t!("assoc.is_default")));
+                }
+                _ => {
+                    if ui.button(mi(icon::FILE_PDF, t!("assoc.make_default"))).clicked() {
+                        self.make_pdf_default();
+                    }
+                }
             }
             if theme::dialog_footer(ui, &[(t!("dialog.close"), false, true)]).is_some() {
                 self.show_settings = false;

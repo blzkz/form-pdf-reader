@@ -1944,6 +1944,7 @@ dependencies = [
  "pollster 0.4.0",
  "raw-window-handle",
  "rfd",
+ "serde_json",
  "sha2 0.10.9",
  "softbuffer",
  "winresource",

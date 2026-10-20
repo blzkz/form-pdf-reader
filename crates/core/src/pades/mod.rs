@@ -60,6 +60,10 @@ pub struct Request {
     pub handwritten: Option<SavedSignature>,
     /// Servidor de sellado de tiempo (`http://...`), si se quiere sello.
     pub timestamp: Option<String>,
+    /// Bloquear el documento tras firmar: no admite más cambios ni firmas.
+    /// Si es la primera firma, es una firma de certificación (DocMDP 1); si
+    /// ya había firmas, bloquea el campo y todo el documento (FieldMDP, /P 1).
+    pub lock: bool,
 }
 
 /// Un campo de firma del documento.
@@ -157,6 +161,10 @@ pub fn prepare(base: &[u8], password: Option<&str>, req: &Request, chain: &[Vec<
 
     // El diccionario /Sig (el hueco de /Contents y /ByteRange va aparte).
     let sig_id = up.alloc();
+    // Bloqueo: certificar si nadie firmó antes; si no, bloquear el campo.
+    let already_signed = sig_fields(&doc).iter().any(|f| f.signed);
+    let certify = req.lock && !already_signed;
+    let field_lock = req.lock && already_signed;
     let mut sig = Dictionary::new();
     sig.set("Type", Object::Name(b"Sig".to_vec()));
     sig.set("Filter", Object::Name(b"Adobe.PPKLite".to_vec()));
@@ -182,6 +190,20 @@ pub fn prepare(base: &[u8], password: Option<&str>, req: &Request, chain: &[Vec<
     tail.extend_from_slice(b" /Contents <");
     tail.extend(std::iter::repeat_n(b'0', size * 2));
     tail.extend_from_slice(b">");
+    if req.lock {
+        let mut params = Dictionary::new();
+        params.set("Type", Object::Name(b"TransformParams".to_vec()));
+        params.set("P", Object::Integer(1));
+        params.set("V", Object::Name(b"1.2".to_vec()));
+        if field_lock {
+            params.set("Action", Object::Name(b"All".to_vec()));
+        }
+        let mut sig_ref = Dictionary::new();
+        sig_ref.set("Type", Object::Name(b"SigRef".to_vec()));
+        sig_ref.set("TransformMethod", Object::Name(if certify { b"DocMDP".to_vec() } else { b"FieldMDP".to_vec() }));
+        sig_ref.set("TransformParams", Object::Dictionary(params));
+        sig.set("Reference", Object::Array(vec![Object::Dictionary(sig_ref)]));
+    }
     up.set_dict_with_raw(sig_id, &sig, &tail)?;
 
     // El campo de firma y su anotación (widget).
@@ -255,11 +277,25 @@ pub fn prepare(base: &[u8], password: Option<&str>, req: &Request, chain: &[Vec<
         }
     };
     let _ = page;
+    // Bloqueo del campo (y de todo lo demás) al firmarlo.
+    let lock_dict = || {
+        let mut l = Dictionary::new();
+        l.set("Type", Object::Name(b"SigFieldLock".to_vec()));
+        l.set("Action", Object::Name(b"All".to_vec()));
+        l.set("P", Object::Integer(1));
+        Object::Dictionary(l)
+    };
     if field_id == widget_id {
         widget.set("V", Object::Reference(sig_id));
+        if field_lock {
+            widget.set("Lock", lock_dict());
+        }
     } else {
         let mut field = doc.get_dictionary(field_id)?.clone();
         field.set("V", Object::Reference(sig_id));
+        if field_lock {
+            field.set("Lock", lock_dict());
+        }
         up.set_object(field_id, &Object::Dictionary(field))?;
     }
     // La apariencia: el texto (y la firma manuscrita) en el rectángulo.
@@ -290,12 +326,38 @@ pub fn prepare(base: &[u8], password: Option<&str>, req: &Request, chain: &[Vec<
 
     // Formulario con firmas que solo admite añadir (SigFlags 3).
     acro.set("SigFlags", Object::Integer(3));
+    let mut catalog_changed = false;
     match acro_id {
         Some(id) => up.set_object(id, &Object::Dictionary(acro))?,
         None => {
             catalog.set("AcroForm", Object::Dictionary(acro));
-            up.set_object(catalog_id, &Object::Dictionary(catalog))?;
+            catalog_changed = true;
         }
+    }
+    // Firma de certificación: el catálogo la señala en /Perms /DocMDP.
+    if certify {
+        match catalog.get(b"Perms") {
+            Ok(Object::Reference(pid)) => {
+                let mut perms = doc.get_dictionary(*pid)?.clone();
+                perms.set("DocMDP", Object::Reference(sig_id));
+                up.set_object(*pid, &Object::Dictionary(perms))?;
+            }
+            Ok(Object::Dictionary(d)) => {
+                let mut perms = d.clone();
+                perms.set("DocMDP", Object::Reference(sig_id));
+                catalog.set("Perms", Object::Dictionary(perms));
+                catalog_changed = true;
+            }
+            _ => {
+                let mut perms = Dictionary::new();
+                perms.set("DocMDP", Object::Reference(sig_id));
+                catalog.set("Perms", Object::Dictionary(perms));
+                catalog_changed = true;
+            }
+        }
+    }
+    if catalog_changed {
+        up.set_object(catalog_id, &Object::Dictionary(catalog))?;
     }
 
     let mut pdf = up.finish()?;
@@ -314,6 +376,48 @@ pub fn prepare(base: &[u8], password: Option<&str>, req: &Request, chain: &[Vec<
     let attrs = cms::signed_attributes(&digest, leaf)?;
     let to_sign = cms::to_be_signed(&attrs)?;
     Ok(Prepared { pdf, contents_at, contents_len: size * 2, chain: chain.to_vec(), attrs, to_sign, tsa: req.timestamp.clone() })
+}
+
+/// El bloqueo que tiene el documento por sus firmas: el permiso más
+/// restrictivo de una firma de certificación (DocMDP) o del bloqueo de un
+/// campo firmado (`/Lock` con `/P`). 1: no admite cambios ni más firmas;
+/// 2: solo rellenar y firmar; 3: además comentar. None: sin bloqueo.
+pub fn lock_permission(base: &[u8], password: Option<&str>) -> Option<u32> {
+    let doc = pdfedit::load(base, password).ok()?;
+    let p_of = |o: &Object| -> Option<u32> {
+        let d = doc.dereference(o).ok()?.1.as_dict().ok()?;
+        d.get(b"P").ok().and_then(|p| p.as_i64().ok()).map(|p| p as u32)
+    };
+    let mut best: Option<u32> = None;
+    let mut take = |p: u32| best = Some(best.map_or(p, |b| b.min(p)));
+    // Certificación: /Perms /DocMDP → diccionario de firma → /Reference.
+    if let Ok(cat) = doc.catalog()
+        && let Some((_, perms)) = cat.get(b"Perms").ok().and_then(|p| doc.dereference(p).ok())
+        && let Ok(perms) = perms.as_dict()
+        && let Some((_, sig)) = perms.get(b"DocMDP").ok().and_then(|s| doc.dereference(s).ok())
+        && let Ok(sig) = sig.as_dict()
+        && let Some((_, refs)) = sig.get(b"Reference").ok().and_then(|r| doc.dereference(r).ok())
+        && let Ok(refs) = refs.as_array()
+    {
+        for r in refs {
+            if let Ok((_, r)) = doc.dereference(r)
+                && let Ok(r) = r.as_dict()
+                && r.get(b"TransformMethod").ok().and_then(|m| m.as_name().ok()) == Some(b"DocMDP".as_slice())
+                && let Some(p) = r.get(b"TransformParams").ok().and_then(p_of)
+            {
+                take(p);
+            }
+        }
+    }
+    // Campos firmados con bloqueo de documento (/Lock /P).
+    for f in sig_fields(&doc).into_iter().filter(|f| f.signed) {
+        for id in [f.field, f.widget] {
+            if let Some(p) = doc.get_dictionary(id).ok().and_then(|d| d.get(b"Lock").ok()).and_then(p_of) {
+                take(p);
+            }
+        }
+    }
+    best
 }
 
 /// Sitio reservado para `[0 a b c]`.

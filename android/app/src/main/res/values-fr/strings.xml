@@ -183,4 +183,8 @@
     <string name="dnie_lost">La connexion avec le DNIe a été perdue. Réessayez sans le bouger du téléphone.</string>
     <string name="dnie_error">Erreur du DNIe : %1$s</string>
     <string name="dnie_cert_expired">Le certificat de signature du DNIe a expiré le %1$s. Renouvelez-le dans un point DNIe de la Policía Nacional.</string>
+    <string name="dsig_lock">Verrouiller le document après la signature</string>
+    <string name="dsig_lock_note">S’il s’agit de la première signature, le document est certifié sans modification autorisée ; s’il avait déjà des signatures, il est verrouillé à la signature. Personne ne pourra le modifier ni le signer à nouveau sans invalider la signature.</string>
+    <string name="dsig_locked">Document verrouillé par une signature numérique : il ne peut être ni modifié ni signé à nouveau.</string>
+    <string name="dsig_locked_save">Ce document est verrouillé par une signature numérique : il ne peut être ni modifié ni enregistré. Vous pouvez le partager ou l’imprimer.</string>
 </resources>

@@ -38,6 +38,15 @@ for s in 16 24 32 48 64 128 256; do
   install -Dm644 "icons/$s/form-pdf-reader.png" "$PREFIX/share/icons/hicolor/${s}x${s}/apps/form-pdf-reader.png"
 done
 echo "Instalado en $D"
+# Preguntar si abrir los PDF con la aplicación (no al actualizar desde ella).
+if [ -z "${UPDATE:-}" ] && [ -t 0 ] && command -v xdg-mime >/dev/null; then
+  if [ "$(xdg-mime query default application/pdf 2>/dev/null || true)" != form-pdf-reader.desktop ]; then
+    read -r -p "¿Abrir los PDF con Form PDF Reader por defecto? / Open PDF files with Form PDF Reader by default? [s/y/N] " r || r=
+    case "$r" in
+      [sSyY]*) xdg-mime default form-pdf-reader.desktop application/pdf && echo "Hecho / Done" ;;
+    esac
+  fi
+fi
 INNER
 chmod +x "dist/$NAME/instalar.sh"
 tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"

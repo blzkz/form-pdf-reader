@@ -98,6 +98,9 @@ class PdfPageView(context: Context) : View(context) {
     private enum class Handle { START, END }
 
     private var doc: PdfDocument? = null
+
+    /** Locked by a digital signature: taps and keys do not reach the form. */
+    var readOnly = false
     private var pages: List<PageInfo> = emptyList()
     private var slots: List<Slot> = emptyList()
     private var contentW = 0f
@@ -1392,6 +1395,7 @@ class PdfPageView(context: Context) : View(context) {
         then: (() -> Unit)? = null,
         event: PdfDocument.(UInt, Double, Double, Double, Double) -> InputResult,
     ) {
+        if (readOnly) return
         val d = doc ?: return
         val page = (if (onPageUnder) slotAt(x, y)?.page else field?.first) ?: return
         val slot = slotOf(page) ?: return
@@ -1413,6 +1417,7 @@ class PdfPageView(context: Context) : View(context) {
 
     /** Sends an input to the form and handles its result on the UI thread. */
     private fun send(block: () -> InputResult) {
+        if (readOnly) return
         PdfEngine.run(block) { r -> r.onSuccess { handleResult(it, true) } }
     }
 

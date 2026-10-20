@@ -184,4 +184,8 @@
     <string name="dnie_lost">The connection with the DNIe was lost. Try again holding it still against the phone.</string>
     <string name="dnie_error">DNIe error: %1$s</string>
     <string name="dnie_cert_expired">The signing certificate of the DNIe expired on %1$s. Renew it at a DNIe point of the Policía Nacional.</string>
+    <string name="dsig_lock">Lock the document after signing</string>
+    <string name="dsig_lock_note">If it is the first signature, the document is certified with no changes allowed; if it already had signatures, it is locked when signing. Nobody will be able to change it or sign it again without invalidating the signature.</string>
+    <string name="dsig_locked">Document locked by a digital signature: it cannot be changed or signed again.</string>
+    <string name="dsig_locked_save">This document is locked by a digital signature: it cannot be changed or saved. You can share or print it.</string>
 </resources>

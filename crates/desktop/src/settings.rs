@@ -18,6 +18,14 @@ pub struct Settings {
     /// Firma digital: pedir sello de tiempo, y a qué servidor.
     pub timestamp: bool,
     pub timestamp_server: Option<String>,
+    /// No buscar versiones nuevas al abrir.
+    pub updates_off: bool,
+    /// Cuándo se buscaron por última vez (segundos desde 1970).
+    pub update_checked: u64,
+    /// Versión nueva por la que no hay que volver a avisar.
+    pub update_skipped: Option<String>,
+    /// Ya se preguntó si abrir los PDF con esta aplicación.
+    pub pdf_default_asked: bool,
 }
 
 fn path() -> Option<PathBuf> {
@@ -42,6 +50,10 @@ impl Settings {
                     "printer" if !v.is_empty() => s.printer = Some(v.to_string()),
                     "timestamp" => s.timestamp = v == "true",
                     "timestamp_server" if !v.is_empty() => s.timestamp_server = Some(v.to_string()),
+                    "update_check" => s.updates_off = v == "false",
+                    "update_checked" => s.update_checked = v.parse().unwrap_or(0),
+                    "update_skipped" if !v.is_empty() => s.update_skipped = Some(v.to_string()),
+                    "pdf_default_asked" => s.pdf_default_asked = v == "true",
                     _ => {}
                 }
             }
@@ -69,6 +81,18 @@ impl Settings {
         }
         if let Some(n) = &self.timestamp_server {
             text.push_str(&format!("timestamp_server = {n}\n"));
+        }
+        if self.updates_off {
+            text.push_str("update_check = false\n");
+        }
+        if self.update_checked > 0 {
+            text.push_str(&format!("update_checked = {}\n", self.update_checked));
+        }
+        if let Some(v) = &self.update_skipped {
+            text.push_str(&format!("update_skipped = {v}\n"));
+        }
+        if self.pdf_default_asked {
+            text.push_str("pdf_default_asked = true\n");
         }
         let ok = p.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&p, text).is_ok();
         if !ok {
@@ -113,5 +137,8 @@ mod tests {
         assert_eq!(Settings::parse("language =\n").language, None);
         assert_eq!(Settings::parse("theme = dark\n").theme.as_deref(), Some("dark"));
         assert_eq!(Settings::parse("theme = azul\n").theme, None);
+        assert!(Settings::parse("update_check = false\n").updates_off);
+        assert!(!Settings::parse("").updates_off);
+        assert_eq!(Settings::parse("update_checked = 1760000000\n").update_checked, 1760000000);
     }
 }

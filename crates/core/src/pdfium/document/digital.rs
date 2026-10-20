@@ -64,6 +64,16 @@ pub struct DigitalSignature {
 
 impl Document {
     /// Las firmas digitales del documento, en el orden en que se hicieron.
+    /// Bloqueo del documento por sus firmas (ver `pades::lock_permission`).
+    pub fn signature_lock(&self) -> Option<u32> {
+        crate::pades::lock_permission(&self.base, self.password.as_deref())
+    }
+
+    /// El documento no admite cambios ni más firmas (bloqueado al firmar).
+    pub fn locked_by_signature(&self) -> bool {
+        self.signature_lock() == Some(1)
+    }
+
     /// Los campos de firma del documento (vacíos o ya firmados).
     pub fn signature_fields(&self) -> Vec<crate::pades::SignatureField> {
         crate::pades::signature_fields(&self.base, self.password.as_deref()).unwrap_or_default()

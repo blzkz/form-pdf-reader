@@ -183,4 +183,8 @@
     <string name="dnie_lost">Se perdió la conexión con el DNIe. Vuelve a intentarlo sin moverlo del móvil.</string>
     <string name="dnie_error">Error del DNIe: %1$s</string>
     <string name="dnie_cert_expired">El certificado de firma del DNIe caducó el %1$s. Renuévalo en un punto de actualización del DNIe de la Policía Nacional.</string>
+    <string name="dsig_lock">Bloquear el documento después de firmar</string>
+    <string name="dsig_lock_note">Si es la primera firma, se certifica el documento sin cambios permitidos; si ya tenía firmas, se bloquea al firmar. Nadie podrá modificarlo ni firmarlo otra vez sin que la firma deje de ser válida.</string>
+    <string name="dsig_locked">Documento bloqueado por una firma digital: no se puede modificar ni volver a firmar.</string>
+    <string name="dsig_locked_save">Este documento está bloqueado por una firma digital: no se puede modificar ni guardar. Puedes compartirlo o imprimirlo.</string>
 </resources>

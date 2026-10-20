@@ -183,4 +183,8 @@
     <string name="dnie_lost">Perdeu-se a ligação com o DNIe. Tente outra vez sem o afastar do telemóvel.</string>
     <string name="dnie_error">Erro do DNIe: %1$s</string>
     <string name="dnie_cert_expired">O certificado de assinatura do DNIe expirou em %1$s. Renove-o num ponto DNIe da Policía Nacional.</string>
+    <string name="dsig_lock">Bloquear o documento depois de assinar</string>
+    <string name="dsig_lock_note">Se for a primeira assinatura, o documento é certificado sem alterações permitidas; se já tinha assinaturas, fica bloqueado ao assinar. Ninguém poderá alterá-lo nem assiná-lo outra vez sem invalidar a assinatura.</string>
+    <string name="dsig_locked">Documento bloqueado por uma assinatura digital: não pode ser alterado nem assinado outra vez.</string>
+    <string name="dsig_locked_save">Este documento está bloqueado por uma assinatura digital: não pode ser alterado nem guardado. Pode partilhá-lo ou imprimi-lo.</string>
 </resources>

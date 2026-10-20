@@ -88,6 +88,9 @@ pub struct DocView {
     pending_rects: Vec<(usize, [f64; 4])>,
     /// Firma manuscrita a punto de ponerse (sigue al ratón).
     placing: Option<sign::Placing>,
+    /// Solo lectura: el documento está bloqueado por una firma digital y no
+    /// se puede rellenar (la herramienta Formulario no hace nada).
+    read_only: bool,
     /// Firma digital visible por colocar: su tamaño en puntos.
     placing_box: Option<(f32, f32)>,
     /// Firma puesta (aún no escrita en el PDF) seleccionada, su arrastre y
@@ -144,6 +147,7 @@ impl DocView {
             tiles: HashMap::new(),
             pending_rects: Vec::new(),
             placing: None,
+            read_only: false,
             placing_box: None,
             sig_selected: None,
             sig_drag: None,
@@ -360,7 +364,25 @@ impl DocView {
         }
     }
 
+    /// Bloqueado por una firma: no se puede rellenar.
+    pub fn set_read_only(&mut self, on: bool) {
+        self.read_only = on;
+        if on && self.tool == Tool::Form {
+            self.set_tool(Tool::Text);
+        }
+    }
+
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    /// Los clics y el teclado van al formulario (PDFium).
+    fn form_input(&self) -> bool {
+        self.tool == Tool::Form && !self.read_only
+    }
+
     pub fn set_tool(&mut self, t: Tool) {
+        let t = if self.read_only && t == Tool::Form { Tool::Text } else { t };
         if t != self.tool {
             if self.tool == Tool::Form {
                 self.commit_focus();
@@ -645,7 +667,7 @@ impl DocView {
     }
 
     fn handle_pointer(&mut self, events: &[Event], ev: &mut ViewEvents, area_rect: Rect) -> bool {
-        if self.tool != Tool::Form {
+        if !self.form_input() {
             return self.handle_pointer_tool(events, area_rect);
         }
         let mut clicked_doc = false;
@@ -727,7 +749,7 @@ impl DocView {
             {
                 continue;
             }
-            if self.tool != Tool::Form {
+            if !self.form_input() {
                 match e {
                     Event::Copy => {
                         let s = self.selected_text();
