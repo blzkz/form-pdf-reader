@@ -17,7 +17,22 @@ android {
         versionCode = 19
         versionName = "0.10.1"
         // The Rust core and PDFium are built for arm64 (scripts/android/build-rust.sh).
-        ndk { abiFilters += listOf("arm64-v8a") }
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+            // Symbols of the native libraries in the App Bundle, for Google
+            // Play's crash and ANR reports (the APK gets them stripped).
+            debugSymbolLevel = "SYMBOL_TABLE"
+        }
+    }
+
+    // The NDK that built the Rust core strips the native libraries and
+    // extracts their symbols (its version has to be given too).
+    System.getenv("ANDROID_NDK_HOME")?.takeIf { it.isNotBlank() && file("$it/source.properties").exists() }?.let { dir ->
+        ndkPath = dir
+        file("$dir/source.properties").readLines()
+            .firstOrNull { it.startsWith("Pkg.Revision") }
+            ?.substringAfter("=")?.trim()
+            ?.let { ndkVersion = it }
     }
 
     // Release signing: the upload key for Google Play, from the environment
