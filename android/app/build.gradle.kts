@@ -14,8 +14,8 @@ android {
         minSdk = 26
         // Google Play requires API 36 for new apps and updates (August 2026).
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.10.0"
+        versionCode = 19
+        versionName = "0.10.1"
         // The Rust core and PDFium are built for arm64 (scripts/android/build-rust.sh).
         ndk { abiFilters += listOf("arm64-v8a") }
     }
@@ -39,7 +39,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8: reduce y ofusca el código (Google Play lo pide). Las reglas
+            // de JNA, en proguard-rules.pro.
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.getByName("debug")
         }
     }

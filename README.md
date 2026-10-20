@@ -358,30 +358,32 @@ bridge between Kotlin and Rust is generated with
   or any other app, from the viewer or from the recent documents;
 - follow the device's light or dark theme (or a fixed one, in Settings).
 
-The app asks for no permissions: documents come from the system file picker
-or from other apps, and the app keeps access only to the ones the user
-opens.
+The only permission the app asks for is NFC, to read the DNIe when signing
+with it: documents come from the system file picker or from other apps, and
+the app keeps access only to the ones the user opens.
 
 PDFium and its V8 engine only work from the thread that initialised them, so
 the app makes every call to the core from one dedicated thread
 (`PdfEngine.kt`). The form's dialogs block that thread, not the interface,
 while the user answers.
 
-To build it you need the Android SDK and NDK, JDK 17, Gradle, `cargo-ndk`
-and the Rust target `aarch64-linux-android`.
+To build it you need the Android SDK (platform 36) and NDK, JDK 17,
+`cargo-ndk` and the Rust target `aarch64-linux-android`. Gradle comes with
+the wrapper (`android/gradlew`).
 
 ```bash
-scripts/android/build-rust.sh
+scripts/android/compilar.sh bundle
 ```
 
-The script downloads PDFium for Android arm64 (checking its SHA-256),
-generates the Kotlin bindings, cross-compiles the bridge and writes the
-licences shown in the app. Then build the APK and the App Bundle (the format
-Google Play takes):
+It runs `scripts/android/build-rust.sh`, which downloads PDFium for Android
+arm64 (checking its SHA-256), generates the Kotlin bindings, cross-compiles
+the bridge and writes the licences shown in the app; then it builds the APK
+and the App Bundle (the format Google Play takes) into `dist/`. It looks for
+the SDK in `~/Android/Sdk` and Java 17 in `/usr/lib/jvm/java-17-openjdk`
+(`ANDROID_HOME`, `ANDROID_NDK_HOME` and `JAVA_HOME` change them).
 
-```bash
-gradle -p android assembleRelease bundleRelease
-```
+Release builds are shrunk and obfuscated with R8; the rules that keep JNA
+working are in `android/app/proguard-rules.pro`.
 
 The `Android` workflow does the same on GitHub and attaches the APK and the
 App Bundle to each release.

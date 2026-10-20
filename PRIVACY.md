@@ -1,6 +1,6 @@
 # Privacy policy · Política de privacidad
 
-*Form PDF Reader — last updated / última actualización: 12 October 2026*
+*Form PDF Reader — last updated / última actualización: 20 October 2026*
 
 ## English
 
@@ -10,8 +10,17 @@ software developed by blzkz.
 **The app does not collect, store on any server, or share any personal data.**
 
 - It has no user accounts, no ads, no analytics and no tracking.
-- The Android app does not request the Internet permission or any other
-  permission: it cannot send data anywhere.
+- The Android app does not request the Internet permission: it cannot send
+  data anywhere. Its only permission is NFC, used only to read a Spanish
+  electronic ID card (DNIe) when you choose to sign a document with it. The
+  card's PIN is never stored; its CAN (the 6 digits on the card) is kept on
+  the device only if you tick "Remember the CAN on this device".
+- The desktop app connects to the Internet only to check GitHub for new
+  versions (once a day, which can be turned off in Settings) and download
+  them, and, if you ask for it when signing with a certificate, to get a
+  timestamp from the timestamp server you choose. These requests carry no
+  personal data or documents (the timestamp server only receives a hash of
+  the signature).
 - The documents you open are read and processed only on your device. While a
   document is open, the app keeps a temporary copy in its private cache, and
   deletes it when the document is closed.
@@ -35,8 +44,17 @@ software libre desarrollado por blzkz.
 personal.**
 
 - No tiene cuentas de usuario, anuncios, analíticas ni seguimiento.
-- La app de Android no pide el permiso de Internet ni ningún otro permiso:
-  no puede enviar datos a ninguna parte.
+- La app de Android no pide el permiso de Internet: no puede enviar datos a
+  ninguna parte. Su único permiso es el de NFC, que solo usa para leer el
+  DNIe cuando eliges firmar un documento con él. El PIN del DNIe nunca se
+  guarda; el CAN (los 6 dígitos de la tarjeta) se guarda en el dispositivo
+  solo si marcas «Recordar el CAN en este dispositivo».
+- La app de escritorio solo se conecta a Internet para buscar versiones
+  nuevas en GitHub (una vez al día, se puede desactivar en Ajustes) y
+  descargarlas, y, si lo pides al firmar con certificado, para obtener un
+  sello de tiempo del servidor que elijas. Estas peticiones no llevan datos
+  personales ni documentos (el servidor de sellos de tiempo solo recibe un
+  resumen de la firma).
 - Los documentos que abres se leen y procesan solo en tu dispositivo.
   Mientras un documento está abierto, la app guarda una copia temporal en su
   caché privada y la borra al cerrarlo.
