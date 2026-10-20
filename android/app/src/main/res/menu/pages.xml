@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/pages_rotate_left" android:icon="@drawable/ic_rotate_left" android:title="@string/pages_rotate_left" app:showAsAction="ifRoom" />
+    <item android:id="@+id/pages_rotate_right" android:icon="@drawable/ic_rotate_right" android:title="@string/pages_rotate_right" app:showAsAction="ifRoom" />
+    <item android:id="@+id/pages_delete" android:icon="@drawable/ic_delete" android:title="@string/pages_delete" app:showAsAction="ifRoom" />
+    <item android:id="@+id/pages_extract" android:icon="@drawable/ic_extract" android:title="@string/pages_extract" app:showAsAction="never" />
+    <item android:id="@+id/pages_insert" android:icon="@drawable/ic_file_add" android:title="@string/pages_insert" app:showAsAction="never" />
+    <item android:id="@+id/pages_scan" android:icon="@drawable/ic_scan" android:title="@string/pages_scan" app:showAsAction="never" />
+    <item android:id="@+id/pages_select_all" android:title="@string/select_all" app:showAsAction="never" />
+</menu>

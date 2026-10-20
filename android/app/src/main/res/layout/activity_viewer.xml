@@ -236,5 +236,167 @@
             android:paddingVertical="6dp"
             android:textAppearance="?attr/textAppearanceLabelLarge"
             android:visibility="gone" />
+
+        <!-- Phones: back to the first page, once past it. -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/to_top"
+            style="?attr/floatingActionButtonSmallSecondaryStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="16dp"
+            android:contentDescription="@string/to_top"
+            android:tooltipText="@string/to_top"
+            android:visibility="gone"
+            app:srcCompat="@drawable/ic_to_top" />
     </FrameLayout>
+
+    <!-- Annotating: tools, colours, options and Done. -->
+    <LinearLayout
+        android:id="@+id/annot_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurfaceContainer"
+        android:orientation="vertical"
+        android:paddingHorizontal="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/annot_hint"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/annot_edit"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/annot_edit"
+                android:tooltipText="@string/annot_edit"
+                app:icon="@drawable/ic_edit" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/annot_delete"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/annot_delete"
+                android:tooltipText="@string/annot_delete"
+                app:icon="@drawable/ic_delete" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/annot_done"
+                style="@style/Widget.Material3.Button.TonalButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/annot_done"
+                app:icon="@drawable/ic_check" />
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/annot_tools"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    app:selectionRequired="true"
+                    app:singleSelection="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/annot_select"
+                        style="?attr/materialIconButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/annot_select"
+                        android:tooltipText="@string/annot_select"
+                        app:icon="@drawable/ic_select" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/annot_highlight"
+                        style="?attr/materialIconButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/annot_highlight"
+                        android:tooltipText="@string/annot_highlight"
+                        app:icon="@drawable/ic_annotate" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/annot_underline"
+                        style="?attr/materialIconButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/annot_underline"
+                        android:tooltipText="@string/annot_underline"
+                        app:icon="@drawable/ic_underline" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/annot_strikeout"
+                        style="?attr/materialIconButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/annot_strikeout"
+                        android:tooltipText="@string/annot_strikeout"
+                        app:icon="@drawable/ic_strikeout" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/annot_note"
+                        style="?attr/materialIconButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/annot_note"
+                        android:tooltipText="@string/annot_note"
+                        app:icon="@drawable/ic_note" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/annot_text"
+                        style="?attr/materialIconButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/annot_text"
+                        android:tooltipText="@string/annot_text"
+                        app:icon="@drawable/ic_text" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/annot_ink"
+                        style="?attr/materialIconButtonOutlinedStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/annot_ink"
+                        android:tooltipText="@string/annot_ink"
+                        app:icon="@drawable/ic_ink" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                <LinearLayout
+                    android:id="@+id/annot_colors"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/annot_option"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp" />
+
+            </LinearLayout>
+        </HorizontalScrollView>
+    </LinearLayout>
 </LinearLayout>

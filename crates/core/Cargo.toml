@@ -33,6 +33,12 @@ zeroize = "1"
 rsa = { version = "0.9", features = ["sha2"] }
 p256 = { version = "0.13", features = ["ecdsa"] }
 p384 = { version = "0.13", features = ["ecdsa"] }
+# Orientación de las páginas escaneadas con un modelo ONNX (scan::orientation).
+tract-onnx = { version = "0.23", optional = true, default-features = false }
+
+[features]
+# Girar solas las páginas escaneadas (lo usa la app de Android).
+orientation = ["dep:tract-onnx"]
 
 [dev-dependencies]
 env_logger.workspace = true

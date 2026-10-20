@@ -4,7 +4,8 @@
 #   2. generates the Kotlin bindings (uniffi) into android/app/src/generated/kotlin,
 #   3. cross-compiles crates/ffi for arm64-v8a with cargo-ndk,
 #   4. copies libform_pdf_reader_ffi.so and libpdfium.so into jniLibs,
-#   5. writes the licences shown in the app (Settings > Open source licences).
+#   5. writes the licences shown in the app (Settings > Open source licences),
+#   6. copies the model that turns scanned pages upright into the app's assets.
 #
 # Needs: rustup target aarch64-linux-android, cargo-ndk, and the Android NDK
 # (ANDROID_NDK_HOME, or the NDK found by cargo-ndk). Then build the app with
@@ -58,5 +59,10 @@ cp "target/$TARGET/release/libform_pdf_reader_ffi.so" "$PDFIUM/lib/libpdfium.so"
 # 5. Licences of the app and of everything it includes.
 python3 scripts/third_party_notices.py --package form-pdf-reader-ffi --target "$TARGET" \
   --pdfium "$PDFIUM" --android --out android/app/src/generated/assets/licenses.txt
+
+# 6. The model that turns scanned pages upright (scripts/descargar-modelos.sh).
+scripts/descargar-modelos.sh
+mkdir -p android/app/src/generated/assets/models
+cp vendor/models/doc_ori.onnx android/app/src/generated/assets/models/
 
 echo "Rust part ready: $APP/jniLibs/$ABI and $GEN"

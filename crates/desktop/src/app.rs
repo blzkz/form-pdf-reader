@@ -2,7 +2,7 @@
 
 use crate::chrome::{self, TabAction, TabInfo};
 use crate::theme::{self, icon};
-use crate::viewer::{DocView, PageLayout, Tool};
+use crate::viewer::{AnnotRequest, AnnotTool, DocView, PageLayout, Tool};
 use eframe::egui::{self, Align, Color32, Key, KeyboardShortcut, Layout, Modifiers, RichText};
 use form_pdf_reader::pdfium::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FormKind, OpenOptions, PasswordRequired, SignedState};
 use form_pdf_reader::t;
@@ -27,6 +27,17 @@ struct PasswordPrompt {
     wrong: bool,
     focus: bool,
 }
+
+/// El texto de una nota o de un texto libre, nuevo o para cambiarlo.
+struct AnnotDialog {
+    req: AnnotRequest,
+    text: String,
+    /// Fotogramas en los que dar el foco al campo de texto.
+    focus: u8,
+}
+
+/// Colores para anotar.
+const ANNOT_COLORS: [[u8; 3]; 6] = [[255, 214, 0], [76, 175, 80], [33, 150, 243], [229, 57, 53], [156, 39, 176], [20, 20, 20]];
 
 struct Tab {
     view: DocView,
@@ -84,6 +95,8 @@ pub struct PdfApp {
     /// Firma digital esperando a que se elija el sitio en la página.
     digital_pending: Option<Box<crate::digital_sign::SignPlan>>,
     update_dialog: Option<crate::update::UpdateDialog>,
+    annot_dialog: Option<AnnotDialog>,
+    pages_dialog: Option<crate::pages::PagesDialog>,
     /// La búsqueda de versiones nuevas al abrir el programa.
     update_check: Option<std::sync::mpsc::Receiver<anyhow::Result<Option<crate::update::Release>>>>,
     /// Preguntar si abrir los PDF con esta aplicación (Linux, la primera vez).
@@ -123,6 +136,8 @@ impl PdfApp {
             digital_requested: false,
             digital_pending: None,
             update_dialog: None,
+            annot_dialog: None,
+            pages_dialog: None,
             update_check: None,
             ask_pdf_default: false,
             pdf_default: None,
@@ -297,6 +312,9 @@ impl PdfApp {
             None => tab.view.doc.path().to_path_buf(),
         };
         tab.view.commit_focus();
+        if let Err(e) = tab.view.commit_ink() {
+            log::warn!("no se pudo escribir el dibujo: {e}");
+        }
         match tab.view.doc.save(&target) {
             Ok(()) => {
                 tab.dirty = false;
@@ -509,6 +527,12 @@ impl PdfApp {
                     self.show_digital = true;
                 }
                 ui.separator();
+                let pages_ok = self.cur().is_some_and(|t| t.view.doc.can_edit_pages() && !t.locked);
+                let r = ui.add_enabled(pages_ok, egui::Button::new(mi(icon::SQUARES_FOUR, t!("menu.pages"))));
+                if r.on_disabled_hover_text(t!("pages.unavailable")).clicked() {
+                    ui.close();
+                    self.open_pages();
+                }
                 if ui.add_enabled(has, egui::Button::new(mi(icon::EXPORT, t!("menu.export_flat")))).clicked() {
                     ui.close();
                     self.export_flat_dialog();
@@ -617,7 +641,7 @@ impl PdfApp {
             let search_focus = &mut self.search_focus;
             let digital_requested = &mut self.digital_requested;
             let status = &mut self.status;
-            let Some(Tab { view: v, search, .. }) = self.tabs.get_mut(self.active) else { return };
+            let Some(Tab { view: v, search, dirty, .. }) = self.tabs.get_mut(self.active) else { return };
             separator(ui);
             let n = v.page_count();
             let cur = (v.current_page + 1).min(n);
@@ -664,6 +688,21 @@ impl PdfApp {
                 r.on_hover_text(t!("sign.button_tip")).on_disabled_hover_text(t!("dsig.locked"));
                 action = inner.and_then(|i| i.inner);
             });
+            // Anotar: abre la barra de anotación.
+            let annotating = v.is_annotating();
+            let can = v.can_annotate();
+            let r = ui.add_enabled_ui(can || annotating, |ui| theme::icon_toggle(ui, annotating, icon::HIGHLIGHTER, t!("annot.button_tip"))).inner;
+            let r = r.on_disabled_hover_text(if v.is_read_only() { t!("dsig.locked") } else { t!("annot.unavailable") });
+            if r.clicked() {
+                if annotating {
+                    match v.stop_annotating() {
+                        Ok(changed) => *dirty |= changed,
+                        Err(e) => *status = t!("annot.error", e),
+                    }
+                } else {
+                    v.start_annotating();
+                }
+            }
             match action {
                 Some(crate::signatures::Action::Digital) => *digital_requested = true,
                 Some(crate::signatures::Action::Place(sig)) => {
@@ -862,6 +901,8 @@ impl PdfApp {
             }
         }
         self.password_window(ctx);
+        self.annot_window(ctx);
+        self.pages_window(ctx);
         if self.show_about {
             theme::modal(ctx, "acerca").show(ctx, |ui| {
                 ui.set_max_width(440.0);
@@ -1125,6 +1166,285 @@ impl PdfApp {
         }
     }
 
+    /// Barra de anotar: herramienta, color, grosor o tamaño y terminar.
+    fn annot_bar(&mut self, ui: &mut egui::Ui) {
+        let p = theme::palette(ui);
+        let mut error = None;
+        let mut edit = None;
+        let Some(tab) = self.tabs.get_mut(self.active) else { return };
+        let v = &mut tab.view;
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            let Some(tool) = v.annot_state().map(|a| a.tool) else { return };
+            let mut t = tool;
+            theme::segmented(
+                ui,
+                &mut t,
+                &[
+                    (AnnotTool::Select, icon::CURSOR, t!("annot.select"), t!("annot.select_tip")),
+                    (AnnotTool::Highlight, icon::HIGHLIGHTER, t!("annot.highlight"), t!("annot.markup_tip")),
+                    (AnnotTool::Underline, icon::TEXT_UNDERLINE, t!("annot.underline"), t!("annot.markup_tip")),
+                    (AnnotTool::StrikeOut, icon::TEXT_STRIKETHROUGH, t!("annot.strikeout"), t!("annot.markup_tip")),
+                    (AnnotTool::Note, icon::NOTE, t!("annot.note"), t!("annot.note_tip")),
+                    (AnnotTool::FreeText, icon::TEXT_T, t!("annot.text"), t!("annot.text_tip")),
+                    (AnnotTool::Ink, icon::SCRIBBLE, t!("annot.ink"), t!("annot.ink_tip")),
+                ],
+                false,
+            );
+            match v.set_annot_tool(t) {
+                Ok(changed) => tab.dirty |= changed,
+                Err(e) => error = Some(e),
+            }
+            separator(ui);
+            let Some(a) = v.annot_state() else { return };
+            if t != AnnotTool::Select {
+                // Colores.
+                let cur = a.color();
+                for c in ANNOT_COLORS {
+                    let (rect, r) = ui.allocate_exact_size(egui::Vec2::splat(22.0), egui::Sense::click());
+                    let col = Color32::from_rgb(c[0], c[1], c[2]);
+                    ui.painter().circle_filled(rect.center(), 8.0, col);
+                    if c == cur {
+                        ui.painter().circle_stroke(rect.center(), 10.5, egui::Stroke::new(2.0, p.accent_text));
+                    } else if r.hovered() {
+                        ui.painter().circle_stroke(rect.center(), 10.5, egui::Stroke::new(1.0, p.border));
+                    }
+                    if r.clicked() {
+                        a.set_color(c);
+                    }
+                }
+            }
+            match t {
+                AnnotTool::Ink => {
+                    separator(ui);
+                    let mut w = a.ink_width;
+                    for (val, label) in [(1.0, t!("annot.thin")), (2.0, t!("annot.medium")), (4.0, t!("annot.thick"))] {
+                        if ui.selectable_label(w == val, label).clicked() {
+                            w = val;
+                        }
+                    }
+                    a.ink_width = w;
+                    if a.has_strokes() {
+                        separator(ui);
+                        if theme::dialog_button(ui, format!("{}  {}", icon::CHECK, t!("annot.ink_done")), true, true).clicked() {
+                            match v.commit_ink() {
+                                Ok(changed) => tab.dirty |= changed,
+                                Err(e) => error = Some(e),
+                            }
+                        }
+                        if ui.button(t!("annot.ink_discard")).clicked() {
+                            v.discard_ink();
+                        }
+                    }
+                }
+                AnnotTool::FreeText => {
+                    separator(ui);
+                    ui.label(RichText::new(t!("annot.size")).color(p.text_weak));
+                    let mut size = a.font_size;
+                    egui::ComboBox::from_id_salt("tamaño_texto").width(60.0).selected_text(format!("{size}")).show_ui(ui, |ui| {
+                        for s in [8.0, 10.0, 12.0, 14.0, 18.0, 24.0, 36.0] {
+                            ui.selectable_value(&mut size, s, format!("{s}"));
+                        }
+                    });
+                    a.font_size = size;
+                }
+                AnnotTool::Select => {
+                    if let Some(sel) = a.selected.clone() {
+                        if matches!(sel.kind, form_pdf_reader::pdfium::AnnotKind::Note | form_pdf_reader::pdfium::AnnotKind::FreeText)
+                            && ui.button(format!("{}  {}", icon::PENCIL_SIMPLE, t!("annot.edit"))).clicked()
+                        {
+                            edit = Some(sel.clone());
+                        }
+                        if ui.button(format!("{}  {}", icon::TRASH, t!("annot.delete"))).on_hover_text(t!("annot.delete_tip")).clicked() {
+                            match v.delete_selected_annotation() {
+                                Ok(changed) => tab.dirty |= changed,
+                                Err(e) => error = Some(e),
+                            }
+                        }
+                    } else {
+                        ui.label(RichText::new(t!("annot.select_hint")).color(p.text_weak));
+                    }
+                }
+                _ => {}
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if theme::dialog_button(ui, t!("annot.finish"), false, true).on_hover_text(t!("annot.finish_tip")).clicked() {
+                    match v.stop_annotating() {
+                        Ok(changed) => tab.dirty |= changed,
+                        Err(e) => error = Some(e),
+                    }
+                }
+            });
+        });
+        if let Some(a) = edit {
+            self.annot_dialog = Some(AnnotDialog { text: a.contents.clone(), req: AnnotRequest::Edit(a), focus: 4 });
+        }
+        if let Some(e) = error {
+            self.error = Some(t!("annot.error", e));
+        }
+    }
+
+    /// El texto de una nota o de un texto libre.
+    fn annot_window(&mut self, ctx: &egui::Context) {
+        let Some(d) = self.annot_dialog.as_mut() else { return };
+        let mut answer = None;
+        theme::modal(ctx, "anotacion").show(ctx, |ui| {
+            ui.set_width(380.0);
+            let title = match &d.req {
+                AnnotRequest::Note { .. } => t!("annot.new_note"),
+                AnnotRequest::FreeText { .. } => t!("annot.new_text"),
+                AnnotRequest::Edit(a) if a.kind == form_pdf_reader::pdfium::AnnotKind::Note => t!("annot.edit_note"),
+                AnnotRequest::Edit(_) => t!("annot.edit_text"),
+            };
+            ui.heading(title);
+            ui.add_space(8.0);
+            let r = ui.add(egui::TextEdit::multiline(&mut d.text).desired_rows(4).desired_width(f32::INFINITY));
+            // Unos fotogramas: al soltar el clic que abrió la ventana, el
+            // visor pide el foco para sí.
+            if d.focus > 0 {
+                r.request_focus();
+                d.focus -= 1;
+            }
+            let ok = !d.text.trim().is_empty() || matches!(d.req, AnnotRequest::Note { .. });
+            answer = theme::dialog_footer(ui, &[(t!("dialog.ok"), true, ok), (t!("dialog.cancel"), false, true)]);
+            if ui.input(|i| i.key_pressed(Key::Escape)) {
+                answer = Some(1);
+            }
+        });
+        let Some(answer) = answer else { return };
+        let d = self.annot_dialog.take().expect("diálogo abierto");
+        if answer != 0 {
+            return;
+        }
+        let Some(tab) = self.tabs.get_mut(self.active) else { return };
+        let r = match &d.req {
+            AnnotRequest::Note { page, x, y } => tab.view.add_note(*page, *x, *y, &d.text),
+            AnnotRequest::FreeText { page, x, y } => tab.view.add_free_text(*page, *x, *y, &d.text),
+            AnnotRequest::Edit(a) => tab.view.set_annotation_text(a, &d.text),
+        };
+        match r {
+            Ok(()) => tab.dirty = true,
+            Err(e) => self.error = Some(t!("annot.error", e)),
+        }
+    }
+
+    fn open_pages(&mut self) {
+        let Some(t) = self.cur_mut() else { return };
+        if let Err(e) = t.view.stop_annotating() {
+            log::warn!("no se pudo escribir el dibujo: {e}");
+        }
+        let signed = !t.digital.is_empty();
+        let mut d = crate::pages::PagesDialog::new(signed);
+        d.reset(t.view.page_count(), [t.view.current_page]);
+        self.pages_dialog = Some(d);
+    }
+
+    fn pages_window(&mut self, ctx: &egui::Context) {
+        use crate::pages::Outcome;
+        let Some(d) = self.pages_dialog.as_mut() else { return };
+        let Some(tab) = self.tabs.get(self.active) else {
+            self.pages_dialog = None;
+            return;
+        };
+        let Some(out) = d.show(ctx, &tab.view.doc) else { return };
+        match out {
+            Outcome::Close => self.pages_dialog = None,
+            Outcome::Edit(edits) => self.apply_page_edits(edits),
+            Outcome::Extract(pages) => self.extract_pages(&pages),
+            Outcome::Insert(at) => self.insert_pdf(at),
+        }
+    }
+
+    /// Cambia las páginas del documento de la pestaña activa y lo vuelve a
+    /// abrir (con los cambios sin guardar).
+    fn apply_page_edits(&mut self, edits: Vec<form_pdf_reader::pdfium::pages::PageEdit>) {
+        use form_pdf_reader::pdfium::pages::{self, PageEdit};
+        let continuous_xfa = self.continuous_xfa;
+        let Some(tab) = self.tabs.get_mut(self.active) else { return };
+        let r = (|| -> anyhow::Result<Document> {
+            tab.view.commit_focus();
+            let bytes = tab.view.doc.bytes_for_save()?;
+            let password = tab.view.doc.password().map(str::to_string);
+            let new = pages::edit_pages(&bytes, password.as_deref(), &edits)?;
+            Document::from_bytes(new, tab.view.doc.path().to_path_buf(), OpenOptions { continuous_xfa, password })
+        })();
+        let doc = match r {
+            Ok(d) => d,
+            Err(e) => {
+                if let Some(p) = e.downcast_ref::<PasswordRequired>()
+                    && let Some(PageEdit::Insert { pdf, at, .. }) = edits.into_iter().find(|e| matches!(e, PageEdit::Insert { .. }))
+                    && let Some(d) = self.pages_dialog.as_mut()
+                {
+                    d.ask_password(pdf, at, p.wrong);
+                    return;
+                }
+                self.error = Some(t!("pages.error", format!("{e:#}")));
+                return;
+            }
+        };
+        install_handlers(&doc);
+        let n = doc.page_count();
+        // Las páginas que quedan elegidas tras el cambio.
+        let select: Vec<usize> = match edits.last() {
+            Some(PageEdit::Rotate { pages, .. }) => pages.clone(),
+            Some(PageEdit::Move { pages, to }) => (*to..*to + pages.len()).collect(),
+            Some(PageEdit::Insert { pdf, password, at }) => {
+                let k = pages::page_count(pdf, password.as_deref()).unwrap_or(0);
+                (*at..*at + k).collect()
+            }
+            Some(PageEdit::Delete { pages }) => vec![pages.iter().min().copied().unwrap_or(0).min(n.saturating_sub(1))],
+            None => Vec::new(),
+        };
+        let old = std::mem::replace(&mut tab.view, DocView::new(doc));
+        tab.view.zoom = old.zoom;
+        tab.view.fit_width = old.fit_width;
+        tab.view.layout = old.layout;
+        tab.view.set_tool(old.tool);
+        tab.view.go_to_page(select.first().copied().unwrap_or(old.current_page).min(n.saturating_sub(1)));
+        drop(old);
+        tab.dirty = true;
+        tab.read_signatures();
+        self.status = t!("pages.changed");
+        if let Some(d) = self.pages_dialog.as_mut() {
+            d.reset(n, select);
+        }
+    }
+
+    /// Elige un PDF e inserta sus páginas delante de la página `at`.
+    fn insert_pdf(&mut self, at: usize) {
+        use form_pdf_reader::pdfium::pages::PageEdit;
+        let Some(path) = rfd::FileDialog::new().add_filter(t!("dialog.pdf_filter"), &["pdf"]).set_title(t!("pages.insert_title")).pick_file() else { return };
+        if let Some(d) = self.pages_dialog.as_mut() {
+            d.set_insert_name(file_name(&path));
+        }
+        match std::fs::read(&path) {
+            // Si pide contraseña, la ventana de páginas la pregunta.
+            Ok(pdf) => self.apply_page_edits(vec![PageEdit::Insert { pdf, password: None, at }]),
+            Err(e) => self.error = Some(t!("error.open", path.display(), e)),
+        }
+    }
+
+    /// Guarda unas páginas como un PDF nuevo.
+    fn extract_pages(&mut self, pages: &[usize]) {
+        let Some(tab) = self.tabs.get_mut(self.active) else { return };
+        let stem = tab.view.doc.path().file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| t!("file.default_stem"));
+        let mut d = rfd::FileDialog::new().add_filter(t!("dialog.pdf_filter"), &["pdf"]).set_title(t!("pages.extract_title")).set_file_name(format!("{stem}-{}.pdf", t!("pages.extract_suffix")));
+        if let Some(dir) = tab.view.doc.path().parent() {
+            d = d.set_directory(dir);
+        }
+        let Some(target) = d.save_file() else { return };
+        let r = (|| -> anyhow::Result<()> {
+            tab.view.commit_focus();
+            let bytes = tab.view.doc.bytes_for_save()?;
+            let out = form_pdf_reader::pdfium::pages::extract_pages(&bytes, tab.view.doc.password(), pages)?;
+            form_pdf_reader::pdfium::write_atomic(&target, &out)
+        })();
+        match r {
+            Ok(()) => self.status = t!("pages.extracted", pages.len(), target.display()),
+            Err(e) => self.error = Some(t!("error.save", format!("{e:#}"))),
+        }
+    }
+
     fn print_window(&mut self, ctx: &egui::Context) {
         use crate::print::Outcome;
         let Some(d) = self.print_dialog.as_mut() else { return };
@@ -1371,6 +1691,12 @@ impl PdfApp {
             .exact_size(46.0)
             .frame(egui::Frame::new().fill(p.surface).inner_margin(egui::Margin::symmetric(8, 0)).stroke(egui::Stroke::new(1.0, p.border)))
             .show(ui, |ui| self.toolbar(ui));
+        if self.view().is_some_and(|v| v.is_annotating()) {
+            egui::Panel::top("annot_bar")
+                .exact_size(42.0)
+                .frame(egui::Frame::new().fill(p.surface).inner_margin(egui::Margin::symmetric(8, 0)).stroke(egui::Stroke::new(1.0, p.border)))
+                .show(ui, |ui| self.annot_bar(ui));
+        }
         egui::Panel::bottom("status")
             .exact_size(26.0)
             .frame(egui::Frame::new().fill(p.surface).inner_margin(egui::Margin::symmetric(12, 0)))
@@ -1416,6 +1742,9 @@ impl PdfApp {
             if let Some(e) = ev.sign_error {
                 self.error = Some(t!("sign.error", e));
             }
+            if let Some(e) = ev.annot_error {
+                self.error = Some(t!("annot.error", e));
+            }
             if let Some(url) = ev.submit_requested {
                 self.status = t!("status.submit", url);
             }
@@ -1435,6 +1764,13 @@ impl PdfApp {
                     self.status = t!("status.opening_link", u);
                 }
             }
+        }
+        // Lo que pide la herramienta de anotar (el texto de una nota...).
+        if self.annot_dialog.is_none()
+            && let Some(req) = self.view_mut().and_then(|v| v.take_annot_request())
+        {
+            let text = if let AnnotRequest::Edit(a) = &req { a.contents.clone() } else { String::new() };
+            self.annot_dialog = Some(AnnotDialog { req, text, focus: 4 });
         }
         if let Some(v) = self.view_mut() {
             v.trim_cache();
@@ -1504,8 +1840,8 @@ impl ToolbarFit {
         const BUTTON: f32 = 36.0;
         const SEP: f32 = 13.0;
         let need = |f: &ToolbarFit| {
-            // Herramientas y el botón de firmar.
-            let mut n = SEP + BUTTON + if f.tool_labels { w.tools_labels } else { w.tools_icons };
+            // Herramientas y los botones de firmar y anotar.
+            let mut n = SEP + 2.0 * BUTTON + if f.tool_labels { w.tools_labels } else { w.tools_icons };
             if paged && f.page_nav {
                 n += SEP + 2.0 * BUTTON + if f.page_long { w.page_long } else { w.page_short };
                 if f.layouts {

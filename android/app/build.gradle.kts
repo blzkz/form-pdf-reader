@@ -53,6 +53,12 @@ android {
     }
 
     buildTypes {
+        // Local test builds: installed beside the app from Google Play (another
+        // id and name), so trying a build never touches its data.
+        debug {
+            applicationIdSuffix = ".prueba"
+            versionNameSuffix = "-prueba"
+        }
         release {
             // R8: reduce y ofusca el código (Google Play lo pide). Las reglas
             // de JNA, en proguard-rules.pro.

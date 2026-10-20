@@ -11,7 +11,8 @@
 //! make PDFium usable from several threads.
 
 use form_pdf_reader::sign::{self as core_sign, SavedSignature, SignatureKind, TypeStyle};
-use form_pdf_reader::pdfium::{self, AlertAnswer as CoreAnswer, AlertButtons as CoreButtons, Document, FormKind, OpenOptions, PasswordRequired, keys};
+use form_pdf_reader::pdfium::pages::{self as core_pages, PageEdit};
+use form_pdf_reader::pdfium::{self, AlertAnswer as CoreAnswer, AlertButtons as CoreButtons, AnnotKind, Document, FormKind, OpenOptions, PasswordRequired, keys};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -317,6 +318,173 @@ pub struct SignatureInfo {
 pub struct InkStroke {
     pub width: f32,
     pub points: Vec<f32>,
+}
+
+/// Kind of annotation the app can add, edit or remove.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AnnotationKind {
+    Highlight,
+    Underline,
+    StrikeOut,
+    Note,
+    FreeText,
+    Ink,
+}
+
+impl From<AnnotKind> for AnnotationKind {
+    fn from(k: AnnotKind) -> Self {
+        match k {
+            AnnotKind::Highlight => AnnotationKind::Highlight,
+            AnnotKind::Underline => AnnotationKind::Underline,
+            AnnotKind::StrikeOut => AnnotationKind::StrikeOut,
+            AnnotKind::Note => AnnotationKind::Note,
+            AnnotKind::FreeText => AnnotationKind::FreeText,
+            AnnotKind::Ink => AnnotationKind::Ink,
+        }
+    }
+}
+
+impl From<AnnotationKind> for AnnotKind {
+    fn from(k: AnnotationKind) -> Self {
+        match k {
+            AnnotationKind::Highlight => AnnotKind::Highlight,
+            AnnotationKind::Underline => AnnotKind::Underline,
+            AnnotationKind::StrikeOut => AnnotKind::StrikeOut,
+            AnnotationKind::Note => AnnotKind::Note,
+            AnnotationKind::FreeText => AnnotKind::FreeText,
+            AnnotationKind::Ink => AnnotKind::Ink,
+        }
+    }
+}
+
+/// An annotation on a page.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct AnnotationInfo {
+    pub page: u32,
+    /// Position in the page's list (it changes when an earlier one is removed).
+    pub index: u32,
+    pub kind: AnnotationKind,
+    /// In points of the page, from its top left corner.
+    pub rect: PageRect,
+    /// The comment (note), the text (free text) or the marked text.
+    pub contents: String,
+    /// 0xRRGGBB.
+    pub color: u32,
+    pub font_size: f32,
+}
+
+/// A change to the pages (numbers from 0, as the document is after the
+/// previous changes).
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum PageEditOp {
+    /// 90° per quarter turn (positive: clockwise).
+    Rotate { pages: Vec<u32>, quarter_turns: i32 },
+    Delete { pages: Vec<u32> },
+    /// Move the pages so the first one ends at `to` (counted without them).
+    Move { pages: Vec<u32>, to: u32 },
+    /// Insert all the pages of another PDF before page `at`.
+    Insert { pdf: Vec<u8>, password: Option<String>, at: u32 },
+}
+
+impl From<PageEditOp> for PageEdit {
+    fn from(e: PageEditOp) -> Self {
+        let v = |p: Vec<u32>| p.into_iter().map(|p| p as usize).collect();
+        match e {
+            PageEditOp::Rotate { pages, quarter_turns } => PageEdit::Rotate { pages: v(pages), quarter_turns },
+            PageEditOp::Delete { pages } => PageEdit::Delete { pages: v(pages) },
+            PageEditOp::Move { pages, to } => PageEdit::Move { pages: v(pages), to: to as usize },
+            PageEditOp::Insert { pdf, password, at } => PageEdit::Insert { pdf, password, at: at as usize },
+        }
+    }
+}
+
+/// Filter for a scanned page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ScanFilter {
+    /// In colour, with whiter paper and more contrast.
+    Color,
+    Gray,
+    /// Black and white, like a photocopy.
+    BlackWhite,
+}
+
+/// A scanned page: the photo as JPEG and its size in pixels.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ScanPage {
+    pub jpeg: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Finds the sheet of paper in a grey photo (`width`×`height`, best around
+/// 400 px): its corners top left, top right, bottom right, bottom left as
+/// x0, y0, x1, y1… in fractions of the photo (0 to 1). None if not found.
+#[uniffi::export]
+pub fn scan_detect(gray: Vec<u8>, width: u32, height: u32) -> Option<Vec<f32>> {
+    form_pdf_reader::scan::detect_document(&gray, width as usize, height as usize).map(|q| q.iter().flatten().copied().collect())
+}
+
+/// Applies a filter to an RGBA image and returns it in RGBA.
+#[uniffi::export]
+pub fn scan_filter(rgba: Vec<u8>, width: u32, height: u32, filter: ScanFilter) -> Vec<u8> {
+    use form_pdf_reader::scan::{self, ScanFilter as F};
+    let f = match filter {
+        ScanFilter::Color => F::Color,
+        ScanFilter::Gray => F::Gray,
+        ScanFilter::BlackWhite => F::BlackWhite,
+    };
+    scan::filter(&rgba, width as usize, height as usize, f)
+}
+
+/// A PDF with one page per scanned image.
+#[uniffi::export]
+pub fn scan_pdf(pages: Vec<ScanPage>) -> Result<Vec<u8>, PdfError> {
+    pdfium::init();
+    let pages: Vec<form_pdf_reader::scan::ScanImage> = pages.into_iter().map(|p| form_pdf_reader::scan::ScanImage { jpeg: p.jpeg, width: p.width, height: p.height }).collect();
+    form_pdf_reader::scan::images_to_pdf(&pages).map_err(|e| PdfError::Save(format!("{e:#}")))
+}
+
+/// The model that tells how a scanned page is turned (PaddleOCR's
+/// PP-LCNet_x1_0_doc_ori, an ONNX file in the app's assets).
+#[derive(uniffi::Object)]
+pub struct OrientationModel {
+    model: form_pdf_reader::scan::orientation::Orientation,
+}
+
+/// How to turn a page upright: quarter turns to the right and how sure the
+/// model is (0 to 1).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Upright {
+    pub turns: u8,
+    pub confidence: f32,
+}
+
+#[uniffi::export]
+impl OrientationModel {
+    #[uniffi::constructor]
+    pub fn load(onnx: Vec<u8>) -> Result<Arc<Self>, PdfError> {
+        let model = form_pdf_reader::scan::orientation::Orientation::load(&onnx).map_err(|e| PdfError::Open(format!("{e:#}")))?;
+        Ok(Arc::new(OrientationModel { model }))
+    }
+
+    /// For an RGBA image (a small one is enough: about 600 px).
+    pub fn upright(&self, rgba: Vec<u8>, width: u32, height: u32) -> Result<Upright, PdfError> {
+        self.model
+            .upright_turns(&rgba, width as usize, height as usize)
+            .map(|(turns, confidence)| Upright { turns, confidence })
+            .map_err(|e| PdfError::Open(format!("{e:#}")))
+    }
+}
+
+/// Number of pages of a PDF (to check one before inserting it:
+/// `PdfError::Password` if it needs a password).
+#[uniffi::export]
+pub fn pdf_page_count(pdf: Vec<u8>, password: Option<String>) -> Result<u32, PdfError> {
+    core_pages::page_count(&pdf, password.as_deref()).map(|n| n as u32).map_err(|e| match e.downcast_ref::<PasswordRequired>() {
+        Some(p) if p.wrong => PdfError::WrongPassword(e.to_string()),
+        Some(_) => PdfError::Password(e.to_string()),
+        None => PdfError::Open(format!("{e:#}")),
+    })
 }
 
 /// A signature placed on the document and not yet written to the PDF
@@ -986,6 +1154,132 @@ impl PdfDocument {
         let p = usize_page(page);
         let n = doc.text_char_count(p);
         doc.text_range(p, 0, n)
+    }
+
+    // ---- Annotations ----
+
+    /// Annotations can be added (not to XFA forms).
+    pub fn can_annotate(&self) -> bool {
+        self.lock().can_annotate()
+    }
+
+    /// The annotations of a page that can be edited or removed.
+    pub fn annotations(&self, page: u32) -> Vec<AnnotationInfo> {
+        let doc = self.lock();
+        let p = usize_page(page);
+        let (w, h) = doc.page_size(p);
+        doc.annotations(p)
+            .into_iter()
+            .map(|a| {
+                let [l, b, r, t] = a.rect;
+                let (x0, y0) = doc.page_to_device(p, w as f64, h as f64, l as f64, t as f64);
+                let (x1, y1) = doc.page_to_device(p, w as f64, h as f64, r as f64, b as f64);
+                AnnotationInfo {
+                    page,
+                    index: a.index as u32,
+                    kind: a.kind.into(),
+                    rect: PageRect { left: x0.min(x1) as f32, top: y0.min(y1) as f32, right: x0.max(x1) as f32, bottom: y0.max(y1) as f32 },
+                    contents: a.contents,
+                    color: (a.color[0] as u32) << 16 | (a.color[1] as u32) << 8 | a.color[2] as u32,
+                    font_size: a.font_size,
+                }
+            })
+            .collect()
+    }
+
+    /// The topmost annotation at (x, y), in points from the top left corner.
+    pub fn annotation_at(&self, page: u32, x: f32, y: f32) -> Option<AnnotationInfo> {
+        let (px, py) = self.point(page, x, y);
+        let index = self.lock().annotation_at(usize_page(page), px, py)?.index as u32;
+        self.annotations(page).into_iter().find(|a| a.index == index)
+    }
+
+    /// Highlights, underlines or strikes out characters [start, start + count).
+    pub fn add_markup(&self, page: u32, kind: AnnotationKind, start: i32, count: i32, color: u32) -> Result<(), PdfError> {
+        let mut doc = self.lock();
+        let p = usize_page(page);
+        let rects = doc.text_rects(p, start, count);
+        let text = doc.text_range(p, start, count);
+        doc.add_markup(p, kind.into(), &rects, rgb(color), text.trim()).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// A note with its top left corner at (x, y), in points from the top left.
+    pub fn add_note(&self, page: u32, x: f32, y: f32, text: String, color: u32) -> Result<(), PdfError> {
+        let (px, py) = self.point(page, x, y);
+        self.lock().add_note(usize_page(page), px, py, &text, rgb(color)).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// Text written on the page, its top left corner at (x, y).
+    pub fn add_free_text(&self, page: u32, x: f32, y: f32, text: String, size: f32, color: u32) -> Result<(), PdfError> {
+        let (px, py) = self.point(page, x, y);
+        self.lock().add_free_text(usize_page(page), px, py, &text, size, rgb(color)).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// A drawing: strokes with points in points of the page from its top
+    /// left corner, `width` points wide.
+    pub fn add_ink(&self, page: u32, strokes: Vec<InkStroke>, width: f32, color: u32) -> Result<(), PdfError> {
+        let mut doc = self.lock();
+        let p = usize_page(page);
+        let (w, h) = doc.page_size(p);
+        let strokes: Vec<Vec<[f32; 2]>> = strokes
+            .iter()
+            .map(|s| {
+                s.points
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|c| {
+                        let (x, y) = doc.device_to_page(p, w as f64, h as f64, c[0] as f64, c[1] as f64);
+                        [x as f32, y as f32]
+                    })
+                    .collect()
+            })
+            .collect();
+        doc.add_ink(p, &strokes, width, rgb(color)).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// Changes the comment of a note or the text of a free text.
+    pub fn set_annotation_text(&self, page: u32, index: u32, text: String) -> Result<(), PdfError> {
+        self.lock().set_annotation_text(usize_page(page), index as usize, &text).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    pub fn remove_annotation(&self, page: u32, index: u32) -> Result<(), PdfError> {
+        self.lock().remove_annotation(usize_page(page), index as usize).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    // ---- Pages ----
+
+    /// The pages can be organised (not in XFA forms).
+    pub fn can_edit_pages(&self) -> bool {
+        self.lock().can_edit_pages()
+    }
+
+    /// The document (with its form data, annotations and placed signatures)
+    /// with the pages changed: open it again from these bytes.
+    pub fn edit_pages(&self, edits: Vec<PageEditOp>) -> Result<Vec<u8>, PdfError> {
+        let mut doc = self.lock();
+        let bytes = doc.bytes_for_save().map_err(|e| PdfError::Save(format!("{e:#}")))?;
+        let edits: Vec<PageEdit> = edits.into_iter().map(Into::into).collect();
+        core_pages::edit_pages(&bytes, doc.password(), &edits).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// A new PDF with these pages (in this order).
+    pub fn extract_pages(&self, pages: Vec<u32>) -> Result<Vec<u8>, PdfError> {
+        let mut doc = self.lock();
+        let bytes = doc.bytes_for_save().map_err(|e| PdfError::Save(format!("{e:#}")))?;
+        let pages: Vec<usize> = pages.into_iter().map(|p| p as usize).collect();
+        core_pages::extract_pages(&bytes, doc.password(), &pages).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+}
+
+impl PdfDocument {
+    /// Page coordinates of (x, y) in points from the page's top left corner.
+    fn point(&self, page: u32, x: f32, y: f32) -> (f32, f32) {
+        let doc = self.lock();
+        let p = usize_page(page);
+        let (w, h) = doc.page_size(p);
+        let (px, py) = doc.device_to_page(p, w as f64, h as f64, x as f64, y as f64);
+        (px as f32, py as f32)
     }
 }
 

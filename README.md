@@ -136,6 +136,25 @@ made-up data and the public US Form I-9.
   the signatures; a dynamic XFA form is cut into A4 sheets. "Open as PDF"
   in the dialog still opens a flat copy in the system viewer.
 - **Export:** a "flat" (image) PDF, with A4 sheets for dynamic XFA forms.
+- **Annotations:** highlight, underline or strike out text, notes (an icon
+  with a comment), text written anywhere on the page and freehand drawing,
+  in six colours (the toolbar's highlighter button on the desktop, ⋮ >
+  Annotate on Android). With *Select*, an annotation can be deleted or its
+  text changed. They are saved as standard PDF annotations, which Adobe
+  Reader and other viewers show. Not on XFA forms.
+- **Organise pages** (☰ > Organise pages… on the desktop, ⋮ on Android):
+  thumbnails of every page to select several (Ctrl/Shift on the desktop),
+  drag to put them in another order, rotate, delete or extract to a new PDF;
+  and insert the pages of another PDF (or, on Android, of a scan). Not on
+  XFA forms nor on documents locked by a signature.
+- **Scanning (Android):** "Scan document" on the start screen takes photos
+  with the device's camera app (or chooses them from the gallery). For each
+  page the app finds the sheet (its corners can be moved), straightens the
+  perspective, turns it upright with a small model (PaddleOCR's document
+  orientation model) and applies a filter: colour, grey, or black and white
+  like a photocopy (also with shadows). The scan opens as a new document;
+  "Insert scanned pages…" adds pages to an open one. Everything runs on the
+  device with the app's own code, without Google services.
 
 ## How dynamic XFA forms are handled
 
@@ -356,10 +375,13 @@ bridge between Kotlin and Rust is generated with
 - save, save as, view attachments and copy the text;
 - share the document (with the data filled in) to WhatsApp, Telegram, e-mail
   or any other app, from the viewer or from the recent documents;
-- follow the device's light or dark theme (or a fixed one, in Settings).
+- follow the device's light or dark theme (or a fixed one, in Settings);
+- annotate, organise the pages and scan documents (see Features);
+- on phones, go back to the first page with a button that appears once past
+  it, and tap the page number shown while scrolling to go to another page.
 
 The only permission the app asks for is NFC, to read the DNIe when signing
-with it: documents come from the system file picker or from other apps, and
+with it (scanning uses the camera app and needs no camera permission): documents come from the system file picker or from other apps, and
 the app keeps access only to the ones the user opens.
 
 PDFium and its V8 engine only work from the thread that initialised them, so

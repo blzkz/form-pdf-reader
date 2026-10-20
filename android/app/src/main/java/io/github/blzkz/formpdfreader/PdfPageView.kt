@@ -42,6 +42,9 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import uniffi.form_pdf_reader_ffi.AnnotationInfo
+import uniffi.form_pdf_reader_ffi.AnnotationKind
+import uniffi.form_pdf_reader_ffi.InkStroke
 import uniffi.form_pdf_reader_ffi.InputResult
 import uniffi.form_pdf_reader_ffi.Key
 import uniffi.form_pdf_reader_ffi.PdfDocument
@@ -179,6 +182,9 @@ class PdfPageView(context: Context) : View(context) {
     /** Shows [document]. Page sizes are read on the PDFium thread. */
     fun setDocument(document: PdfDocument?) {
         clearSelection()
+        inkStrokes.clear()
+        inkPage = -1
+        selectedAnnotation = null
         placed = emptyList()
         selectedSig = null
         placingId = null
@@ -499,6 +505,7 @@ class PdfPageView(context: Context) : View(context) {
         }
         drawSignatures(canvas)
         drawSelection(canvas)
+        drawAnnotOverlay(canvas)
     }
 
     private fun drawTiles(canvas: Canvas, d: PdfDocument, page: Int, r: RectF, s: Float) {
@@ -878,11 +885,19 @@ class PdfPageView(context: Context) : View(context) {
 
         override fun onSingleTapUp(e: MotionEvent): Boolean {
             if (placeOrSelectSignature(e.x, e.y)) return true
+            if (annotTool != null) {
+                annotTap(e.x, e.y, false)
+                return true
+            }
             if (selection != null) clearSelection() else tap(e.x, e.y)
             return true
         }
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
+            if (annotTool != null) {
+                annotTap(e.x, e.y, true)
+                return true
+            }
             // In the field being edited it selects a word; elsewhere it is a
             // second tap.
             if (inField(e.x, e.y)) selectFieldWord(e.x, e.y) else onSingleTapUp(e)
@@ -890,6 +905,7 @@ class PdfPageView(context: Context) : View(context) {
         }
 
         override fun onLongPress(e: MotionEvent) {
+            if (annotTool != null) return
             if (inField(e.x, e.y)) startFieldSelection(e.x, e.y) else startSelection(e.x, e.y)
         }
     })
@@ -923,6 +939,7 @@ class PdfPageView(context: Context) : View(context) {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (handleSignatureTouch(event)) return true
+        if (handleAnnotTouch(event)) return true
         if (event.isFromSource(InputDevice.SOURCE_MOUSE) && !isTouchpadGesture(event)) return onMouseEvent(event)
         fingerDown = event.actionMasked != MotionEvent.ACTION_UP && event.actionMasked != MotionEvent.ACTION_CANCEL
         // Selecting in a text field after a long press.
@@ -1825,6 +1842,307 @@ class PdfPageView(context: Context) : View(context) {
                 outRect.set(cx - r, cy - r, cx + r, cy + r)
             }
         }, ActionMode.TYPE_FLOATING)
+    }
+
+    // -----------------------------------------------------------------------
+    // Annotations
+    // -----------------------------------------------------------------------
+
+    /** What annotating does with the finger. */
+    enum class AnnotTool { SELECT, HIGHLIGHT, UNDERLINE, STRIKEOUT, NOTE, TEXT, INK }
+
+    /** What the app has to ask (the text of a note or a free text). */
+    sealed class AnnotRequest {
+        /** A new note or text with its top left corner at (x, y), in points of the page. */
+        data class Note(val page: Int, val x: Float, val y: Float) : AnnotRequest()
+        data class Text(val page: Int, val x: Float, val y: Float) : AnnotRequest()
+        data class Edit(val annotation: AnnotationInfo) : AnnotRequest()
+    }
+
+    /** Annotating with this tool (null: not annotating). */
+    var annotTool: AnnotTool? = null
+        set(value) {
+            if (field == value) return
+            if (field == AnnotTool.INK) commitInk()
+            field = value
+            clearSelection()
+            selectAnnotation(null)
+            invalidate()
+        }
+
+    /** Colour of the new annotations (0xRRGGBB). */
+    var annotColor = 0xFFD600
+    var inkWidth = 2f
+
+    var onAnnotRequest: ((AnnotRequest) -> Unit)? = null
+
+    /** An annotation was added or removed (the document changed). */
+    var onAnnotChanged: (() -> Unit)? = null
+    var onAnnotSelected: ((AnnotationInfo?) -> Unit)? = null
+    var onAnnotError: ((Throwable) -> Unit)? = null
+
+    var selectedAnnotation: AnnotationInfo? = null
+        private set
+
+    /** Strokes of the drawing in progress, in points of [inkPage] (x0, y0, x1, y1…). */
+    private val inkStrokes = mutableListOf<MutableList<Float>>()
+    private var inkPage = -1
+    private var inkDrawing = false
+    private var annotMultiTouch = false
+    private var markupStart: PointF? = null
+    private val inkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val annotFramePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = accent
+    }
+
+    val hasInk: Boolean get() = inkStrokes.isNotEmpty()
+
+    /** (x, y) of the view in points of [page] from its top left corner. */
+    private fun toPagePoints(page: Int, x: Float, y: Float): PointF? {
+        val slot = slotOf(page) ?: return null
+        return PointF((x - (slot.x - offsetX)) / scale, (y - (slot.y - offsetY)) / scale)
+    }
+
+    private fun annotChanged() {
+        redraw()
+        onAnnotChanged?.invoke()
+    }
+
+    private fun selectAnnotation(a: AnnotationInfo?) {
+        if (selectedAnnotation == a) return
+        selectedAnnotation = a
+        onAnnotSelected?.invoke(a)
+        invalidate()
+    }
+
+    /** Writes the drawing in progress as one annotation. */
+    fun commitInk(then: (() -> Unit)? = null) {
+        val d = doc
+        if (d == null || inkStrokes.isEmpty() || inkPage < 0) {
+            inkStrokes.clear()
+            then?.invoke()
+            return
+        }
+        val page = inkPage
+        val w = inkWidth
+        val color = annotColor
+        val strokes = inkStrokes.map { InkStroke(w, it.toList()) }
+        inkStrokes.clear()
+        inkPage = -1
+        invalidate()
+        PdfEngine.run({ d.addInk(page.toUInt(), strokes, w, color.toUInt()) }) { r ->
+            r.onSuccess { if (d === doc) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
+            then?.invoke()
+        }
+    }
+
+    fun discardInk() {
+        inkStrokes.clear()
+        inkPage = -1
+        invalidate()
+    }
+
+    fun addNote(page: Int, x: Float, y: Float, text: String) {
+        val d = doc ?: return
+        val color = annotColor
+        PdfEngine.run({ d.addNote(page.toUInt(), x, y, text, color.toUInt()) }) { r ->
+            r.onSuccess { if (d === doc) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
+        }
+    }
+
+    fun addFreeText(page: Int, x: Float, y: Float, text: String, size: Float) {
+        val d = doc ?: return
+        val color = annotColor
+        PdfEngine.run({ d.addFreeText(page.toUInt(), x, y, text, size, color.toUInt()) }) { r ->
+            r.onSuccess { if (d === doc) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
+        }
+    }
+
+    fun setAnnotationText(a: AnnotationInfo, text: String) {
+        val d = doc ?: return
+        PdfEngine.run({ d.setAnnotationText(a.page, a.index, text) }) { r ->
+            r.onSuccess {
+                if (d === doc) {
+                    selectAnnotation(null)
+                    annotChanged()
+                }
+            }.onFailure { onAnnotError?.invoke(it) }
+        }
+    }
+
+    fun deleteSelectedAnnotation() {
+        val d = doc ?: return
+        val a = selectedAnnotation ?: return
+        PdfEngine.run({ d.removeAnnotation(a.page, a.index) }) { r ->
+            r.onSuccess {
+                if (d === doc) {
+                    selectAnnotation(null)
+                    annotChanged()
+                }
+            }.onFailure { onAnnotError?.invoke(it) }
+        }
+    }
+
+    /** A tap while annotating: place a note or a text, or select an annotation. */
+    private fun annotTap(x: Float, y: Float, double: Boolean) {
+        val tool = annotTool ?: return
+        val slot = slotAt(x, y) ?: return selectAnnotation(null)
+        val p = toPagePoints(slot.page, x, y) ?: return
+        when (tool) {
+            AnnotTool.NOTE -> onAnnotRequest?.invoke(AnnotRequest.Note(slot.page, p.x, p.y))
+            AnnotTool.TEXT -> onAnnotRequest?.invoke(AnnotRequest.Text(slot.page, p.x, p.y))
+            AnnotTool.SELECT -> {
+                val d = doc ?: return
+                PdfEngine.run({ d.annotationAt(slot.page.toUInt(), p.x, p.y) }) { r ->
+                    if (d !== doc) return@run
+                    val a = r.getOrNull()
+                    selectAnnotation(a)
+                    if (double && a != null && (a.kind == AnnotationKind.NOTE || a.kind == AnnotationKind.FREE_TEXT)) {
+                        onAnnotRequest?.invoke(AnnotRequest.Edit(a))
+                    }
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    /**
+     * Marking text and drawing take the finger (two fingers still scroll
+     * and zoom). True if the event was used here.
+     */
+    private fun handleAnnotTouch(e: MotionEvent): Boolean {
+        val tool = annotTool ?: return false
+        val markup = tool == AnnotTool.HIGHLIGHT || tool == AnnotTool.UNDERLINE || tool == AnnotTool.STRIKEOUT
+        if (!markup && tool != AnnotTool.INK) return false
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) annotMultiTouch = false
+        if (e.pointerCount > 1 || annotMultiTouch) {
+            // Two fingers: scroll and zoom; what the first one started is dropped.
+            if (!annotMultiTouch) {
+                annotMultiTouch = true
+                if (inkDrawing) {
+                    inkDrawing = false
+                    inkStrokes.removeLastOrNull()
+                }
+                markupStart = null
+                clearSelection()
+            }
+            scaleGestures.onTouchEvent(e)
+            return true
+        }
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val slot = slotAt(e.x, e.y) ?: return true
+                if (markup) {
+                    markupStart = PointF(e.x, e.y)
+                    clearSelection()
+                    charAt(slot.page, e.x, e.y) { c ->
+                        if (c < 0 || markupStart == null) return@charAt
+                        selection = Selection(slot.page, c, c)
+                        showHandles = false
+                        requestSelectionRects()
+                    }
+                } else {
+                    if (inkPage >= 0 && inkPage != slot.page) commitInk()
+                    val p = toPagePoints(slot.page, e.x, e.y) ?: return true
+                    inkPage = slot.page
+                    inkStrokes.add(mutableListOf(p.x, p.y))
+                    inkDrawing = true
+                    invalidate()
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (markup) {
+                    if (markupStart != null && selection != null) dragTo(e.x, e.y)
+                } else if (inkDrawing) {
+                    val s = inkStrokes.lastOrNull() ?: return true
+                    for (h in 0 until e.historySize) addInkPoint(s, e.getHistoricalX(h), e.getHistoricalY(h))
+                    addInkPoint(s, e.x, e.y)
+                    invalidate()
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                if (markup) {
+                    markupStart = null
+                    commitMarkup(tool)
+                } else {
+                    inkDrawing = false
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                markupStart = null
+                inkDrawing = false
+                clearSelection()
+            }
+        }
+        return true
+    }
+
+    private fun addInkPoint(s: MutableList<Float>, x: Float, y: Float) {
+        val p = toPagePoints(inkPage, x, y) ?: return
+        val n = s.size
+        // Not points almost on top of each other (half a point of the page).
+        if (n >= 2 && hypot(p.x - s[n - 2], p.y - s[n - 1]) < 0.5f) return
+        s.add(p.x)
+        s.add(p.y)
+    }
+
+    private fun commitMarkup(tool: AnnotTool) {
+        val d = doc ?: return
+        val sel = selection ?: return
+        val kind = when (tool) {
+            AnnotTool.HIGHLIGHT -> AnnotationKind.HIGHLIGHT
+            AnnotTool.UNDERLINE -> AnnotationKind.UNDERLINE
+            else -> AnnotationKind.STRIKE_OUT
+        }
+        val color = annotColor
+        // Wait for the character under the finger (the selection may still grow).
+        PdfEngine.run({ d.addMarkup(sel.page.toUInt(), kind, sel.start, sel.end - sel.start + 1, color.toUInt()) }) { r ->
+            if (sel === selection) clearSelection()
+            r.onSuccess { if (d === doc) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
+        }
+    }
+
+    /** The drawing in progress and the frame of the selected annotation. */
+    private fun drawAnnotOverlay(canvas: Canvas) {
+        if (annotTool == null) return
+        if (inkStrokes.isNotEmpty()) {
+            val slot = slotOf(inkPage)
+            if (slot != null) {
+                val l = slot.x - offsetX
+                val t = slot.y - offsetY
+                inkPaint.color = Color.rgb((annotColor shr 16) and 0xFF, (annotColor shr 8) and 0xFF, annotColor and 0xFF)
+                inkPaint.strokeWidth = max(1f, inkWidth * scale)
+                for (s in inkStrokes) {
+                    if (s.size == 2) {
+                        canvas.drawPoint(l + s[0] * scale, t + s[1] * scale, inkPaint)
+                        continue
+                    }
+                    val path = android.graphics.Path()
+                    path.moveTo(l + s[0] * scale, t + s[1] * scale)
+                    var i = 2
+                    while (i + 1 < s.size) {
+                        path.lineTo(l + s[i] * scale, t + s[i + 1] * scale)
+                        i += 2
+                    }
+                    canvas.drawPath(path, inkPaint)
+                }
+            }
+        }
+        val a = selectedAnnotation ?: return
+        val slot = slotOf(a.page.toInt()) ?: return
+        val l = slot.x - offsetX
+        val t = slot.y - offsetY
+        val m = 4 * density
+        annotFramePaint.strokeWidth = 2 * density
+        canvas.drawRoundRect(
+            l + a.rect.left * scale - m, t + a.rect.top * scale - m, l + a.rect.right * scale + m, t + a.rect.bottom * scale + m,
+            3 * density, 3 * density, annotFramePaint,
+        )
     }
 
     companion object {

@@ -10,6 +10,7 @@ mod autotest;
 mod certs;
 mod digital_sign;
 mod platform;
+mod pages;
 mod print;
 mod settings;
 mod signatures;

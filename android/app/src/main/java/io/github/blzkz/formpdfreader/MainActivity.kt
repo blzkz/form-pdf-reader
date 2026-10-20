@@ -50,6 +50,7 @@ import uniffi.form_pdf_reader_ffi.certificateIsRsa
 import uniffi.form_pdf_reader_ffi.DocKind
 import uniffi.form_pdf_reader_ffi.InputResult
 import uniffi.form_pdf_reader_ffi.PdfDocument
+import uniffi.form_pdf_reader_ffi.PageEditOp
 import uniffi.form_pdf_reader_ffi.PdfException
 
 /**
@@ -82,6 +83,11 @@ class MainActivity : AppCompatActivity() {
         var password: String? = null
         /** Locked by a digital signature: it cannot be changed, saved nor signed. */
         var locked = false
+        /** It accepts annotations and changes to its pages (not XFA forms). */
+        var canAnnotate = false
+        var canEditPages = false
+        /** It has digital signatures (changing its pages invalidates them). */
+        var signed = false
     }
 
     private lateinit var toolbar: MaterialToolbar
@@ -89,6 +95,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progress: View
     private lateinit var container: FrameLayout
     private lateinit var pageChip: TextView
+    private lateinit var toTop: View
     private lateinit var tools: View
     private lateinit var layoutGroup: MaterialButtonToggleGroup
     private lateinit var zoomLevel: MaterialButton
@@ -131,6 +138,38 @@ class MainActivity : AppCompatActivity() {
     /** A recent document that has to be chosen again: replaced by the one chosen. */
     private var replacing: DocItem? = null
 
+    private lateinit var annotBar: AnnotationBar
+    private var pagesDialog: PagesDialog? = null
+    private var extractBytes: ByteArray? = null
+    private var insertAt = 0
+
+    /** A new document (a scan) that opens with unsaved changes. */
+    private var pendingNew: String? = null
+
+    private val extractDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val bytes = extractBytes
+        extractBytes = null
+        if (uri == null || bytes == null) return@registerForActivityResult
+        Io.run({ requireNotNull(contentResolver.openOutputStream(uri, "wt")).use { it.write(bytes) } }) { r ->
+            r.onSuccess { Toast.makeText(this, R.string.pages_extracted, Toast.LENGTH_SHORT).show() }
+                .onFailure { e -> showError(getString(R.string.pages_error, e.message ?: "")) }
+        }
+    }
+
+    private val insertDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        Io.run({ requireNotNull(contentResolver.openInputStream(uri)).use { it.readBytes() } }) { r ->
+            r.onSuccess { insertPdf(it, null) }.onFailure { e -> showError(getString(R.string.pages_error, e.message ?: "")) }
+        }
+    }
+
+    private val scanPages = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        val path = res.data?.getStringExtra(ScanActivity.EXTRA_PATH) ?: return@registerForActivityResult
+        Io.run({ File(path).let { f -> f.readBytes().also { f.delete() } } }) { r ->
+            r.onSuccess { insertPdf(it, null) }.onFailure { e -> showError(getString(R.string.pages_error, e.message ?: "")) }
+        }
+    }
+
     private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val old = replacing
         replacing = null
@@ -167,6 +206,11 @@ class MainActivity : AppCompatActivity() {
         progress = findViewById(R.id.progress)
         container = findViewById(R.id.page_container)
         pageChip = findViewById(R.id.page_chip)
+        toTop = findViewById(R.id.to_top)
+        toTop.setOnClickListener { current?.view?.goToPage(0) }
+        annotBar = AnnotationBar(this, findViewById(R.id.annot_bar)) { invalidateOptionsMenu() }
+        // The page number while scrolling: tapping it asks which page to go to.
+        pageChip.setOnClickListener { askPage() }
         tools = findViewById(R.id.tools)
         layoutGroup = findViewById(R.id.layout_group)
         zoomLevel = findViewById(R.id.zoom_level)
@@ -220,6 +264,7 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
+        if (intent.getBooleanExtra(EXTRA_NEW, false)) pendingNew = item.path
         openOrRecover(item)
     }
 
@@ -257,7 +302,10 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra(EXTRA_RECOVER, false)) recoverDrafts()
-        itemFor(intent)?.takeIf { shouldOpen(intent, it) }?.let { openOrRecover(it) }
+        itemFor(intent)?.takeIf { shouldOpen(intent, it) }?.let {
+            if (intent.getBooleanExtra(EXTRA_NEW, false)) pendingNew = it.path
+            openOrRecover(it)
+        }
     }
 
     override fun onStop() {
@@ -282,6 +330,12 @@ class MainActivity : AppCompatActivity() {
         }
         val view = PdfPageView(this).apply { visibility = View.GONE }
         val t = DocTab(view, item)
+        // A scan: new, with nothing saved yet.
+        if (item.path != null && item.path == pendingNew) {
+            pendingNew = null
+            t.modified = true
+            t.edits = 1
+        }
         if (draft != null) {
             t.draftId = draft.id
             t.recoverFrom = draft.file
@@ -290,17 +344,23 @@ class MainActivity : AppCompatActivity() {
             t.draftedEdits = 1
         }
         Drafts.open += t.draftId
-        view.onInput = { r -> onFormInput(t, r) }
+        view.onInput = { r ->
+            onFormInput(t, r)
+            if (t === current) updateToTop()
+        }
         view.onSignaturesChanged = { markModified(t) }
+        view.onAnnotChanged = { markModified(t) }
+        view.onAnnotError = { e -> showError(getString(R.string.annot_error, e.message ?: "")) }
         view.onSignatureError = { e -> showError(getString(R.string.sign_error, e.message ?: "")) }
         view.onStateChanged = {
             if (t === current) {
                 updateTools()
                 showPageChip()
+                updateToTop()
             }
         }
-        // Below the page number chip.
-        container.addView(view, container.childCount - 1)
+        // Below the page number chip and the "back to the top" button.
+        container.addView(view, container.childCount - 2)
         docs += t
         val tab = tabs.newTab().setCustomView(R.layout.item_tab).setTag(t)
         tab.customView?.findViewById<View>(R.id.tab_close)?.setOnClickListener { closeTab(t) }
@@ -311,6 +371,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun select(t: DocTab) {
+        if (annotBar.view !== t.view) annotBar.close()
         val old = current
         if (old != null && old !== t) {
             old.view.visibility = View.GONE
@@ -324,6 +385,7 @@ class MainActivity : AppCompatActivity() {
         progress.isVisible = t.loading
         updateTitle()
         updateTools()
+        updateToTop()
         invalidateOptionsMenu()
         // The search goes on in the tab now shown.
         if (searchBar.isVisible && old !== t) search(searchInput.text.toString())
@@ -434,6 +496,14 @@ class MainActivity : AppCompatActivity() {
                         progress.visibility = View.GONE
                         updateTitle()
                         invalidateOptionsMenu()
+                    }
+                    PdfEngine.run({ Triple(d.canAnnotate(), d.canEditPages(), d.digitalSignatures().isNotEmpty()) }) { c ->
+                        c.getOrNull()?.let { (a, p, s) ->
+                            t.canAnnotate = a
+                            t.canEditPages = p
+                            t.signed = s
+                        }
+                        if (t === current) invalidateOptionsMenu()
                     }
                     PdfEngine.run({ d.lockedBySignature() }) { l ->
                         t.locked = l.getOrNull() == true
@@ -641,6 +711,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveTo(t: DocTab, target: DocItem, afterSave: (() -> Unit)?) {
         val d = t.doc ?: return
+        t.view.commitInk()
         t.view.commitField {
             PdfEngine.run({ d.saveBytes() }) { r ->
                 val bytes = r.getOrElse { e -> return@run saveFailed(t, e) }
@@ -795,6 +866,12 @@ class MainActivity : AppCompatActivity() {
         for (id in intArrayOf(R.id.action_search, R.id.action_share, R.id.action_save, R.id.action_sign, R.id.action_digital, R.id.action_save_as, R.id.action_print, R.id.action_attachments, R.id.action_copy_text, R.id.action_go_to_page, R.id.action_view)) {
             menu.findItem(id)?.isEnabled = has
         }
+        val t = current
+        menu.findItem(R.id.action_annotate)?.apply {
+            isVisible = t != null && t.canAnnotate && !t.locked
+            isChecked = annotBar.isOpen
+        }
+        menu.findItem(R.id.action_pages)?.isEnabled = t != null && t.doc != null && t.canEditPages && !t.locked
         // Tablets have these in the toolbar.
         menu.findItem(R.id.action_view)?.isVisible = !isTablet
         menu.findItem(R.id.action_go_to_page)?.isVisible = !isTablet
@@ -843,6 +920,8 @@ class MainActivity : AppCompatActivity() {
             R.id.action_digital -> showDigitalSignatures()
             R.id.action_save_as -> saveAs()
             R.id.action_print -> print()
+            R.id.action_annotate -> current?.let { t -> if (annotBar.view === t.view) annotBar.close() else annotBar.open(t.view) }
+            R.id.action_pages -> openPages()
             R.id.action_attachments -> showAttachments()
             R.id.action_copy_text -> copyPageText()
             R.id.action_go_to_page -> askPage()
@@ -958,6 +1037,12 @@ class MainActivity : AppCompatActivity() {
         pageChip.visibility = View.VISIBLE
         main.removeCallbacks(hidePageChip)
         main.postDelayed(hidePageChip, 1500)
+    }
+
+    /** Phones: the "back to the first page" button, once past the first page. */
+    private fun updateToTop() {
+        val v = current?.view
+        toTop.isVisible = !isTablet && v != null && v.isVisible && v.currentPage >= 1 && !v.editingField
     }
 
     private fun askPage() {
@@ -1476,6 +1561,110 @@ class MainActivity : AppCompatActivity() {
         b.show()
     }
 
+    // -----------------------------------------------------------------------
+    // Organise pages
+    // -----------------------------------------------------------------------
+
+    private fun openPages() {
+        val t = current ?: return
+        val d = t.doc ?: return
+        annotBar.close()
+        t.view.commitField {
+            pagesDialog = PagesDialog(
+                this, d, t.signed,
+                onEdit = { op, select -> applyPageEdit(t, op, select) },
+                onExtract = { pages -> extractPages(t, pages) },
+                onInsert = { at ->
+                    insertAt = at
+                    insertDocument.launch(arrayOf("application/pdf"))
+                },
+                onScan = { at ->
+                    insertAt = at
+                    scanPages.launch(ScanActivity.intent(this))
+                },
+            ).also { it.show() }
+        }
+    }
+
+    /**
+     * Changes the pages of [t]'s document: the result is written to a new
+     * copy in the cache and opened in place of the old one (with the
+     * changes unsaved).
+     */
+    private fun applyPageEdit(t: DocTab, op: PageEditOp, select: List<Int>) {
+        val d = t.doc ?: return
+        val continuous = Prefs.continuousXfa(this)
+        val password = t.password
+        val name = t.file?.name ?: t.item.name
+        progress.visibility = View.VISIBLE
+        PdfEngine.run({
+            val bytes = d.editPages(listOf(op))
+            val file = File(cacheDir, "docs/${System.nanoTime()}").apply { mkdirs() }.resolve(name)
+            file.writeBytes(bytes)
+            Pair(file, PdfDocument.open(file.absolutePath, continuous, password).also { it.setHandler(formHandler) })
+        }) { r ->
+            progress.visibility = View.GONE
+            val (file, nd) = r.getOrElse { e ->
+                if (e is PdfException.Password || e is PdfException.WrongPassword) {
+                    (op as? PageEditOp.Insert)?.let { askInsertPassword(it.pdf, e is PdfException.WrongPassword) }
+                } else {
+                    showError(getString(R.string.pages_error, e.message ?: ""))
+                }
+                return@run
+            }
+            if (t !in docs || t.doc !== d) {
+                PdfEngine.run({ nd.destroy() }) { file.parentFile?.deleteRecursively() }
+                return@run
+            }
+            val old = t.file
+            t.doc = nd
+            t.file = file
+            PdfEngine.run({ d.destroy() }) { old?.parentFile?.deleteRecursively() }
+            val page = t.view.currentPage
+            t.view.setDocument(nd)
+            t.view.goToPage(select.firstOrNull() ?: page)
+            markModified(t)
+            PdfEngine.run({ nd.digitalSignatures().isNotEmpty() }) { s -> t.signed = s.getOrDefault(t.signed) }
+            pagesDialog?.takeIf { it.isShowing }?.setDocument(nd, select)
+            Toast.makeText(this, R.string.pages_changed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun extractPages(t: DocTab, pages: List<Int>) {
+        val d = t.doc ?: return
+        PdfEngine.run({ d.extractPages(pages.map { it.toUInt() }) }) { r ->
+            val bytes = r.getOrElse { e -> return@run showError(getString(R.string.pages_error, e.message ?: "")) }
+            extractBytes = bytes
+            val stem = t.item.name.removeSuffix(".pdf").removeSuffix(".PDF")
+            extractDocument.launch("$stem-${getString(R.string.pages_extract_suffix)}.pdf")
+        }
+    }
+
+    /** Inserts the pages of a PDF (chosen or scanned) where the pages dialog said. */
+    private fun insertPdf(pdf: ByteArray, password: String?) {
+        val t = current ?: return
+        applyPageEdit(t, PageEditOp.Insert(pdf, password, insertAt.toUInt()), emptyList())
+    }
+
+    private fun askInsertPassword(pdf: ByteArray, wrong: Boolean) {
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val field = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine()
+        }
+        val box = FrameLayout(this).apply {
+            setPadding(pad, 0, pad, 0)
+            addView(field)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.password_title)
+            .setMessage(if (wrong) R.string.password_wrong else R.string.pages_insert_password)
+            .setView(box)
+            .setPositiveButton(R.string.ok) { _, _ -> insertPdf(pdf, field.text.toString()) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun showError(message: String) {
         MaterialAlertDialogBuilder(this).setMessage(message).setPositiveButton(R.string.ok, null).show()
     }
@@ -1507,6 +1696,9 @@ class MainActivity : AppCompatActivity() {
 
         /** Name of the document (for a content URI that can no longer be read). */
         const val EXTRA_NAME = "io.github.blzkz.formpdfreader.NAME"
+
+        /** A new document (a scan): it opens with unsaved changes. */
+        const val EXTRA_NEW = "io.github.blzkz.formpdfreader.NEW"
 
         private const val ZOOM_FIT_WIDTH = 1
         private const val ZOOM_FIT_PAGE = 2

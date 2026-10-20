@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/scan_camera" android:icon="@drawable/ic_scan" android:title="@string/scan_camera" app:showAsAction="never" />
+    <item android:id="@+id/scan_gallery" android:title="@string/scan_gallery" app:showAsAction="never" />
+    <item android:id="@+id/scan_previous" android:icon="@drawable/ic_chevron_left" android:title="@string/scan_previous" app:showAsAction="ifRoom" />
+    <item android:id="@+id/scan_following" android:icon="@drawable/ic_chevron_right" android:title="@string/scan_following" app:showAsAction="ifRoom" />
+</menu>

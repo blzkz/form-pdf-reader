@@ -9,7 +9,9 @@ use form_pdf_reader::pdfium::{Document, SearchHit, Updates, keys};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+mod annotate;
 mod sign;
+pub use annotate::{AnnotRequest, AnnotTool};
 pub use sign::signature_texture;
 
 /// Puntos tipográficos -> píxeles lógicos al 100 %.
@@ -40,6 +42,8 @@ pub struct ViewEvents {
     pub open_files: Vec<std::path::PathBuf>,
     /// No se pudo poner o mover una firma.
     pub sign_error: Option<String>,
+    /// No se pudo crear o borrar una anotación.
+    pub annot_error: Option<String>,
     /// Sitio elegido para una firma digital visible: página y rectángulo.
     pub digital_placed: Option<(usize, [f32; 4])>,
     /// Se canceló la colocación de la firma digital (Esc).
@@ -136,6 +140,8 @@ pub struct DocView {
     selection_rects: Vec<(usize, Vec<[f64; 4]>)>,
     /// Rueda acumulada en vista de una página (para pasar de página).
     wheel_acc: f32,
+    /// Anotando (ver `annotate`).
+    annot: Option<annotate::AnnotState>,
 }
 
 impl DocView {
@@ -179,6 +185,7 @@ impl DocView {
             selecting: false,
             selection_rects: Vec::new(),
             wheel_acc: 0.0,
+            annot: None,
         }
     }
 
@@ -378,7 +385,7 @@ impl DocView {
 
     /// Los clics y el teclado van al formulario (PDFium).
     fn form_input(&self) -> bool {
-        self.tool == Tool::Form && !self.read_only
+        self.tool == Tool::Form && !self.read_only && self.annot.is_none()
     }
 
     pub fn set_tool(&mut self, t: Tool) {
@@ -1034,7 +1041,11 @@ impl DocView {
         // Firmas manuscritas: colocar, mover, quitar (antes que PDFium).
         let signing = self.handle_signatures(&ctx, &pointer_events, &mut ev, area_rect);
         self.draw_signatures(&ctx, &ui.painter_at(area_rect));
-        if !signing {
+        // Anotar (si se está anotando): tampoco va al formulario.
+        let annotating = !signing && self.handle_annotations(&ctx, &pointer_events, &mut ev, area_rect);
+        self.draw_annotations(&ui.painter_at(area_rect), ui.visuals().selection.bg_fill);
+        clicked |= annotating;
+        if !signing && !annotating && self.annot.is_none() {
             clicked |= self.handle_pointer(&pointer_events, &mut ev, area_rect);
         }
         if clicked {

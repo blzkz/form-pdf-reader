@@ -46,6 +46,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Scanning documents with the camera app (no camera permission). -->
+        <activity
+            android:name=".ScanActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="false"
+            android:label="@string/scan" />
+
         <!-- Licences of the app and of the software it includes. -->
         <activity
             android:name=".LicensesActivity"
