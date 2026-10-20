@@ -61,6 +61,16 @@ class HomeActivity : AppCompatActivity() {
         startActivity(MainActivity.intentFor(this, uri))
     }
 
+    /** A scanned document opens as a new document (it asks where to save it). */
+    private val scanDocument = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        val uri = Scanner.pdfOf(r.resultCode, r.data) ?: return@registerForActivityResult
+        Io.run({ Scanner.keep(this, uri) }) { f ->
+            f.onSuccess { file ->
+                startActivity(MainActivity.intentFor(this, DocItem(file.name, path = file.absolutePath)).putExtra(MainActivity.EXTRA_NEW, true))
+            }.onFailure { e -> Toast.makeText(this, getString(R.string.scan_unavailable, e.localizedMessage ?: ""), Toast.LENGTH_LONG).show() }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -92,6 +102,12 @@ class HomeActivity : AppCompatActivity() {
         val open = View.OnClickListener { openDocument.launch(arrayOf("application/pdf")) }
         fab.setOnClickListener(open)
         rail.headerView?.findViewById<View>(R.id.rail_fab)?.setOnClickListener(open)
+
+        toolbar.inflateMenu(R.menu.home)
+        toolbar.setOnMenuItemClickListener { item ->
+            if (item.itemId == R.id.action_scan) Scanner.start(this, scanDocument)
+            true
+        }
 
         setupSettings()
 
@@ -145,6 +161,7 @@ class HomeActivity : AppCompatActivity() {
         // Tablets have "Open PDF" on the rail.
         fab.isVisible = home && !isTablet
         toolbar.title = getString(if (home) R.string.app_name else R.string.nav_settings)
+        toolbar.menu.findItem(R.id.action_scan)?.isVisible = home
         backToHome.isEnabled = !home
     }
 

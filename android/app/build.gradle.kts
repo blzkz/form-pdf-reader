@@ -53,6 +53,12 @@ android {
     }
 
     buildTypes {
+        // Local test builds: installed beside the app from Google Play (another
+        // id and name), so trying a build never touches its data.
+        debug {
+            applicationIdSuffix = ".prueba"
+            versionNameSuffix = "-prueba"
+        }
         release {
             // R8: reduce y ofusca el código (Google Play lo pide). Las reglas
             // de JNA, en proguard-rules.pro.
@@ -93,4 +99,7 @@ dependencies {
     implementation("es.gob.afirma.jmulticard:jmulticard:2.1")
     implementation("es.gob.afirma.jmulticard:jmulticard-crypto:2.1")
     implementation("es.gob.afirma.jmulticard:jmulticard-android:2.1")
+    // Scanning documents with the camera: Google's scanner in Google Play
+    // services (edges, crop, filters); the app needs no camera permission.
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
 }
