@@ -17,6 +17,7 @@ mod signatures;
 mod snap;
 mod soft;
 mod theme;
+mod update;
 mod viewer;
 
 use std::path::PathBuf;
