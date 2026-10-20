@@ -3,15 +3,15 @@
 # Play) with Gradle. On a version tag both are attached to the GitHub release.
 #
 # Release builds are signed with the upload key in the repository secrets
-# (scripts/android/crear-clave-de-subida.sh); without them, as in pull
-# requests from forks, with the debug key. Tags require the upload key.
+# (scripts/android/crear-clave-de-subida.sh); without them, as in
+# forks, with the debug key. Tags require the upload key.
 name: Android
 
+# On version tags, or by hand (Actions > Android > Run workflow); local
+# builds: scripts/android/compilar.sh.
 on:
   push:
-    branches: [master]
     tags: ["v*"]
-  pull_request:
   workflow_dispatch:
 
 permissions:

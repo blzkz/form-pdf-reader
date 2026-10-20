@@ -6,10 +6,9 @@
 # The Release workflow calls this one and attaches both to the release.
 name: Windows
 
+# From the Release workflow, or by hand (Actions > Windows > Run workflow) to
+# try the installer before a release.
 on:
-  push:
-    branches: [master]
-  pull_request:
   workflow_dispatch:
   workflow_call:
 
