@@ -22,18 +22,18 @@ jobs:
       - uses: actions/checkout@v7
       - name: Rust
         run: rustup update stable --no-self-update && rustup default stable
-      - uses: actions/cache@v6
+      # Dependencies and target/ from the last build (a new version changes
+      # Cargo.lock, so an exact key would never hit).
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: windows-cargo-${{ hashFiles('Cargo.lock') }}
+          shared-key: windows
       - name: PDFium
         run: PDFIUM_PLATFORM=win-x64 scripts/descargar-pdfium.sh
       - name: Build
         run: cargo build --release --locked
+      # Tests only when run by hand: releases are tested before tagging.
       - name: Test
+        if: github.event_name == 'workflow_dispatch'
         run: |
           export PATH="$PWD/vendor/pdfium/bin:$PATH"
           cargo test --release --locked

@@ -3,8 +3,10 @@
 #   git tag v0.3.1 && git push origin v0.3.1
 #
 # Produces: .deb (Debian/Ubuntu), .rpm (Fedora), .pkg.tar.zst (Arch/CachyOS),
-# a self-contained .tar.gz, and for Windows a portable .zip and an installer
-# (workflow windows.yml).
+# a self-contained .tar.gz, for Windows a portable .zip and an installer
+# (workflow windows.yml), and for Android the APK and the App Bundle (workflow
+# android.yml). The release is published only if every build works; the tests
+# are run locally before tagging.
 name: Release
 
 on:
@@ -37,10 +39,12 @@ jobs:
           rustup default stable
       - name: PDFium
         run: scripts/descargar-pdfium.sh
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux
+      # Tested before tagging (cargo test, locally).
       - name: Build
         run: cargo build --release --locked
-      - name: Test
-        run: cargo test --release --locked
       # Licences of the Rust crates and PDFium shipped in the packages.
       - name: Third-party notices
         run: python3 scripts/third_party_notices.py --package form-pdf-reader --target x86_64-unknown-linux-gnu --pdfium vendor/pdfium --out target/THIRD-PARTY-NOTICES.txt
@@ -54,8 +58,13 @@ jobs:
   windows:
     uses: ./.github/workflows/windows.yml
 
+  android:
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+
+  # The release is created only when every build has worked.
   package:
-    needs: [build, windows]
+    needs: [build, windows, android]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -90,10 +99,10 @@ jobs:
         with:
           name: windows
           path: dist
-      - uses: actions/upload-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
-          name: packages
-          path: dist/*
+          name: apk
+          path: dist
       # Novedades por idioma (packaging/novedades/<versión>.md), que enseña la
       # aplicación al avisar de la versión; la lista de cambios de GitHub va
       # detrás.
