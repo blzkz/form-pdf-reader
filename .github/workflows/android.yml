@@ -1,18 +1,17 @@
 # Builds the Android app: the Rust core (crates/ffi) for arm64 with cargo-ndk,
 # its Kotlin bindings with uniffi, and the APK and App Bundle (for Google
-# Play) with Gradle. On a version tag both are attached to the GitHub release.
+# Play) with Gradle. The Release workflow attaches both to the GitHub release.
 #
 # Release builds are signed with the upload key in the repository secrets
 # (scripts/android/crear-clave-de-subida.sh); without them, as in
 # forks, with the debug key. Tags require the upload key.
 name: Android
 
-# On version tags, or by hand (Actions > Android > Run workflow); local
-# builds: scripts/android/compilar.sh.
+# From the Release workflow, or by hand (Actions > Android > Run workflow);
+# local builds: scripts/android/compilar.sh.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: write
@@ -26,17 +25,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      # Dependencies, target/ and cargo-ndk from the last build.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: android
       - name: Rust for Android
         run: |
           rustup target add aarch64-linux-android
           cargo install cargo-ndk --locked
-      - uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: android-cargo-${{ hashFiles('Cargo.lock') }}
       - name: Rust core, bindings and native libraries
         run: |
           # NDK preinstalled on the runner; Gradle uses it too (symbols).
@@ -78,8 +74,3 @@ jobs:
         with:
           name: apk
           path: dist/*
-      - name: GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v3
-        with:
-          files: dist/*
