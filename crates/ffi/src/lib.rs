@@ -398,6 +398,84 @@ impl From<PageEditOp> for PageEdit {
     }
 }
 
+/// Filter for a scanned page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ScanFilter {
+    /// In colour, with whiter paper and more contrast.
+    Color,
+    Gray,
+    /// Black and white, like a photocopy.
+    BlackWhite,
+}
+
+/// A scanned page: the photo as JPEG and its size in pixels.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ScanPage {
+    pub jpeg: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Finds the sheet of paper in a grey photo (`width`×`height`, best around
+/// 400 px): its corners top left, top right, bottom right, bottom left as
+/// x0, y0, x1, y1… in fractions of the photo (0 to 1). None if not found.
+#[uniffi::export]
+pub fn scan_detect(gray: Vec<u8>, width: u32, height: u32) -> Option<Vec<f32>> {
+    form_pdf_reader::scan::detect_document(&gray, width as usize, height as usize).map(|q| q.iter().flatten().copied().collect())
+}
+
+/// Applies a filter to an RGBA image and returns it in RGBA.
+#[uniffi::export]
+pub fn scan_filter(rgba: Vec<u8>, width: u32, height: u32, filter: ScanFilter) -> Vec<u8> {
+    use form_pdf_reader::scan::{self, ScanFilter as F};
+    let f = match filter {
+        ScanFilter::Color => F::Color,
+        ScanFilter::Gray => F::Gray,
+        ScanFilter::BlackWhite => F::BlackWhite,
+    };
+    scan::filter(&rgba, width as usize, height as usize, f)
+}
+
+/// A PDF with one page per scanned image.
+#[uniffi::export]
+pub fn scan_pdf(pages: Vec<ScanPage>) -> Result<Vec<u8>, PdfError> {
+    pdfium::init();
+    let pages: Vec<form_pdf_reader::scan::ScanImage> = pages.into_iter().map(|p| form_pdf_reader::scan::ScanImage { jpeg: p.jpeg, width: p.width, height: p.height }).collect();
+    form_pdf_reader::scan::images_to_pdf(&pages).map_err(|e| PdfError::Save(format!("{e:#}")))
+}
+
+/// The model that tells how a scanned page is turned (PaddleOCR's
+/// PP-LCNet_x1_0_doc_ori, an ONNX file in the app's assets).
+#[derive(uniffi::Object)]
+pub struct OrientationModel {
+    model: form_pdf_reader::scan::orientation::Orientation,
+}
+
+/// How to turn a page upright: quarter turns to the right and how sure the
+/// model is (0 to 1).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Upright {
+    pub turns: u8,
+    pub confidence: f32,
+}
+
+#[uniffi::export]
+impl OrientationModel {
+    #[uniffi::constructor]
+    pub fn load(onnx: Vec<u8>) -> Result<Arc<Self>, PdfError> {
+        let model = form_pdf_reader::scan::orientation::Orientation::load(&onnx).map_err(|e| PdfError::Open(format!("{e:#}")))?;
+        Ok(Arc::new(OrientationModel { model }))
+    }
+
+    /// For an RGBA image (a small one is enough: about 600 px).
+    pub fn upright(&self, rgba: Vec<u8>, width: u32, height: u32) -> Result<Upright, PdfError> {
+        self.model
+            .upright_turns(&rgba, width as usize, height as usize)
+            .map(|(turns, confidence)| Upright { turns, confidence })
+            .map_err(|e| PdfError::Open(format!("{e:#}")))
+    }
+}
+
 /// Number of pages of a PDF (to check one before inserting it:
 /// `PdfError::Password` if it needs a password).
 #[uniffi::export]

@@ -62,13 +62,10 @@ class HomeActivity : AppCompatActivity() {
     }
 
     /** A scanned document opens as a new document (it asks where to save it). */
-    private val scanDocument = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
-        val uri = Scanner.pdfOf(r.resultCode, r.data) ?: return@registerForActivityResult
-        Io.run({ Scanner.keep(this, uri) }) { f ->
-            f.onSuccess { file ->
-                startActivity(MainActivity.intentFor(this, DocItem(file.name, path = file.absolutePath)).putExtra(MainActivity.EXTRA_NEW, true))
-            }.onFailure { e -> Toast.makeText(this, getString(R.string.scan_unavailable, e.localizedMessage ?: ""), Toast.LENGTH_LONG).show() }
-        }
+    private val scanDocument = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val path = r.data?.getStringExtra(ScanActivity.EXTRA_PATH) ?: return@registerForActivityResult
+        val file = File(path)
+        startActivity(MainActivity.intentFor(this, DocItem(file.name, path = file.absolutePath)).putExtra(MainActivity.EXTRA_NEW, true))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,7 +102,7 @@ class HomeActivity : AppCompatActivity() {
 
         toolbar.inflateMenu(R.menu.home)
         toolbar.setOnMenuItemClickListener { item ->
-            if (item.itemId == R.id.action_scan) Scanner.start(this, scanDocument)
+            if (item.itemId == R.id.action_scan) scanDocument.launch(ScanActivity.intent(this))
             true
         }
 

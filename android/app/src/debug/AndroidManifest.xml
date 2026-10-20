@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Test builds only: the scanner can be started with adb and a test photo
+     (ScanActivity.EXTRA_TEST_IMAGE), to try it without the camera. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <activity
+            android:name=".ScanActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

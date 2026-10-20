@@ -163,9 +163,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val scanPages = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
-        val uri = Scanner.pdfOf(res.resultCode, res.data) ?: return@registerForActivityResult
-        Io.run({ requireNotNull(contentResolver.openInputStream(uri)).use { it.readBytes() } }) { r ->
+    private val scanPages = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        val path = res.data?.getStringExtra(ScanActivity.EXTRA_PATH) ?: return@registerForActivityResult
+        Io.run({ File(path).let { f -> f.readBytes().also { f.delete() } } }) { r ->
             r.onSuccess { insertPdf(it, null) }.onFailure { e -> showError(getString(R.string.pages_error, e.message ?: "")) }
         }
     }
@@ -1580,7 +1580,7 @@ class MainActivity : AppCompatActivity() {
                 },
                 onScan = { at ->
                     insertAt = at
-                    Scanner.start(this, scanPages)
+                    scanPages.launch(ScanActivity.intent(this))
                 },
             ).also { it.show() }
         }

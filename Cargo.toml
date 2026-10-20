@@ -23,3 +23,20 @@ opt-level = 3
 lto = "thin"
 strip = true
 codegen-units = 4
+
+# The engine of the orientation model (only in the Android app): optimised
+# for size, it is the bulk of the native library and the model is tiny.
+[profile.release.package.tract-core]
+opt-level = "s"
+[profile.release.package.tract-data]
+opt-level = "s"
+[profile.release.package.tract-extra]
+opt-level = "s"
+[profile.release.package.tract-hir]
+opt-level = "s"
+[profile.release.package.tract-onnx]
+opt-level = "s"
+[profile.release.package.tract-onnx-opl]
+opt-level = "s"
+[profile.release.package.tract-nnef]
+opt-level = "s"

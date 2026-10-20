@@ -279,6 +279,24 @@
                 android:textColor="?attr/colorOnSurfaceVariant" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/annot_edit"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/annot_edit"
+                android:tooltipText="@string/annot_edit"
+                app:icon="@drawable/ic_edit" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/annot_delete"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/annot_delete"
+                android:tooltipText="@string/annot_delete"
+                app:icon="@drawable/ic_delete" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/annot_done"
                 style="@style/Widget.Material3.Button.TonalButton.Icon"
                 android:layout_width="wrap_content"
@@ -378,23 +396,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/annot_edit"
-                    style="?attr/materialIconButtonStyle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:contentDescription="@string/annot_edit"
-                    android:tooltipText="@string/annot_edit"
-                    app:icon="@drawable/ic_edit" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/annot_delete"
-                    style="?attr/materialIconButtonStyle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:contentDescription="@string/annot_delete"
-                    android:tooltipText="@string/annot_delete"
-                    app:icon="@drawable/ic_delete" />
             </LinearLayout>
         </HorizontalScrollView>
     </LinearLayout>

@@ -68,7 +68,8 @@ impl Drop for MemDoc<'_> {
     }
 }
 
-fn save_doc(doc: sys::FPDF_DOCUMENT, incremental: bool) -> Result<Vec<u8>> {
+/// Guarda un documento abierto de PDFium en bytes.
+pub(crate) fn save_doc(doc: sys::FPDF_DOCUMENT, incremental: bool) -> Result<Vec<u8>> {
     let mut w = super::document::Writer::new();
     let flags = if incremental { sys::FPDF_INCREMENTAL } else { sys::FPDF_NO_INCREMENTAL };
     if unsafe { sys::FPDF_SaveAsCopy(doc, &mut w.base, flags as sys::FPDF_DWORD) } == 0 {

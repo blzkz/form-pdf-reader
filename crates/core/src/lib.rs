@@ -2,5 +2,6 @@
 pub mod i18n;
 pub mod pades;
 pub mod pdfium;
+pub mod scan;
 pub mod sign;
 pub mod xfa;

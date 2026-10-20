@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatDelegate
 object Prefs {
     private const val THEME = "theme"
     private const val CONTINUOUS_XFA = "continuous_xfa"
+    private const val SCAN_FILTER = "scan_filter"
 
     private fun prefs(c: Context) = c.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
@@ -24,5 +25,12 @@ object Prefs {
 
     fun setContinuousXfa(c: Context, value: Boolean) {
         prefs(c).edit().putBoolean(CONTINUOUS_XFA, value).apply()
+    }
+
+    /** The last filter used when scanning (the name of a ScanFilter). */
+    fun scanFilter(c: Context): String = prefs(c).getString(SCAN_FILTER, null) ?: "COLOR"
+
+    fun setScanFilter(c: Context, name: String) {
+        prefs(c).edit().putString(SCAN_FILTER, name).apply()
     }
 }

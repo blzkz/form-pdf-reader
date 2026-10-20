@@ -84,6 +84,14 @@ ANDROID_LIBRARIES = """\
 - JNA, Java Native Access (net.java.dev.jna), dual-licensed under the LGPL 2.1
   or later and the Apache License 2.0; used here under the Apache License 2.0.
 
+To turn scanned pages upright:
+
+- PP-LCNet_x1_0_doc_ori, the document orientation model of PaddleOCR
+  (https://github.com/PaddlePaddle/PaddleOCR), by the PaddlePaddle Authors,
+  under the Apache License 2.0; in the ONNX format converted by
+  https://huggingface.co/monkt/paddleocr-onnx (Apache License 2.0). It runs
+  with tract (a Rust crate, listed with the others above).
+
 For the DNIe (Spanish national ID card) over NFC:
 
 - jmulticard (es.gob.afirma.jmulticard: jmulticard, jmulticard-crypto,

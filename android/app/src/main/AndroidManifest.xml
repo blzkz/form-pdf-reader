@@ -1,15 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- DNIe over NFC (digital signature). Without NFC the app works the same. -->
     <uses-permission android:name="android.permission.NFC" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
-
-    <!-- No Internet: the document scanner (Google Play services) works without
-         it, and its library would add these only to send usage statistics. -->
-    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
 
     <application
         android:name=".FormPdfApp"
@@ -51,6 +45,13 @@
                 <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
+
+        <!-- Scanning documents with the camera app (no camera permission). -->
+        <activity
+            android:name=".ScanActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="false"
+            android:label="@string/scan" />
 
         <!-- Licences of the app and of the software it includes. -->
         <activity
