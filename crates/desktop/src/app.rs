@@ -143,6 +143,7 @@ impl PdfApp {
     /// Al abrir: buscar versiones nuevas (una vez al día) y, en Linux, si
     /// abrir los PDF con esta aplicación (una sola vez).
     fn startup_checks(&mut self) {
+        std::thread::spawn(crate::update::clean_old_downloads);
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         if !self.settings.updates_off && now.saturating_sub(self.settings.update_checked) >= 24 * 3600 {
             self.update_check = Some(crate::update::check_in_background());

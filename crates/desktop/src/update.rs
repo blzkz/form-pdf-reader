@@ -210,6 +210,19 @@ pub fn asset_for<'a>(kind: &Install, r: &'a Release) -> Option<&'a Asset> {
     r.assets.iter().find(|a| a.name.ends_with(ends))
 }
 
+/// Borra los paquetes que dejaron actualizaciones anteriores en la carpeta
+/// temporal (el instalador de Windows no se puede borrar mientras se ejecuta).
+pub fn clean_old_downloads() {
+    let mine = format!("form-pdf-reader-update-{}", std::process::id());
+    let Ok(dir) = std::fs::read_dir(std::env::temp_dir()) else { return };
+    for e in dir.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.starts_with("form-pdf-reader-update-") && name != mine {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+}
+
 /// Descarga `a` en una carpeta temporal y comprueba su SHA-256. `done`
 /// cuenta los bytes descargados (para la barra de progreso).
 pub fn download(a: &Asset, done: Arc<AtomicU64>) -> Result<PathBuf> {
