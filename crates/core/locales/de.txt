@@ -383,3 +383,4 @@ assoc.confirm_windows = Wählen Sie Form PDF Reader für .pdf in den Windows-Ein
 assoc.failed = Die App für PDF-Dateien konnte nicht geändert werden:\n{0}
 assoc.is_default = PDF-Dateien werden mit dieser App geöffnet
 assoc.make_default = PDF-Dateien mit dieser App öffnen
+pages.delete_all = Es können nicht alle Seiten gelöscht werden.

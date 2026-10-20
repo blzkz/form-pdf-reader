@@ -89,6 +89,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progress: View
     private lateinit var container: FrameLayout
     private lateinit var pageChip: TextView
+    private lateinit var toTop: View
     private lateinit var tools: View
     private lateinit var layoutGroup: MaterialButtonToggleGroup
     private lateinit var zoomLevel: MaterialButton
@@ -167,6 +168,10 @@ class MainActivity : AppCompatActivity() {
         progress = findViewById(R.id.progress)
         container = findViewById(R.id.page_container)
         pageChip = findViewById(R.id.page_chip)
+        toTop = findViewById(R.id.to_top)
+        toTop.setOnClickListener { current?.view?.goToPage(0) }
+        // The page number while scrolling: tapping it asks which page to go to.
+        pageChip.setOnClickListener { askPage() }
         tools = findViewById(R.id.tools)
         layoutGroup = findViewById(R.id.layout_group)
         zoomLevel = findViewById(R.id.zoom_level)
@@ -290,17 +295,21 @@ class MainActivity : AppCompatActivity() {
             t.draftedEdits = 1
         }
         Drafts.open += t.draftId
-        view.onInput = { r -> onFormInput(t, r) }
+        view.onInput = { r ->
+            onFormInput(t, r)
+            if (t === current) updateToTop()
+        }
         view.onSignaturesChanged = { markModified(t) }
         view.onSignatureError = { e -> showError(getString(R.string.sign_error, e.message ?: "")) }
         view.onStateChanged = {
             if (t === current) {
                 updateTools()
                 showPageChip()
+                updateToTop()
             }
         }
-        // Below the page number chip.
-        container.addView(view, container.childCount - 1)
+        // Below the page number chip and the "back to the top" button.
+        container.addView(view, container.childCount - 2)
         docs += t
         val tab = tabs.newTab().setCustomView(R.layout.item_tab).setTag(t)
         tab.customView?.findViewById<View>(R.id.tab_close)?.setOnClickListener { closeTab(t) }
@@ -324,6 +333,7 @@ class MainActivity : AppCompatActivity() {
         progress.isVisible = t.loading
         updateTitle()
         updateTools()
+        updateToTop()
         invalidateOptionsMenu()
         // The search goes on in the tab now shown.
         if (searchBar.isVisible && old !== t) search(searchInput.text.toString())
@@ -958,6 +968,12 @@ class MainActivity : AppCompatActivity() {
         pageChip.visibility = View.VISIBLE
         main.removeCallbacks(hidePageChip)
         main.postDelayed(hidePageChip, 1500)
+    }
+
+    /** Phones: the "back to the first page" button, once past the first page. */
+    private fun updateToTop() {
+        val v = current?.view
+        toTop.isVisible = !isTablet && v != null && v.isVisible && v.currentPage >= 1 && !v.editingField
     }
 
     private fun askPage() {

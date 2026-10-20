@@ -53,6 +53,7 @@
     <string name="fit_page">Adatta alla pagina</string>
     <string name="zoom_percent">%1$d%%</string>
     <string name="go_to_page">Vai alla pagina</string>
+    <string name="to_top">Torna alla prima pagina</string>
     <string name="go_to_page_hint">Pagina (1–%1$d)</string>
     <string name="page_of">%1$d / %2$d</string>
     <string name="previous_page">Pagina precedente</string>

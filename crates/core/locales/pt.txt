@@ -383,3 +383,4 @@ assoc.confirm_windows = Escolha o Form PDF Reader para os .pdf nas definições 
 assoc.failed = Não foi possível mudar a aplicação dos PDF:\n{0}
 assoc.is_default = Os PDF abrem com esta aplicação
 assoc.make_default = Abrir os PDF com esta aplicação
+pages.delete_all = Não é possível eliminar todas as páginas.

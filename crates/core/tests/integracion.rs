@@ -146,6 +146,109 @@ fn normal() {
     assert!(px.chunks(4).any(|c| c[0] < 50), "la página debería tener texto negro");
 }
 
+/// Anotaciones: se crean, se dibujan, se guardan, se editan y se borran.
+fn anotaciones() {
+    use form_pdf_reader::pdfium::AnnotKind;
+    let mut doc = Document::open(Path::new("tests/fixtures/normal.pdf")).unwrap();
+    assert!(doc.can_annotate());
+    let antes = doc.render(0, 300, 424).unwrap();
+    // Resaltar la primera palabra "zanahoria".
+    let hit = doc.search("zanahoria").into_iter().next().unwrap();
+    doc.add_markup(hit.page, AnnotKind::Highlight, &hit.rects, [255, 220, 0], "zanahoria").unwrap();
+    doc.add_markup(0, AnnotKind::StrikeOut, &[[100.0, 700.0, 200.0, 688.0]], [220, 0, 0], "").unwrap();
+    doc.add_note(0, 50.0, 500.0, "Revisar esto", [255, 200, 0]).unwrap();
+    doc.add_free_text(0, 60.0, 400.0, "Texto libre\ncon dos líneas ñ", 14.0, [0, 0, 255]).unwrap();
+    doc.add_ink(0, &[vec![[100.0, 300.0], [150.0, 320.0], [200.0, 300.0]], vec![[120.0, 280.0]]], 2.0, [0, 80, 200]).unwrap();
+    let despues = doc.render(0, 300, 424).unwrap();
+    assert_ne!(antes, despues, "las anotaciones deben verse");
+    let a = doc.annotations(0);
+    let kinds: Vec<AnnotKind> = a.iter().map(|a| a.kind).collect();
+    assert!(kinds.contains(&AnnotKind::StrikeOut) && kinds.contains(&AnnotKind::Note) && kinds.contains(&AnnotKind::FreeText) && kinds.contains(&AnnotKind::Ink), "{kinds:?}");
+    let texto = a.iter().find(|a| a.kind == AnnotKind::FreeText).unwrap();
+    assert_eq!(texto.contents, "Texto libre\ncon dos líneas ñ");
+    assert_eq!(texto.font_size, 14.0);
+    assert_eq!(texto.color, [0, 0, 255]);
+    assert!((texto.rect[0] - 60.0).abs() < 0.1 && (texto.rect[3] - 400.0).abs() < 0.1, "{:?}", texto.rect);
+    // La de encima en un punto.
+    assert_eq!(doc.annotation_at(0, 55.0, 495.0).map(|a| a.kind), Some(AnnotKind::Note));
+    // Guardar y volver a abrir.
+    let out = tmp("anotado.pdf");
+    doc.save(&out).unwrap();
+    drop(doc);
+    let mut doc = Document::open(&out).unwrap();
+    let n = doc.annotations(0).len();
+    assert_eq!(n, kinds.len(), "se conservan al guardar");
+    // Editar la nota y el texto libre.
+    let nota = doc.annotations(0).into_iter().find(|a| a.kind == AnnotKind::Note).unwrap();
+    doc.set_annotation_text(0, nota.index, "Revisado").unwrap();
+    let texto = doc.annotations(0).into_iter().find(|a| a.kind == AnnotKind::FreeText).unwrap();
+    doc.set_annotation_text(0, texto.index, "Otro texto").unwrap();
+    let a = doc.annotations(0);
+    assert_eq!(a.iter().find(|a| a.kind == AnnotKind::Note).unwrap().contents, "Revisado");
+    let texto = a.iter().find(|a| a.kind == AnnotKind::FreeText).unwrap();
+    assert_eq!(texto.contents, "Otro texto");
+    assert_eq!(texto.font_size, 14.0);
+    assert_eq!(a.len(), n);
+    // Borrar.
+    doc.remove_annotation(0, texto.index).unwrap();
+    assert_eq!(doc.annotations(0).len(), n - 1);
+    // En XFA no.
+    assert!(!Document::open(Path::new(XFA)).unwrap().can_annotate());
+}
+
+/// Organizar páginas: girar, borrar, mover, insertar y extraer (también
+/// con un PDF cifrado).
+fn paginas() {
+    use form_pdf_reader::pdfium::pages::{self, PageEdit};
+    let base = std::fs::read("tests/fixtures/normal.pdf").unwrap();
+    let otro = std::fs::read("tests/fixtures/acroform.pdf").unwrap();
+    let n_otro = pages::page_count(&otro, None).unwrap();
+    let texto = |b: &[u8], p: usize| {
+        let out = tmp("paginas-tmp.pdf");
+        std::fs::write(&out, b).unwrap();
+        let d = Document::open(&out).unwrap();
+        d.text_range(p, 0, d.text_char_count(p))
+    };
+    let primera = texto(&base, 0);
+    let tercera = texto(&base, 2);
+    let b = pages::edit_pages(
+        &base,
+        None,
+        &[
+            PageEdit::Rotate { pages: vec![0], quarter_turns: 1 },
+            PageEdit::Move { pages: vec![2], to: 0 },
+            PageEdit::Insert { pdf: otro.clone(), password: None, at: 3 },
+            PageEdit::Delete { pages: vec![1] },
+        ],
+    )
+    .unwrap();
+    // [3, 1(girada), 2] + otro al final, y sin la 1 (girada).
+    assert_eq!(pages::page_count(&b, None).unwrap(), 2 + n_otro);
+    assert_eq!(texto(&b, 0), tercera);
+    assert_eq!(pages::rotations(&b, None).unwrap()[0], 0);
+    assert!(b.starts_with(&base), "actualización incremental");
+    let b = pages::edit_pages(&base, None, &[PageEdit::Rotate { pages: vec![0, 1], quarter_turns: -1 }]).unwrap();
+    assert_eq!(&pages::rotations(&b, None).unwrap()[..2], &[3, 3]);
+    assert_eq!(texto(&b, 0), primera);
+    // No se pueden borrar todas.
+    assert!(pages::edit_pages(&base, None, &[PageEdit::Delete { pages: vec![0, 1, 2] }]).is_err());
+    // Extraer.
+    let e = pages::extract_pages(&base, None, &[2, 0]).unwrap();
+    assert_eq!(pages::page_count(&e, None).unwrap(), 2);
+    assert_eq!(texto(&e, 0), tercera);
+    assert_eq!(texto(&e, 1), primera);
+    // Cifrado: sigue pidiendo la contraseña.
+    let src = cifrar(Path::new("tests/fixtures/normal.pdf"), "secreto", "paginas-cifrado.pdf");
+    let cif = std::fs::read(&src).unwrap();
+    assert!(pages::page_count(&cif, None).is_err());
+    let b = pages::edit_pages(&cif, Some("secreto"), &[PageEdit::Delete { pages: vec![0] }]).unwrap();
+    assert!(pages::page_count(&b, None).is_err(), "debe seguir cifrado");
+    assert_eq!(pages::page_count(&b, Some("secreto")).unwrap(), 2);
+    // XFA no.
+    assert!(!Document::open(Path::new(XFA)).unwrap().can_edit_pages());
+    assert!(Document::open(Path::new("tests/fixtures/acroform.pdf")).unwrap().can_edit_pages());
+}
+
 fn region(doc: &Document, y0: i32, h: i32) -> Vec<u8> {
     let (w, ph) = doc.page_size(0);
     doc.render_region(0, w as i32, ph as i32, 0, y0, w as i32, h).unwrap()
@@ -752,6 +855,8 @@ fn pdfium_completo() {
     firmas_digitales();
     firmas_manuscritas();
     normal();
+    anotaciones();
+    paginas();
     acroform();
     xfa_dinamico();
     desplegable_cierre();

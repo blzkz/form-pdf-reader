@@ -14,9 +14,11 @@ use std::time::{Duration, Instant};
 
 pub use super::host::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest};
 
+mod annotations;
 mod digital;
 mod print;
 mod signatures;
+pub use annotations::{AnnotKind, Annotation};
 pub use digital::{DigitalSignature, SignedState};
 pub use print::{FlatPdf, Sheet, parse_page_ranges};
 pub use signatures::{PlacedSignature, render_signature, signature_size};
@@ -320,6 +322,12 @@ impl Document {
     /// true si las páginas las genera XFA (sin contenido PDF propio útil).
     pub fn is_dynamic_xfa(&self) -> bool {
         self.xfa_loaded && self.kind == FormKind::XfaFull
+    }
+
+    /// Se pueden organizar las páginas (ver `pages`): no en formularios XFA,
+    /// cuyas páginas las genera el formulario.
+    pub fn can_edit_pages(&self) -> bool {
+        !self.xfa_loaded
     }
 
     pub fn page_count(&self) -> usize {
@@ -1373,13 +1381,13 @@ impl Drop for Document {
 }
 
 #[repr(C)]
-struct Writer {
-    base: sys::FPDF_FILEWRITE,
-    buf: Vec<u8>,
+pub(super) struct Writer {
+    pub(super) base: sys::FPDF_FILEWRITE,
+    pub(super) buf: Vec<u8>,
 }
 
 impl Writer {
-    fn new() -> Box<Writer> {
+    pub(super) fn new() -> Box<Writer> {
         Box::new(Writer { base: sys::FPDF_FILEWRITE { version: 1, WriteBlock: Some(write_block) }, buf: Vec::new() })
     }
 }
