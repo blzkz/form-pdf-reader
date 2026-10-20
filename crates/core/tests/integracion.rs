@@ -296,6 +296,43 @@ fn orientacion_del_escaneo() {
     }
 }
 
+/// OCR (scripts/descargar-modelos.sh): un PDF de imagen gana una capa de
+/// texto que se puede buscar. Sin los modelos descargados no se prueba.
+#[cfg(feature = "ocr")]
+fn reconocer_texto() {
+    use form_pdf_reader::ocr::{Ocr, add_text_layer};
+    use form_pdf_reader::scan::{ScanImage, images_to_pdf};
+    let m = |f: &str| std::fs::read(format!("../../vendor/models/{f}"));
+    let (Ok(det), Ok(rec), Ok(dict)) = (m("det.onnx"), m("rec.onnx"), m("rec_dict.txt")) else {
+        eprintln!("sin los modelos de OCR en vendor/models: no se prueba");
+        return;
+    };
+    let ocr = Ocr::load(&det, &rec, &String::from_utf8(dict).unwrap()).unwrap();
+    let jpeg = std::fs::read("tests/fixtures/ocr.jpg").unwrap();
+    let pdf = images_to_pdf(&[ScanImage { jpeg, width: 1240, height: 900 }]).unwrap();
+    let mut pages = Vec::new();
+    let (with_text, lines) = add_text_layer(&pdf, None, &ocr, false, |d, t| pages.push((d, t))).unwrap();
+    assert!(lines >= 5, "{lines} líneas");
+    assert_eq!(pages.last(), Some(&(1, 1)));
+    let out = tmp("ocr.pdf");
+    std::fs::write(&out, &with_text).unwrap();
+    let doc = Document::open(&out).unwrap();
+    let text = doc.text_range(0, 0, doc.text_char_count(0));
+    for word in ["Solicitud", "ZANAHORIA", "Pérez", "1.234,56"] {
+        assert!(text.contains(word), "falta «{word}» en: {text}");
+    }
+    let hits = doc.search("zanahoria");
+    assert_eq!(hits.len(), 1);
+    // La palabra está donde se ve en la imagen (2.ª línea, a la izquierda).
+    let r = hits[0].rects[0];
+    let (pw, ph) = doc.page_size(0);
+    let (x, y) = (r[0] as f32 / pw, 1.0 - r[1] as f32 / ph);
+    assert!(x > 0.2 && x < 0.6 && y > 0.3 && y < 0.5, "zanahoria en {x}, {y}");
+    // Un PDF que ya tiene texto no cambia.
+    let normal = std::fs::read("tests/fixtures/normal.pdf").unwrap();
+    assert_eq!(add_text_layer(&normal, None, &ocr, true, |_, _| {}).unwrap().1, 0);
+}
+
 fn region(doc: &Document, y0: i32, h: i32) -> Vec<u8> {
     let (w, ph) = doc.page_size(0);
     doc.render_region(0, w as i32, ph as i32, 0, y0, w as i32, h).unwrap()
@@ -907,6 +944,8 @@ fn pdfium_completo() {
     escaneo();
     #[cfg(feature = "orientation")]
     orientacion_del_escaneo();
+    #[cfg(feature = "ocr")]
+    reconocer_texto();
     acroform();
     xfa_dinamico();
     desplegable_cierre();

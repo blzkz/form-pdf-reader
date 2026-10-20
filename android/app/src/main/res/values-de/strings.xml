@@ -253,4 +253,12 @@
     <string name="scan_hint_result">Wählen Sie das Aussehen der Seite. Fügen Sie Seiten hinzu oder speichern Sie das PDF.</string>
     <string name="scan_page_of">Seite %1$d von %2$d</string>
     <string name="scan_error">Scannen fehlgeschlagen: %1$s</string>
+    <string name="scan_ocr">Text erkennen (OCR)</string>
+    <string name="ocr_action">Text erkennen (OCR)</string>
+    <string name="ocr_working">Text wird erkannt…</string>
+    <string name="ocr_progress">Text wird erkannt: Seite %1$d von %2$d</string>
+    <string name="ocr_done">Text erkannt: %1$d Zeilen. Er kann jetzt durchsucht und markiert werden.</string>
+    <string name="ocr_nothing">Keine gescannten Seiten: Das Dokument enthält bereits Text.</string>
+    <string name="ocr_unavailable">Die Texterkennung ist nicht verfügbar.</string>
+    <string name="ocr_error">Der Text konnte nicht erkannt werden: %1$s</string>
 </resources>

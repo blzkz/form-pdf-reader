@@ -36,6 +36,7 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import uniffi.form_pdf_reader_ffi.OcrProgress
 import uniffi.form_pdf_reader_ffi.OrientationModel
 import uniffi.form_pdf_reader_ffi.ScanFilter
 import uniffi.form_pdf_reader_ffi.ScanPage
@@ -77,6 +78,7 @@ class ScanActivity : AppCompatActivity() {
     private lateinit var delete: MaterialButton
     private lateinit var add: MaterialButton
     private lateinit var next: MaterialButton
+    private lateinit var ocr: com.google.android.material.checkbox.MaterialCheckBox
 
     private val pages = mutableListOf<Page>()
     private var current = -1
@@ -120,6 +122,9 @@ class ScanActivity : AppCompatActivity() {
         delete = findViewById(R.id.scan_delete)
         add = findViewById(R.id.scan_add)
         next = findViewById(R.id.scan_next)
+        ocr = findViewById(R.id.scan_ocr)
+        ocr.isChecked = Prefs.scanOcr(this)
+        ocr.setOnCheckedChangeListener { _, on -> Prefs.setScanOcr(this, on) }
         crop = CropView(this)
         area.addView(crop, 0, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
@@ -380,7 +385,19 @@ class ScanActivity : AppCompatActivity() {
                 working(false)
                 return@run fail(e)
             }
-            PdfEngine.run({ scanPdf(list) }) { pdf ->
+            val read = ocr.isChecked
+            val onProgress = object : OcrProgress {
+                override fun progress(done: UInt, total: UInt) {
+                    runOnUiThread { if (done < total) hint.text = getString(R.string.ocr_progress, done.toInt() + 1, total.toInt()) }
+                }
+            }
+            if (read) hint.setText(R.string.ocr_working)
+            PdfEngine.run({
+                val pdf = scanPdf(list)
+                // The text of the pages as an invisible layer (if the models load).
+                val engine = if (read) OcrModels.engine(applicationContext) else null
+                engine?.addTextLayer(pdf, null, onProgress)?.pdf ?: pdf
+            }) { pdf ->
                 val bytes = pdf.getOrElse { e ->
                     working(false)
                     return@run fail(e)
@@ -447,6 +464,7 @@ class ScanActivity : AppCompatActivity() {
         retake.tooltipText = retakeText
         delete.isVisible = has
         add.isVisible = has && !cropping
+        ocr.isVisible = has && !cropping
         next.isEnabled = !busy && has && (cropping || pages.any { it.output != null })
         next.setText(if (cropping) R.string.scan_crop else R.string.scan_save)
         hint.setText(if (!has) R.string.scan_empty_hint else if (cropping) R.string.scan_hint_crop else R.string.scan_hint_result)

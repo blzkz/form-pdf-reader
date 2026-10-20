@@ -476,6 +476,44 @@ impl OrientationModel {
     }
 }
 
+/// Told how reading the text of a document goes.
+#[uniffi::export(callback_interface)]
+pub trait OcrProgress: Send + Sync {
+    /// `done` pages of `total` read.
+    fn progress(&self, done: u32, total: u32);
+}
+
+/// The OCR models (PaddleOCR's text detection and Latin recognition, from
+/// the app's assets).
+#[derive(uniffi::Object)]
+pub struct OcrEngine {
+    ocr: form_pdf_reader::ocr::Ocr,
+}
+
+/// A PDF with a text layer, and how many lines of text it got.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct OcrResult {
+    pub pdf: Vec<u8>,
+    pub lines: u32,
+}
+
+#[uniffi::export]
+impl OcrEngine {
+    #[uniffi::constructor]
+    pub fn load(det: Vec<u8>, rec: Vec<u8>, dict: String) -> Result<Arc<Self>, PdfError> {
+        let ocr = form_pdf_reader::ocr::Ocr::load(&det, &rec, &dict).map_err(|e| PdfError::Open(format!("{e:#}")))?;
+        Ok(Arc::new(OcrEngine { ocr }))
+    }
+
+    /// Adds an invisible text layer with the text read on each page that has
+    /// none (scanned pages), so it can be searched and selected.
+    pub fn add_text_layer(&self, pdf: Vec<u8>, password: Option<String>, progress: Box<dyn OcrProgress>) -> Result<OcrResult, PdfError> {
+        let (pdf, lines) = form_pdf_reader::ocr::add_text_layer(&pdf, password.as_deref(), &self.ocr, false, |d, t| progress.progress(d as u32, t as u32))
+            .map_err(|e| PdfError::Save(format!("{e:#}")))?;
+        Ok(OcrResult { pdf, lines: lines as u32 })
+    }
+}
+
 /// Number of pages of a PDF (to check one before inserting it:
 /// `PdfError::Password` if it needs a password).
 #[uniffi::export]
@@ -1261,6 +1299,17 @@ impl PdfDocument {
         let bytes = doc.bytes_for_save().map_err(|e| PdfError::Save(format!("{e:#}")))?;
         let edits: Vec<PageEdit> = edits.into_iter().map(Into::into).collect();
         core_pages::edit_pages(&bytes, doc.password(), &edits).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// The document (with its form data and annotations) with a text layer
+    /// on the pages that have no text (scanned ones): open it again from
+    /// these bytes.
+    pub fn recognize_text(&self, ocr: Arc<OcrEngine>, progress: Box<dyn OcrProgress>) -> Result<OcrResult, PdfError> {
+        let mut doc = self.lock();
+        let bytes = doc.bytes_for_save().map_err(|e| PdfError::Save(format!("{e:#}")))?;
+        let (pdf, lines) = form_pdf_reader::ocr::add_text_layer(&bytes, doc.password(), &ocr.ocr, true, |d, t| progress.progress(d as u32, t as u32))
+            .map_err(|e| PdfError::Save(format!("{e:#}")))?;
+        Ok(OcrResult { pdf, lines: lines as u32 })
     }
 
     /// A new PDF with these pages (in this order).

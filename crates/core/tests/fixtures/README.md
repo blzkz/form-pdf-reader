@@ -1,7 +1,8 @@
 # Test fixtures
 
-- `normal.pdf`, `acroform.pdf`, `escaneo.jpg`: made for these tests, MIT
-  like the rest of the project.
+- `normal.pdf`, `acroform.pdf`, `escaneo.jpg`, `ocr.jpg`: made for these
+  tests (`ocr.jpg` with Liberation Sans and made-up data), MIT like the
+  rest of the project.
 - `TINTERNET_original.pdf`: blank application form published by the Banco de
   España, a real dynamic XFA form. It is not covered by the project's MIT
   licence and is included only as test material.

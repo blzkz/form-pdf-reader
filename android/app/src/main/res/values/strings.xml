@@ -254,4 +254,12 @@
     <string name="scan_hint_result">Choose how the page looks. Add more pages or save the PDF.</string>
     <string name="scan_page_of">Page %1$d of %2$d</string>
     <string name="scan_error">Could not scan: %1$s</string>
+    <string name="scan_ocr">Read the text (OCR)</string>
+    <string name="ocr_action">Recognise text (OCR)</string>
+    <string name="ocr_working">Reading the text…</string>
+    <string name="ocr_progress">Reading the text: page %1$d of %2$d</string>
+    <string name="ocr_done">Text recognised: %1$d lines. It can now be searched and selected.</string>
+    <string name="ocr_nothing">No scanned pages: the document already has text.</string>
+    <string name="ocr_unavailable">Text recognition is not available.</string>
+    <string name="ocr_error">Could not read the text: %1$s</string>
 </resources>

@@ -8,6 +8,7 @@ object Prefs {
     private const val THEME = "theme"
     private const val CONTINUOUS_XFA = "continuous_xfa"
     private const val SCAN_FILTER = "scan_filter"
+    private const val SCAN_OCR = "scan_ocr"
 
     private fun prefs(c: Context) = c.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
@@ -32,5 +33,12 @@ object Prefs {
 
     fun setScanFilter(c: Context, name: String) {
         prefs(c).edit().putString(SCAN_FILTER, name).apply()
+    }
+
+    /** Read the text (OCR) of scanned documents (on by default). */
+    fun scanOcr(c: Context): Boolean = prefs(c).getBoolean(SCAN_OCR, true)
+
+    fun setScanOcr(c: Context, on: Boolean) {
+        prefs(c).edit().putBoolean(SCAN_OCR, on).apply()
     }
 }

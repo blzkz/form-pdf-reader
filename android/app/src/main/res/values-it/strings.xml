@@ -253,4 +253,12 @@
     <string name="scan_hint_result">Scegli l’aspetto della pagina. Aggiungi altre pagine o salva il PDF.</string>
     <string name="scan_page_of">Pagina %1$d di %2$d</string>
     <string name="scan_error">Impossibile scansionare: %1$s</string>
+    <string name="scan_ocr">Riconosci il testo (OCR)</string>
+    <string name="ocr_action">Riconosci testo (OCR)</string>
+    <string name="ocr_working">Riconoscimento del testo…</string>
+    <string name="ocr_progress">Riconoscimento del testo: pagina %1$d di %2$d</string>
+    <string name="ocr_done">Testo riconosciuto: %1$d righe. Ora si può cercare e selezionare.</string>
+    <string name="ocr_nothing">Nessuna pagina scansionata: il documento ha già del testo.</string>
+    <string name="ocr_unavailable">Il riconoscimento del testo non è disponibile.</string>
+    <string name="ocr_error">Impossibile riconoscere il testo: %1$s</string>
 </resources>

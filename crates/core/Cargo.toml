@@ -39,6 +39,8 @@ tract-onnx = { version = "0.23", optional = true, default-features = false }
 [features]
 # Girar solas las páginas escaneadas (lo usa la app de Android).
 orientation = ["dep:tract-onnx"]
+# Reconocer el texto de las páginas escaneadas (OCR; la app de Android).
+ocr = ["dep:tract-onnx"]
 
 [dev-dependencies]
 env_logger.workspace = true
