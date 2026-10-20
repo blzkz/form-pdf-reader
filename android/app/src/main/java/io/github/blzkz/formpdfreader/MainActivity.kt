@@ -80,6 +80,8 @@ class MainActivity : AppCompatActivity() {
         var draftedEdits = 0
         /** The password the PDF asked for, while it is open (never stored). */
         var password: String? = null
+        /** Locked by a digital signature: it cannot be changed, saved nor signed. */
+        var locked = false
     }
 
     private lateinit var toolbar: MaterialToolbar
@@ -433,6 +435,11 @@ class MainActivity : AppCompatActivity() {
                         updateTitle()
                         invalidateOptionsMenu()
                     }
+                    PdfEngine.run({ d.lockedBySignature() }) { l ->
+                        t.locked = l.getOrNull() == true
+                        t.view.readOnly = t.locked
+                        if (t.locked) Toast.makeText(this, R.string.dsig_locked, Toast.LENGTH_LONG).show()
+                    }
                     PdfEngine.run({ d.kind() }) { k ->
                         t.kind = k.getOrNull()
                         // (After recovering changes, that notice is the one to read.)
@@ -608,6 +615,7 @@ class MainActivity : AppCompatActivity() {
     private fun save(tab: DocTab? = current, afterSave: (() -> Unit)? = null) {
         val t = tab ?: return
         if (t.doc == null) return
+        if (t.locked) return showError(getString(R.string.dsig_locked_save))
         val item = t.item
         val uri = item.contentUri
         val writable = !isTemporary(item) && (item.path != null || (uri != null && canWrite(uri)))
@@ -622,6 +630,7 @@ class MainActivity : AppCompatActivity() {
     private fun saveAs(tab: DocTab? = current) {
         val t = tab ?: return
         if (t.doc == null) return
+        if (t.locked) return showError(getString(R.string.dsig_locked_save))
         saveAsTab = t
         createDocument.launch(t.item.name)
     }
@@ -1149,6 +1158,7 @@ class MainActivity : AppCompatActivity() {
     private fun sign() {
         val t = current ?: return
         val d = t.doc ?: return
+        if (t.locked) return showError(getString(R.string.dsig_locked))
         PdfEngine.run({ d.canSign() }) { r ->
             val handwritten = r.getOrNull() == true
             Signatures.showMenu(this, handwritten, onPlace = { id ->
@@ -1269,7 +1279,7 @@ class MainActivity : AppCompatActivity() {
             val target = itemFor(uri)
             val lib = Signatures.library(this)
             PdfEngine.run({
-                d.prepareDigitalSignature(placement, o.reason, o.location, lib, o.handwrittenId, signer.chain)
+                d.prepareDigitalSignature(placement, o.reason, o.location, lib, o.handwrittenId, signer.chain, o.lock)
             }) { r ->
                 val pending = r.getOrElse { e -> return@run showError(getString(R.string.dsig_failed, e.message ?: "")) }
                 t.view.refreshSignatures()
@@ -1318,7 +1328,7 @@ class MainActivity : AppCompatActivity() {
         DnieReader.askCodes(this, error) { can, pin ->
             DnieReader.sign(this, can, pin, { chain, sign ->
                 val pending = try {
-                    PdfEngine.submit { d.prepareDigitalSignature(placement, o.reason, o.location, lib, o.handwrittenId, chain) }.get()
+                    PdfEngine.submit { d.prepareDigitalSignature(placement, o.reason, o.location, lib, o.handwrittenId, chain, o.lock) }.get()
                 } catch (e: java.util.concurrent.ExecutionException) {
                     throw e.cause ?: e
                 }

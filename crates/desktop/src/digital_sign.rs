@@ -25,6 +25,8 @@ pub struct SignPlan {
     pub location: String,
     /// Servidor de sellado de tiempo, si se pide sello.
     pub timestamp: Option<String>,
+    /// Bloquear el documento tras firmar.
+    pub lock: bool,
     /// Lo elegido para el sello (para recordarlo).
     pub timestamp_on: bool,
     pub timestamp_server: String,
@@ -59,6 +61,7 @@ pub struct DigitalSignDialog {
     dynamic_xfa: bool,
     timestamp: bool,
     timestamp_server: String,
+    lock: bool,
 }
 
 impl DigitalSignDialog {
@@ -88,6 +91,7 @@ impl DigitalSignDialog {
             location: String::new(),
             dynamic_xfa,
             timestamp,
+            lock: false,
             timestamp_server: timestamp_server.unwrap_or_else(|| form_pdf_reader::pades::tsa::DEFAULT_TSA.to_string()),
         }
     }
@@ -316,6 +320,15 @@ impl DigitalSignDialog {
         if self.timestamp {
             ui.label(RichText::new(format!("{}  {}", icon::INFO, t!("dsig.timestamp_note"))).small().color(p.text_weak));
         }
+        ui.horizontal(|ui| {
+            ui.visuals_mut().widgets.inactive.corner_radius = egui::CornerRadius::same(3);
+            ui.visuals_mut().widgets.hovered.corner_radius = egui::CornerRadius::same(3);
+            ui.visuals_mut().widgets.active.corner_radius = egui::CornerRadius::same(3);
+            ui.checkbox(&mut self.lock, format!("{}  {}", icon::LOCK, t!("dsig.lock"))).on_hover_text(t!("dsig.lock_tip"));
+        });
+        if self.lock {
+            ui.label(RichText::new(format!("{}  {}", icon::INFO, t!("dsig.lock_note"))).small().color(p.text_weak));
+        }
         if self.dynamic_xfa {
             ui.label(RichText::new(format!("{}  {}", icon::INFO, t!("dsig.note_xfa"))).small().color(p.text_weak));
         }
@@ -342,6 +355,7 @@ impl DigitalSignDialog {
                     reason: self.reason.trim().to_string(),
                     location: self.location.trim().to_string(),
                     timestamp: (self.timestamp && !self.timestamp_server.trim().is_empty()).then(|| self.timestamp_server.trim().to_string()),
+                    lock: self.lock,
                     timestamp_on: self.timestamp,
                     timestamp_server: self.timestamp_server.trim().to_string(),
                 })))

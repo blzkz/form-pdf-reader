@@ -36,11 +36,13 @@ struct Tab {
     /// al abrir y al guardar).
     digital: Vec<DigitalSignature>,
     usage_rights: bool,
+    /// Bloqueado por una firma: no se puede modificar, guardar ni firmar.
+    locked: bool,
 }
 
 impl Tab {
     fn new(view: DocView) -> Tab {
-        let mut t = Tab { view, dirty: false, search: String::new(), digital: Vec::new(), usage_rights: false };
+        let mut t = Tab { view, dirty: false, search: String::new(), digital: Vec::new(), usage_rights: false, locked: false };
         t.read_signatures();
         t
     }
@@ -48,6 +50,8 @@ impl Tab {
     fn read_signatures(&mut self) {
         self.digital = self.view.doc.digital_signatures();
         self.usage_rights = self.view.doc.has_usage_rights();
+        self.locked = self.view.doc.locked_by_signature();
+        self.view.set_read_only(self.locked);
     }
 }
 
@@ -255,6 +259,10 @@ impl PdfApp {
 
     fn save(&mut self, path: Option<PathBuf>) -> bool {
         let Some(tab) = self.cur_mut() else { return false };
+        if tab.locked {
+            self.error = Some(t!("dsig.locked_save"));
+            return false;
+        }
         let target = match path {
             Some(p) => p,
             None => tab.view.doc.path().to_path_buf(),
@@ -614,9 +622,14 @@ impl PdfApp {
             if v.is_placing() {
                 sign_button = sign_button.fill(theme::palette(ui).accent.gamma_multiply(0.16));
             }
-            let (r, inner) = theme::flat(ui, |ui| egui::containers::menu::MenuButton::from_button(sign_button).ui(ui, |ui| self.signatures.menu(ui, can_sign)));
-            r.on_hover_text(t!("sign.button_tip"));
-            let action = inner.and_then(|i| i.inner);
+            // Bloqueado por una firma: ni manuscritas ni digitales.
+            let locked = v.is_read_only();
+            let mut action = None;
+            ui.add_enabled_ui(!locked, |ui| {
+                let (r, inner) = theme::flat(ui, |ui| egui::containers::menu::MenuButton::from_button(sign_button).ui(ui, |ui| self.signatures.menu(ui, can_sign)));
+                r.on_hover_text(t!("sign.button_tip")).on_disabled_hover_text(t!("dsig.locked"));
+                action = inner.and_then(|i| i.inner);
+            });
             match action {
                 Some(crate::signatures::Action::Digital) => *digital_requested = true,
                 Some(crate::signatures::Action::Place(sig)) => {
@@ -732,6 +745,10 @@ impl PdfApp {
                 let r = ui.add(egui::Label::new(RichText::new(format!("{glyph} {text}")).size(12.0).color(color)).sense(egui::Sense::click()));
                 open_digital = r.on_hover_text(t!("digital.menu")).clicked();
                 ui.label(small("·".into()));
+                if t.locked {
+                    ui.label(RichText::new(format!("{} {}", icon::LOCK, t!("dsig.locked_status"))).size(12.0).color(p.text_weak)).on_hover_text(t!("dsig.locked"));
+                    ui.label(small("·".into()));
+                }
             }
             if open_digital {
                 self.show_digital = true;
@@ -977,6 +994,7 @@ impl PdfApp {
             location: Some(plan.location).filter(|s| !s.is_empty()),
             handwritten: plan.handwritten,
             timestamp: plan.timestamp,
+            lock: plan.lock,
         };
         let Some(view) = self.view_mut() else { return };
         view.commit_focus();

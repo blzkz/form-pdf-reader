@@ -34,6 +34,8 @@ object DigitalSign {
         val handwrittenId: String?,
         val reason: String,
         val location: String,
+        /** Lock the document after signing (no more changes nor signatures). */
+        val lock: Boolean,
     )
 
     private fun dp(c: Context, v: Float) = (v * c.resources.displayMetrics.density).toInt()
@@ -111,7 +113,13 @@ object DigitalSign {
         val location = field(R.string.dsig_optional)
         box.addView(location)
 
+        val lock = android.widget.CheckBox(a).apply {
+            setText(R.string.dsig_lock)
+            setPadding(paddingLeft, dp(a, 12f), paddingRight, paddingBottom)
+        }
+        box.addView(lock)
         val notes = buildList {
+            add(a.getString(R.string.dsig_lock_note))
             if (dynamicXfa) add(a.getString(R.string.dsig_note_xfa))
             add(a.getString(R.string.dsig_note_copy))
         }
@@ -140,6 +148,7 @@ object DigitalSign {
                         handwrittenId = if (visible && h > 0) saved[h - 1].id else null,
                         reason = reason.text.toString().trim(),
                         location = location.text.toString().trim(),
+                        lock = lock.isChecked,
                     ),
                 )
             }

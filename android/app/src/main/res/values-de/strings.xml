@@ -183,4 +183,8 @@
     <string name="dnie_lost">Die Verbindung zum DNIe ist abgebrochen. Versuchen Sie es erneut, ohne ihn vom Telefon zu entfernen.</string>
     <string name="dnie_error">DNIe-Fehler: %1$s</string>
     <string name="dnie_cert_expired">Das Signaturzertifikat des DNIe ist am %1$s abgelaufen. Erneuern Sie es an einem DNIe-Terminal der Policía Nacional.</string>
+    <string name="dsig_lock">Dokument nach dem Signieren sperren</string>
+    <string name="dsig_lock_note">Bei der ersten Signatur wird das Dokument ohne erlaubte Änderungen zertifiziert; hatte es schon Signaturen, wird es beim Signieren gesperrt. Niemand kann es ändern oder erneut signieren, ohne die Signatur ungültig zu machen.</string>
+    <string name="dsig_locked">Dokument durch eine digitale Signatur gesperrt: es kann weder geändert noch erneut signiert werden.</string>
+    <string name="dsig_locked_save">Dieses Dokument ist durch eine digitale Signatur gesperrt: es kann weder geändert noch gespeichert werden. Sie können es teilen oder drucken.</string>
 </resources>
