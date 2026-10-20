@@ -155,6 +155,12 @@ made-up data and the public US Form I-9.
   like a photocopy (also with shadows). The scan opens as a new document;
   "Insert scanned pages…" adds pages to an open one. Everything runs on the
   device with the app's own code, without Google services.
+- **Text recognition (OCR, Android):** scans get an invisible text layer
+  with the text read from the image (PaddleOCR's text detection and Latin
+  recognition models, for Spanish, English, French, Italian, Portuguese,
+  German and other Latin-script languages), so they can be searched and
+  their text selected and copied, here and in any viewer. ⋮ > Recognise
+  text (OCR) does the same for any open PDF made of images.
 
 ## How dynamic XFA forms are handled
 

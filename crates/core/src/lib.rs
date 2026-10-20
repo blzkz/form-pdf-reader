@@ -3,5 +3,7 @@ pub mod i18n;
 pub mod pades;
 pub mod pdfium;
 pub mod scan;
+#[cfg(feature = "ocr")]
+pub mod ocr;
 pub mod sign;
 pub mod xfa;

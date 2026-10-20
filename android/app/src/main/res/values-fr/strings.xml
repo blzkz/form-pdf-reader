@@ -253,4 +253,12 @@
     <string name="scan_hint_result">Choisissez l’aspect de la page. Ajoutez des pages ou enregistrez le PDF.</string>
     <string name="scan_page_of">Page %1$d sur %2$d</string>
     <string name="scan_error">Impossible de numériser : %1$s</string>
+    <string name="scan_ocr">Reconnaître le texte (OCR)</string>
+    <string name="ocr_action">Reconnaître le texte (OCR)</string>
+    <string name="ocr_working">Reconnaissance du texte…</string>
+    <string name="ocr_progress">Reconnaissance du texte : page %1$d sur %2$d</string>
+    <string name="ocr_done">Texte reconnu : %1$d lignes. Il peut maintenant être recherché et sélectionné.</string>
+    <string name="ocr_nothing">Aucune page numérisée : le document contient déjà du texte.</string>
+    <string name="ocr_unavailable">La reconnaissance de texte n’est pas disponible.</string>
+    <string name="ocr_error">Impossible de reconnaître le texte : %1$s</string>
 </resources>

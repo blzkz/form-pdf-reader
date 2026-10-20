@@ -50,6 +50,7 @@ import uniffi.form_pdf_reader_ffi.certificateIsRsa
 import uniffi.form_pdf_reader_ffi.DocKind
 import uniffi.form_pdf_reader_ffi.InputResult
 import uniffi.form_pdf_reader_ffi.PdfDocument
+import uniffi.form_pdf_reader_ffi.OcrProgress
 import uniffi.form_pdf_reader_ffi.PageEditOp
 import uniffi.form_pdf_reader_ffi.PdfException
 
@@ -872,6 +873,7 @@ class MainActivity : AppCompatActivity() {
             isChecked = annotBar.isOpen
         }
         menu.findItem(R.id.action_pages)?.isEnabled = t != null && t.doc != null && t.canEditPages && !t.locked
+        menu.findItem(R.id.action_ocr)?.isEnabled = t != null && t.doc != null && t.canEditPages && !t.locked
         // Tablets have these in the toolbar.
         menu.findItem(R.id.action_view)?.isVisible = !isTablet
         menu.findItem(R.id.action_go_to_page)?.isVisible = !isTablet
@@ -922,6 +924,7 @@ class MainActivity : AppCompatActivity() {
             R.id.action_print -> print()
             R.id.action_annotate -> current?.let { t -> if (annotBar.view === t.view) annotBar.close() else annotBar.open(t.view) }
             R.id.action_pages -> openPages()
+            R.id.action_ocr -> recognizeText()
             R.id.action_attachments -> showAttachments()
             R.id.action_copy_text -> copyPageText()
             R.id.action_go_to_page -> askPage()
@@ -1592,26 +1595,38 @@ class MainActivity : AppCompatActivity() {
      * changes unsaved).
      */
     private fun applyPageEdit(t: DocTab, op: PageEditOp, select: List<Int>) {
+        reopenWith(t, { d -> d.editPages(listOf(op)) }, onError = { e ->
+            if (e is PdfException.Password || e is PdfException.WrongPassword) {
+                (op as? PageEditOp.Insert)?.let { askInsertPassword(it.pdf, e is PdfException.WrongPassword) }
+            } else {
+                showError(getString(R.string.pages_error, e.message ?: ""))
+            }
+        }) { nd ->
+            t.view.goToPage(select.firstOrNull() ?: t.view.currentPage)
+            pagesDialog?.takeIf { it.isShowing }?.setDocument(nd, select)
+            Toast.makeText(this, R.string.pages_changed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Replaces [t]'s document with the one [change] makes from it (on the
+     * PDFium thread): written to a new copy in the cache and opened in place
+     * of the old one, with the changes unsaved.
+     */
+    private fun reopenWith(t: DocTab, change: (PdfDocument) -> ByteArray, onError: (Throwable) -> Unit, onDone: (PdfDocument) -> Unit) {
         val d = t.doc ?: return
         val continuous = Prefs.continuousXfa(this)
         val password = t.password
         val name = t.file?.name ?: t.item.name
         progress.visibility = View.VISIBLE
         PdfEngine.run({
-            val bytes = d.editPages(listOf(op))
+            val bytes = change(d)
             val file = File(cacheDir, "docs/${System.nanoTime()}").apply { mkdirs() }.resolve(name)
             file.writeBytes(bytes)
             Pair(file, PdfDocument.open(file.absolutePath, continuous, password).also { it.setHandler(formHandler) })
         }) { r ->
             progress.visibility = View.GONE
-            val (file, nd) = r.getOrElse { e ->
-                if (e is PdfException.Password || e is PdfException.WrongPassword) {
-                    (op as? PageEditOp.Insert)?.let { askInsertPassword(it.pdf, e is PdfException.WrongPassword) }
-                } else {
-                    showError(getString(R.string.pages_error, e.message ?: ""))
-                }
-                return@run
-            }
+            val (file, nd) = r.getOrElse { e -> return@run onError(e) }
             if (t !in docs || t.doc !== d) {
                 PdfEngine.run({ nd.destroy() }) { file.parentFile?.deleteRecursively() }
                 return@run
@@ -1622,11 +1637,37 @@ class MainActivity : AppCompatActivity() {
             PdfEngine.run({ d.destroy() }) { old?.parentFile?.deleteRecursively() }
             val page = t.view.currentPage
             t.view.setDocument(nd)
-            t.view.goToPage(select.firstOrNull() ?: page)
+            t.view.goToPage(page)
             markModified(t)
             PdfEngine.run({ nd.digitalSignatures().isNotEmpty() }) { s -> t.signed = s.getOrDefault(t.signed) }
-            pagesDialog?.takeIf { it.isShowing }?.setDocument(nd, select)
-            Toast.makeText(this, R.string.pages_changed, Toast.LENGTH_SHORT).show()
+            onDone(nd)
+        }
+    }
+
+    /** Reads the text of the scanned pages (OCR) and adds it as an invisible layer. */
+    private fun recognizeText() {
+        val t = current ?: return
+        annotBar.close()
+        var lines = 0u
+        val progressText = Toast.makeText(this, R.string.ocr_working, Toast.LENGTH_LONG)
+        progressText.show()
+        val onProgress = object : OcrProgress {
+            override fun progress(done: UInt, total: UInt) {
+                main.post { toolbar.subtitle = if (done < total) getString(R.string.ocr_progress, done.toInt() + 1, total.toInt()) else null }
+            }
+        }
+        t.view.commitField {
+            reopenWith(t, { d ->
+                val engine = OcrModels.engine(this) ?: error(getString(R.string.ocr_unavailable))
+                d.recognizeText(engine, onProgress).also { lines = it.lines }.pdf
+            }, onError = { e ->
+                toolbar.subtitle = null
+                showError(getString(R.string.ocr_error, e.message ?: ""))
+            }) {
+                toolbar.subtitle = null
+                progressText.cancel()
+                Toast.makeText(this, if (lines > 0u) getString(R.string.ocr_done, lines.toInt()) else getString(R.string.ocr_nothing), Toast.LENGTH_LONG).show()
+            }
         }
     }
 

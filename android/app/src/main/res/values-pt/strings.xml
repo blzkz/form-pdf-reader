@@ -253,4 +253,12 @@
     <string name="scan_hint_result">Escolha o aspeto da página. Adicione mais páginas ou guarde o PDF.</string>
     <string name="scan_page_of">Página %1$d de %2$d</string>
     <string name="scan_error">Não foi possível digitalizar: %1$s</string>
+    <string name="scan_ocr">Reconhecer o texto (OCR)</string>
+    <string name="ocr_action">Reconhecer texto (OCR)</string>
+    <string name="ocr_working">A reconhecer o texto…</string>
+    <string name="ocr_progress">A reconhecer o texto: página %1$d de %2$d</string>
+    <string name="ocr_done">Texto reconhecido: %1$d linhas. Já se pode pesquisar e selecionar.</string>
+    <string name="ocr_nothing">Não há páginas digitalizadas: o documento já tem texto.</string>
+    <string name="ocr_unavailable">O reconhecimento de texto não está disponível.</string>
+    <string name="ocr_error">Não foi possível reconhecer o texto: %1$s</string>
 </resources>

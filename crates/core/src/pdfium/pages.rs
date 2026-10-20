@@ -34,13 +34,13 @@ pub enum PageEdit {
 }
 
 /// Un PDF abierto desde unos bytes, que viven tanto como él.
-struct MemDoc<'a> {
-    doc: sys::FPDF_DOCUMENT,
+pub(crate) struct MemDoc<'a> {
+    pub(crate) doc: sys::FPDF_DOCUMENT,
     _bytes: &'a [u8],
 }
 
 impl<'a> MemDoc<'a> {
-    fn open(bytes: &'a [u8], password: Option<&str>) -> Result<MemDoc<'a>> {
+    pub(crate) fn open(bytes: &'a [u8], password: Option<&str>) -> Result<MemDoc<'a>> {
         init();
         let pw = password.filter(|p| !p.is_empty()).map(|p| std::ffi::CString::new(p).unwrap_or_default());
         let doc = unsafe { sys::FPDF_LoadMemDocument64(bytes.as_ptr() as *const c_void, bytes.len(), pw.as_ref().map_or(std::ptr::null(), |c| c.as_ptr())) };
@@ -53,7 +53,7 @@ impl<'a> MemDoc<'a> {
         Ok(MemDoc { doc, _bytes: bytes })
     }
 
-    fn page_count(&self) -> usize {
+    pub(crate) fn page_count(&self) -> usize {
         unsafe { sys::FPDF_GetPageCount(self.doc).max(0) as usize }
     }
 

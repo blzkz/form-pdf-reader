@@ -93,6 +93,15 @@
             android:text="@string/scan_bw" />
     </com.google.android.material.button.MaterialButtonToggleGroup>
 
+    <!-- Read the text (OCR) when saving the PDF. -->
+    <com.google.android.material.checkbox.MaterialCheckBox
+        android:id="@+id/scan_ocr"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:text="@string/scan_ocr"
+        android:visibility="gone" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

@@ -18,6 +18,7 @@ software developed by blzkz.
 - Scanning a document (Android) takes the photos with your camera app (or
   from your gallery, if you choose them there) and processes them only on
   the device, with the app's own code. The app needs no camera permission.
+  Reading the text of the scans (OCR) also happens only on the device.
 - The desktop app connects to the Internet only to check GitHub for new
   versions (once a day, which can be turned off in Settings) and download
   them, and, if you ask for it when signing with a certificate, to get a
@@ -55,7 +56,8 @@ personal.**
 - Escanear un documento (Android) hace las fotos con tu aplicación de
   cámara (o las toma de tu galería, si las eliges ahí) y las procesa solo en
   el dispositivo, con el código de la propia app. La app no necesita el
-  permiso de la cámara.
+  permiso de la cámara. Reconocer el texto de lo escaneado (OCR) también se
+  hace solo en el dispositivo.
 - La app de escritorio solo se conecta a Internet para buscar versiones
   nuevas en GitHub (una vez al día, se puede desactivar en Ajustes) y
   descargarlas, y, si lo pides al firmar con certificado, para obtener un

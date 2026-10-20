@@ -23,6 +23,6 @@ required-features = ["bindgen"]
 bindgen = ["uniffi/cli"]
 
 [dependencies]
-form-pdf-reader-core = { path = "../core", features = ["orientation"] }
+form-pdf-reader-core = { path = "../core", features = ["orientation", "ocr"] }
 log.workspace = true
 uniffi = "0.32"
