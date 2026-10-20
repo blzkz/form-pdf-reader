@@ -1147,7 +1147,9 @@ impl PdfDocument {
             .iter()
             .map(|s| {
                 s.points
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|c| {
                         let (x, y) = doc.device_to_page(p, w as f64, h as f64, c[0] as f64, c[1] as f64);
                         [x as f32, y as f32]
