@@ -94,9 +94,18 @@ jobs:
         with:
           name: packages
           path: dist/*
+      # Novedades por idioma (packaging/novedades/<versión>.md), que enseña la
+      # aplicación al avisar de la versión; la lista de cambios de GitHub va
+      # detrás.
+      - name: Release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          f="packaging/novedades/${GITHUB_REF_NAME#v}.md"
+          if [[ -f "$f" ]]; then { cat "$f"; printf '\n<!-- end -->\n'; } > "$RUNNER_TEMP/notes.md"; else : > "$RUNNER_TEMP/notes.md"; fi
       - name: GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*
+          body_path: ${{ runner.temp }}/notes.md
           generate_release_notes: true

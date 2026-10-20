@@ -40,7 +40,7 @@ pub struct Asset {
 pub struct Release {
     pub version: String,
     pub page: String,
-    /// Las novedades (el texto de la versión en GitHub).
+    /// El texto de la versión en GitHub (ver `notes_for`).
     pub notes: String,
     pub assets: Vec<Asset>,
 }
@@ -114,7 +114,7 @@ pub fn latest() -> Result<Release> {
                 .collect()
         })
         .unwrap_or_default();
-    Ok(Release { version: s("tag_name").trim_start_matches('v').to_string(), page: s("html_url"), notes: plain_notes(&s("body")), assets })
+    Ok(Release { version: s("tag_name").trim_start_matches('v').to_string(), page: s("html_url"), notes: s("body"), assets })
 }
 
 /// Las novedades en texto llano: sin las marcas de Markdown y con los
@@ -123,7 +123,8 @@ fn plain_notes(md: &str) -> String {
     let mut out = Vec::new();
     for line in md.lines() {
         let l = line.trim();
-        if l.starts_with("**Full Changelog**") {
+        // Lo que añade GitHub en inglés.
+        if l.starts_with("**Full Changelog**") || l.trim_start_matches('#').trim() == "What's Changed" {
             continue;
         }
         let l = l.trim_start_matches('#').trim_start();
@@ -140,6 +141,44 @@ fn plain_notes(md: &str) -> String {
         out.push(l.replace("**", ""));
     }
     out.join("\n").trim().to_string()
+}
+
+/// Las novedades en el idioma `lang`. El texto de la versión trae una
+/// sección por idioma (de `packaging/novedades/<versión>.md`), cada una tras una
+/// marca `<!-- lang:xx -->` y hasta la siguiente marca (`<!-- end -->` al
+/// final); sin la del idioma, la inglesa. Las versiones sin secciones solo
+/// traen la lista de cambios de GitHub, con los títulos en español: solo se
+/// enseña con la interfaz en español.
+pub fn notes_for(body: &str, lang: &str) -> Option<String> {
+    let mut sections: Vec<(&str, Vec<&str>)> = Vec::new();
+    let mut current: Option<usize> = None;
+    for line in body.lines() {
+        let l = line.trim();
+        if let Some(mark) = l.strip_prefix("<!--").and_then(|m| m.strip_suffix("-->")).map(str::trim) {
+            current = mark.strip_prefix("lang:").map(|code| {
+                sections.push((code.trim(), Vec::new()));
+                sections.len() - 1
+            });
+            continue;
+        }
+        if let Some(i) = current {
+            // El título de la sección ("## English") sobra en la ventana.
+            if sections[i].1.is_empty() && (l.is_empty() || l.starts_with('#')) {
+                continue;
+            }
+            sections[i].1.push(line);
+        }
+    }
+    if sections.is_empty() {
+        return (lang == "es").then(|| plain_notes(body)).filter(|n| !n.is_empty());
+    }
+    let pick = sections.iter().position(|(c, _)| *c == lang).or_else(|| sections.iter().position(|(c, _)| *c == "en"))?;
+    let lines = &mut sections[pick].1;
+    // Ni el título de la sección siguiente, si va antes de su marca.
+    while lines.last().is_some_and(|l| l.trim().is_empty() || l.trim().starts_with('#')) {
+        lines.pop();
+    }
+    Some(plain_notes(&lines.join("\n"))).filter(|n| !n.is_empty())
 }
 
 /// Hay una versión más nueva que esta.
@@ -417,12 +456,12 @@ impl UpdateDialog {
                     ui.heading(t!("update.available"));
                     ui.add_space(6.0);
                     ui.label(t!("update.versions", r.version, current_version()));
-                    if !r.notes.trim().is_empty() {
+                    if let Some(notes) = notes_for(&r.notes, form_pdf_reader::i18n::lang()) {
                         ui.add_space(8.0);
                         egui::Frame::new().stroke(egui::Stroke::new(1.0, p.border)).corner_radius(6).inner_margin(10).show(ui, |ui| {
                             egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
                                 ui.set_width(ui.available_width());
-                                ui.label(RichText::new(r.notes.trim()).size(13.0));
+                                ui.label(RichText::new(notes).size(13.0));
                             });
                         });
                     }
@@ -583,6 +622,13 @@ mod tests {
     #[test]
     fn novedades() {
         let md = "## What's Changed\n* Firma **digital** by @blzkz in https://github.com/blzkz/form-pdf-reader/pull/33\n\n**Full Changelog**: https://x";
-        assert_eq!(plain_notes(md), "What's Changed\n•  Firma digital (#33)");
+        assert_eq!(plain_notes(md), "•  Firma digital (#33)");
+        // Sin secciones por idioma: solo en español.
+        assert_eq!(notes_for(md, "es").as_deref(), Some("•  Firma digital (#33)"));
+        assert_eq!(notes_for(md, "en"), None);
+        let md = "## Español\n<!-- lang:es -->\n- Uno\n\n## English\n<!-- lang:en -->\n## English\n- One\n<!-- end -->\n## What's Changed\n* x by @a in https://g/pull/1";
+        assert_eq!(notes_for(md, "es").as_deref(), Some("•  Uno"));
+        assert_eq!(notes_for(md, "en").as_deref(), Some("•  One"));
+        assert_eq!(notes_for(md, "de").as_deref(), Some("•  One"));
     }
 }
