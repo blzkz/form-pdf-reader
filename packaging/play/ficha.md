@@ -26,6 +26,12 @@ FIRMA
 • Opción de bloquear el documento al firmar, para que nadie pueda modificarlo ni volver a firmarlo.
 • Consulta las firmas digitales que ya tiene un documento.
 
+ESCANEA, ANOTA Y ORGANIZA
+• Escanea documentos con la cámara: encuentra la hoja, la endereza y la pone derecha sola; en color, gris o blanco y negro (también con sombras).
+• Reconoce el texto de lo escaneado (OCR) para buscarlo, seleccionarlo y copiarlo, sin conexión.
+• Anota: resalta, subraya y tacha texto, añade notas, escribe texto o dibuja a mano.
+• Organiza las páginas: reordénalas, gíralas, bórralas, extráelas a otro PDF o une PDFs.
+
 UN LECTOR DE PDF COMPLETO
 • Pantalla de inicio con los documentos recientes.
 • Varios documentos abiertos en pestañas; los adjuntos del PDF se abren en una pestaña nueva.
@@ -37,7 +43,7 @@ UN LECTOR DE PDF COMPLETO
 
 PRIVADA
 • Sin anuncios, sin cuentas y sin seguimiento.
-• No tiene permiso de Internet: tus documentos no salen del dispositivo. Solo pide el permiso de NFC, para leer el DNIe cuando firmas con él.
+• No tiene permiso de Internet: tus documentos no salen del dispositivo, y el escáner y el reconocimiento de texto funcionan en el móvil. Solo pide el permiso de NFC, para leer el DNIe cuando firmas con él.
 
 Software libre y gratuito. También disponible para Linux y Windows en github.com/blzkz/form-pdf-reader.
 
@@ -63,6 +69,12 @@ SIGNING
 • Option to lock the document when signing, so nobody can change it or sign it again.
 • See the digital signatures a document already has.
 
+SCAN, ANNOTATE AND ORGANISE
+• Scan documents with the camera: it finds the sheet, straightens it and turns it upright by itself; in colour, grey or black and white (also with shadows).
+• Recognise the text of scans (OCR) to search, select and copy it, offline.
+• Annotate: highlight, underline and strike out text, add notes, write text or draw freehand.
+• Organise pages: reorder, rotate, delete, extract them to another PDF or merge PDFs.
+
 A COMPLETE PDF READER
 • Start screen with your recent documents.
 • Several documents open as tabs; PDF attachments open in a new tab.
@@ -74,7 +86,7 @@ A COMPLETE PDF READER
 
 PRIVATE
 • No ads, no accounts and no tracking.
-• No Internet permission: your documents never leave the device. The only permission is NFC, to read the DNIe when you sign with it.
+• No Internet permission: your documents never leave the device, and the scanner and text recognition run on the phone. The only permission is NFC, to read the DNIe when you sign with it.
 
 Free and open-source software. Also available for Linux and Windows at github.com/blzkz/form-pdf-reader.
 
@@ -100,6 +112,12 @@ SIGNATURE
 • Option pour verrouiller le document lors de la signature, afin que personne ne puisse le modifier ni le signer à nouveau.
 • Consultez les signatures numériques d'un document.
 
+NUMÉRISEZ, ANNOTEZ ET ORGANISEZ
+• Numérisez des documents avec l'appareil photo : il trouve la feuille, la redresse et la remet à l'endroit tout seul ; en couleur, en gris ou en noir et blanc (même avec des ombres).
+• Reconnaissance du texte des numérisations (OCR) pour le rechercher, le sélectionner et le copier, hors ligne.
+• Annotez : surlignez, soulignez et barrez du texte, ajoutez des notes, écrivez du texte ou dessinez à main levée.
+• Organisez les pages : réordonnez-les, faites-les pivoter, supprimez-les, extrayez-les dans un autre PDF ou fusionnez des PDF.
+
 UN LECTEUR PDF COMPLET
 • Écran d'accueil avec les documents récents.
 • Plusieurs documents ouverts dans des onglets ; les pièces jointes du PDF s'ouvrent dans un nouvel onglet.
@@ -111,7 +129,7 @@ UN LECTEUR PDF COMPLET
 
 PRIVÉE
 • Sans publicité, sans compte et sans suivi.
-• Pas d'autorisation Internet : vos documents ne quittent jamais l'appareil. La seule autorisation est le NFC, pour lire le DNIe lorsque vous signez avec.
+• Pas d'autorisation Internet : vos documents ne quittent jamais l'appareil, et le scanner et la reconnaissance de texte fonctionnent sur le téléphone. La seule autorisation est le NFC, pour lire le DNIe lorsque vous signez avec.
 
 Logiciel libre et gratuit. Également disponible pour Linux et Windows sur github.com/blzkz/form-pdf-reader.
 
@@ -137,6 +155,12 @@ FIRMA
 • Opzione per bloccare il documento quando lo firmi, così nessuno può modificarlo né firmarlo di nuovo.
 • Consulta le firme digitali già presenti in un documento.
 
+SCANSIONA, ANNOTA E ORGANIZZA
+• Scansiona documenti con la fotocamera: trova il foglio, lo raddrizza e lo mette dritto da solo; a colori, in grigio o in bianco e nero (anche con ombre).
+• Riconosce il testo delle scansioni (OCR) per cercarlo, selezionarlo e copiarlo, offline.
+• Annota: evidenzia, sottolinea e barra il testo, aggiungi note, scrivi testo o disegna a mano libera.
+• Organizza le pagine: riordinale, ruotale, eliminale, estraile in un altro PDF o unisci PDF.
+
 UN LETTORE PDF COMPLETO
 • Schermata iniziale con i documenti recenti.
 • Più documenti aperti in schede; gli allegati del PDF si aprono in una nuova scheda.
@@ -148,7 +172,7 @@ UN LETTORE PDF COMPLETO
 
 PRIVATA
 • Niente pubblicità, niente account e nessun tracciamento.
-• Nessuna autorizzazione Internet: i tuoi documenti non lasciano mai il dispositivo. L'unica autorizzazione è l'NFC, per leggere il DNIe quando firmi con esso.
+• Nessuna autorizzazione Internet: i tuoi documenti non lasciano mai il dispositivo, e lo scanner e il riconoscimento del testo funzionano sul telefono. L'unica autorizzazione è l'NFC, per leggere il DNIe quando firmi con esso.
 
 Software libero e gratuito. Disponibile anche per Linux e Windows su github.com/blzkz/form-pdf-reader.
 
@@ -174,6 +198,12 @@ ASSINATURA
 • Opção para bloquear o documento ao assinar, para que ninguém o possa alterar nem voltar a assinar.
 • Consulte as assinaturas digitais que um documento já tem.
 
+DIGITALIZE, ANOTE E ORGANIZE
+• Digitalize documentos com a câmara: encontra a folha, endireita-a e põe-na na posição certa sozinho; a cores, em cinzento ou a preto e branco (também com sombras).
+• Reconhece o texto das digitalizações (OCR) para o pesquisar, selecionar e copiar, sem ligação.
+• Anote: realce, sublinhe e risque texto, adicione notas, escreva texto ou desenhe à mão livre.
+• Organize as páginas: reordene-as, rode-as, elimine-as, extraia-as para outro PDF ou junte PDF.
+
 UM LEITOR DE PDF COMPLETO
 • Ecrã inicial com os documentos recentes.
 • Vários documentos abertos em separadores; os anexos do PDF abrem num novo separador.
@@ -185,7 +215,7 @@ UM LEITOR DE PDF COMPLETO
 
 PRIVADA
 • Sem anúncios, sem contas e sem rastreio.
-• Sem permissão de Internet: os seus documentos nunca saem do dispositivo. A única permissão é a de NFC, para ler o DNIe quando assina com ele.
+• Sem permissão de Internet: os seus documentos nunca saem do dispositivo, e o digitalizador e o reconhecimento de texto funcionam no telemóvel. A única permissão é a de NFC, para ler o DNIe quando assina com ele.
 
 Software livre e gratuito. Também disponível para Linux e Windows em github.com/blzkz/form-pdf-reader.
 
@@ -211,6 +241,12 @@ SIGNIEREN
 • Option, das Dokument beim Signieren zu sperren, damit niemand es ändern oder erneut signieren kann.
 • Die digitalen Signaturen eines Dokuments ansehen.
 
+SCANNEN, KOMMENTIEREN UND ORGANISIEREN
+• Dokumente mit der Kamera scannen: Das Blatt wird gefunden, entzerrt und von selbst richtig gedreht; in Farbe, Grau oder Schwarzweiß (auch mit Schatten).
+• Texterkennung (OCR) für Scans: Text durchsuchen, markieren und kopieren, offline.
+• Kommentieren: Text hervorheben, unterstreichen und durchstreichen, Notizen hinzufügen, Text schreiben oder freihand zeichnen.
+• Seiten organisieren: neu ordnen, drehen, löschen, in ein anderes PDF extrahieren oder PDFs zusammenführen.
+
 EIN VOLLSTÄNDIGER PDF-READER
 • Startbildschirm mit den zuletzt geöffneten Dokumenten.
 • Mehrere Dokumente in Tabs; PDF-Anhänge öffnen sich in einem neuen Tab.
@@ -222,6 +258,6 @@ EIN VOLLSTÄNDIGER PDF-READER
 
 PRIVAT
 • Keine Werbung, keine Konten, kein Tracking.
-• Keine Internetberechtigung: Ihre Dokumente verlassen nie das Gerät. Die einzige Berechtigung ist NFC, um den DNIe beim Signieren zu lesen.
+• Keine Internetberechtigung: Ihre Dokumente verlassen nie das Gerät, und Scanner und Texterkennung laufen auf dem Handy. Die einzige Berechtigung ist NFC, um den DNIe beim Signieren zu lesen.
 
 Freie und kostenlose Software. Auch für Linux und Windows unter github.com/blzkz/form-pdf-reader.
