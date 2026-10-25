@@ -1,6 +1,6 @@
 ; Instalador de Form PDF Reader para Windows (Inno Setup 6).
 ;
-;   iscc /DAppVersion=0.11.0 /DSrcDir=..\..\dist\windows packaging\windows\form-pdf-reader.iss
+;   iscc /DAppVersion=0.11.1 /DSrcDir=..\..\dist\windows packaging\windows\form-pdf-reader.iss
 ;
 ; SrcDir: carpeta con form-pdf-reader.exe, pdfium.dll, LICENSE.txt y
 ; THIRD-PARTY-NOTICES.txt (la misma que la versión portable).
