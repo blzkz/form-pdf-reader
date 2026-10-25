@@ -16,3 +16,7 @@
 # Trazas de errores legibles con el mapping que se sube con el App Bundle.
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# Mete todas las clases en un solo paquete (nombres más cortos, DEX más
+# pequeño); las que se conservan por nombre (JNA) no se mueven.
+-repackageclasses ''
