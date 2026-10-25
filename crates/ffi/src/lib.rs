@@ -1234,11 +1234,7 @@ impl PdfDocument {
 
     /// Highlights, underlines or strikes out characters [start, start + count).
     pub fn add_markup(&self, page: u32, kind: AnnotationKind, start: i32, count: i32, color: u32) -> Result<(), PdfError> {
-        let mut doc = self.lock();
-        let p = usize_page(page);
-        let rects = doc.text_rects(p, start, count);
-        let text = doc.text_range(p, start, count);
-        doc.add_markup(p, kind.into(), &rects, rgb(color), text.trim()).map_err(|e| PdfError::Save(format!("{e:#}")))
+        self.lock().add_markup_range(usize_page(page), kind.into(), start, count, rgb(color)).map_err(|e| PdfError::Save(format!("{e:#}")))
     }
 
     /// A note with its top left corner at (x, y), in points from the top left.

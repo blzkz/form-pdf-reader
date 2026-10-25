@@ -154,8 +154,8 @@ fn anotaciones() {
     let antes = doc.render(0, 300, 424).unwrap();
     // Resaltar la primera palabra "zanahoria".
     let hit = doc.search("zanahoria").into_iter().next().unwrap();
-    doc.add_markup(hit.page, AnnotKind::Highlight, &hit.rects, [255, 220, 0], "zanahoria").unwrap();
-    doc.add_markup(0, AnnotKind::StrikeOut, &[[100.0, 700.0, 200.0, 688.0]], [220, 0, 0], "").unwrap();
+    doc.add_markup(hit.page, AnnotKind::Highlight, &hit.rects, [255, 220, 0]).unwrap();
+    doc.add_markup(0, AnnotKind::StrikeOut, &[[100.0, 700.0, 200.0, 688.0]], [220, 0, 0]).unwrap();
     doc.add_note(0, 50.0, 500.0, "Revisar esto", [255, 200, 0]).unwrap();
     doc.add_free_text(0, 60.0, 400.0, "Texto libre\ncon dos líneas ñ", 14.0, [0, 0, 255]).unwrap();
     doc.add_ink(0, &[vec![[100.0, 300.0], [150.0, 320.0], [200.0, 300.0]], vec![[120.0, 280.0]]], 2.0, [0, 80, 200]).unwrap();
@@ -194,6 +194,23 @@ fn anotaciones() {
     assert_eq!(doc.annotations(0).len(), n - 1);
     // En XFA no.
     assert!(!Document::open(Path::new(XFA)).unwrap().can_annotate());
+
+    // Marcar lo ya marcado: una sola marca continua con el color nuevo (no
+    // se suman los colores); otra clase de marca no se junta.
+    let mut doc = Document::open(Path::new("tests/fixtures/normal.pdf")).unwrap();
+    let n = doc.text_char_count(0);
+    doc.add_markup_range(0, AnnotKind::Highlight, 0, 120, [255, 214, 0]).unwrap();
+    doc.add_markup_range(0, AnnotKind::Highlight, 60, 120, [255, 214, 0]).unwrap();
+    doc.add_markup_range(0, AnnotKind::Highlight, 30, 40, [76, 175, 80]).unwrap();
+    doc.add_markup_range(0, AnnotKind::Underline, 0, 60, [33, 150, 243]).unwrap();
+    let h: Vec<_> = doc.annotations(0).into_iter().filter(|a| a.kind == AnnotKind::Highlight).collect();
+    assert_eq!(h.len(), 1, "se juntan en una");
+    assert_eq!(h[0].color, [76, 175, 80], "con el color nuevo");
+    assert!(h[0].contents.starts_with("Documento de prueba"), "{}", h[0].contents);
+    assert_eq!(doc.annotations(0).iter().filter(|a| a.kind == AnnotKind::Underline).count(), 1);
+    // Una marca en otra zona de la página no se junta.
+    doc.add_markup_range(0, AnnotKind::Highlight, n - 20, 15, [255, 214, 0]).unwrap();
+    assert_eq!(doc.annotations(0).iter().filter(|a| a.kind == AnnotKind::Highlight).count(), 2);
 }
 
 /// Organizar páginas: girar, borrar, mover, insertar y extraer (también
