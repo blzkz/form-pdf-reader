@@ -114,6 +114,61 @@ impl Annot {
     }
 }
 
+/// Dos cajas (izquierda, abajo, derecha, arriba) en la misma línea: se
+/// solapan en vertical al menos la mitad de la más baja.
+fn same_line(a: &[f32; 4], b: &[f32; 4]) -> bool {
+    let overlap = a[3].min(b[3]) - a[1].max(b[1]);
+    overlap > 0.5 * (a[3] - a[1]).min(b[3] - b[1])
+}
+
+/// Dos líneas de marca que se tocan: en la misma línea y sin hueco entre
+/// ellas (o menos de un tercio de su alto).
+fn touches(a: &[f32; 4], b: &[f32; 4]) -> bool {
+    let gap = (a[0] - b[2]).max(b[0] - a[2]);
+    same_line(a, b) && gap < 0.35 * (a[3] - a[1]).min(b[3] - b[1])
+}
+
+/// Junta las cajas que se tocan en una por línea (y de arriba abajo).
+fn merge_lines(mut rects: Vec<[f32; 4]>) -> Vec<[f32; 4]> {
+    rects.retain(|r| r[2] > r[0] && r[3] > r[1]);
+    let mut out: Vec<[f32; 4]> = Vec::new();
+    loop {
+        let mut changed = false;
+        for r in std::mem::take(&mut rects) {
+            if let Some(o) = out.iter_mut().find(|o| touches(o, &r)) {
+                *o = [o[0].min(r[0]), o[1].min(r[1]), o[2].max(r[2]), o[3].max(r[3])];
+                changed = true;
+            } else {
+                out.push(r);
+            }
+        }
+        if !changed {
+            break;
+        }
+        rects = std::mem::take(&mut out);
+    }
+    out.sort_by(|a, b| b[3].total_cmp(&a[3]).then(a[0].total_cmp(&b[0])));
+    out
+}
+
+/// Los rectángulos (izquierda, abajo, derecha, arriba) de los cuadriláteros
+/// de una marca de texto.
+fn quad_rects(a: &Annot) -> Vec<[f32; 4]> {
+    let n = unsafe { sys::FPDFAnnot_CountAttachmentPoints(a.0) };
+    (0..n)
+        .filter_map(|i| {
+            let mut q = sys::FS_QUADPOINTSF { x1: 0.0, y1: 0.0, x2: 0.0, y2: 0.0, x3: 0.0, y3: 0.0, x4: 0.0, y4: 0.0 };
+            (unsafe { sys::FPDFAnnot_GetAttachmentPoints(a.0, i, &mut q) } != 0).then(|| {
+                let xs = [q.x1, q.x2, q.x3, q.x4];
+                let ys = [q.y1, q.y2, q.y3, q.y4];
+                let min = |v: [f32; 4]| v.iter().copied().fold(f32::MAX, f32::min);
+                let max = |v: [f32; 4]| v.iter().copied().fold(f32::MIN, f32::max);
+                [min(xs), min(ys), max(xs), max(ys)]
+            })
+        })
+        .collect()
+}
+
 /// Tamaño de letra y color guardados en el `DA` de un texto libre
 /// ("/Helv 12 Tf 0 0 1 rg").
 fn parse_da(da: &str) -> (Option<f32>, Option<[u8; 3]>) {
@@ -192,23 +247,105 @@ impl Document {
         })
     }
 
-    /// Resalta, subraya o tacha el texto que ocupa `rects` (los de
-    /// `text_rects`: izquierda, arriba, derecha, abajo). `text` es el texto
-    /// marcado, que otros visores enseñan en la lista de comentarios.
-    pub fn add_markup(&mut self, page: usize, kind: AnnotKind, rects: &[[f64; 4]], color: [u8; 3], text: &str) -> Result<()> {
+    /// Resalta, subraya o tacha los caracteres [start, start + count) de la
+    /// página: un rectángulo por línea, con la altura de la letra (no la de
+    /// cada trozo de texto: así el subrayado y el tachado van rectos y el
+    /// resaltado es continuo).
+    pub fn add_markup_range(&mut self, page: usize, kind: AnnotKind, start: i32, count: i32, color: [u8; 3]) -> Result<()> {
+        let lines = self.line_rects(page, start, count);
+        self.put_markup(page, kind, lines, color)
+    }
+
+    /// Resalta, subraya o tacha el texto que ocupa `rects` (izquierda,
+    /// arriba, derecha, abajo, como los de `text_rects`).
+    pub fn add_markup(&mut self, page: usize, kind: AnnotKind, rects: &[[f64; 4]], color: [u8; 3]) -> Result<()> {
+        let lines = rects.iter().map(|&[l, t, r, b]| [l as f32, b.min(t) as f32, r as f32, t.max(b) as f32]).collect();
+        self.put_markup(page, kind, merge_lines(lines), color)
+    }
+
+    /// Rectángulos (izquierda, abajo, derecha, arriba) de las líneas de los
+    /// caracteres [start, start + count), con las cajas "holgadas" de cada
+    /// carácter (la altura de la fuente) y sin los espacios de los extremos.
+    fn line_rects(&self, page: usize, start: i32, count: i32) -> Vec<[f32; 4]> {
+        self.with_text_page(page, |tp| unsafe {
+            let n = sys::FPDFText_CountChars(tp);
+            let mut lines: Vec<[f32; 4]> = Vec::new();
+            // Caracteres de la línea en curso: su caja y si es un espacio.
+            let mut cur: Vec<([f32; 4], bool)> = Vec::new();
+            let flush = |cur: &mut Vec<([f32; 4], bool)>, lines: &mut Vec<[f32; 4]>| {
+                let first = cur.iter().position(|c| !c.1);
+                let last = cur.iter().rposition(|c| !c.1);
+                if let (Some(a), Some(b)) = (first, last) {
+                    let mut u = cur[a].0;
+                    for c in &cur[a..=b] {
+                        u = [u[0].min(c.0[0]), u[1].min(c.0[1]), u[2].max(c.0[2]), u[3].max(c.0[3])];
+                    }
+                    lines.push(u);
+                }
+                cur.clear();
+            };
+            for i in start.max(0)..(start + count).min(n) {
+                let ch = char::from_u32(sys::FPDFText_GetUnicode(tp, i)).unwrap_or(' ');
+                if ch == '\r' || ch == '\n' {
+                    flush(&mut cur, &mut lines);
+                    continue;
+                }
+                let mut r = sys::FS_RECTF { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 };
+                if sys::FPDFText_GetLooseCharBox(tp, i, &mut r) == 0 {
+                    continue;
+                }
+                let b = [r.left.min(r.right), r.bottom.min(r.top), r.left.max(r.right), r.bottom.max(r.top)];
+                if b[3] - b[1] <= 0.1 {
+                    continue;
+                }
+                // Otra línea: no se solapa en vertical con la que se lleva.
+                if let Some(&(prev, _)) = cur.last()
+                    && !same_line(&prev, &b)
+                {
+                    flush(&mut cur, &mut lines);
+                }
+                cur.push((b, ch.is_whitespace()));
+            }
+            flush(&mut cur, &mut lines);
+            lines
+        })
+        .unwrap_or_default()
+    }
+
+    /// Las marcas del mismo tipo que tocan las líneas nuevas se juntan con
+    /// ellas en una sola, con el color nuevo (sin sumar colores ni dejar
+    /// huecos).
+    fn put_markup(&mut self, page: usize, kind: AnnotKind, lines: Vec<[f32; 4]>, color: [u8; 3]) -> Result<()> {
         let subtype = match kind {
             AnnotKind::Highlight => sys::FPDF_ANNOT_HIGHLIGHT,
             AnnotKind::Underline => sys::FPDF_ANNOT_UNDERLINE,
             AnnotKind::StrikeOut => sys::FPDF_ANNOT_STRIKEOUT,
             _ => bail!("no es una marca de texto"),
         };
-        if rects.is_empty() {
+        if lines.is_empty() {
             bail!("no hay texto seleccionado");
         }
+        let mut all = lines.clone();
+        let mut absorbed = Vec::new();
+        for a in self.annotations(page).into_iter().filter(|a| a.kind == kind) {
+            let Some(annot) = self.annot(page, a.index) else { continue };
+            let quads = quad_rects(&annot);
+            drop(annot);
+            if quads.iter().any(|q| lines.iter().any(|l| touches(q, l))) {
+                all.extend(quads);
+                absorbed.push(a.index);
+            }
+        }
+        // De atrás adelante: borrar una no cambia el índice de las anteriores.
+        absorbed.sort_unstable_by(|a, b| b.cmp(a));
+        for i in absorbed {
+            self.remove_annotation(page, i)?;
+        }
+        let lines = merge_lines(all);
+        let text = self.bounded_text(page, &lines);
         let a = self.new_annot(page, subtype)?;
         let mut bounds = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
-        for &[l, t, r, b] in rects {
-            let (l, t, r, b) = (l as f32, t as f32, r as f32, b as f32);
+        for &[l, b, r, t] in &lines {
             let q = sys::FS_QUADPOINTSF { x1: l, y1: t, x2: r, y2: t, x3: l, y3: b, x4: r, y4: b };
             unsafe { sys::FPDFAnnot_AppendAttachmentPoints(a.0, &q) };
             bounds = [bounds[0].min(l), bounds[1].min(b), bounds[2].max(r), bounds[3].max(t)];
@@ -216,9 +353,32 @@ impl Document {
         a.set_rect(bounds);
         a.set_color(color);
         if !text.is_empty() {
-            a.set_string(c"Contents", text);
+            a.set_string(c"Contents", &text);
         }
         Ok(())
+    }
+
+    /// El texto dentro de esos rectángulos (izquierda, abajo, derecha, arriba).
+    fn bounded_text(&self, page: usize, lines: &[[f32; 4]]) -> String {
+        self.with_text_page(page, |tp| unsafe {
+            let mut parts = Vec::new();
+            for &[l, b, r, t] in lines {
+                let (l, b, r, t) = (l as f64, b as f64, r as f64, t as f64);
+                let n = sys::FPDFText_GetBoundedText(tp, l, t, r, b, std::ptr::null_mut(), 0);
+                if n <= 0 {
+                    continue;
+                }
+                let mut buf = vec![0u16; n as usize + 1];
+                sys::FPDFText_GetBoundedText(tp, l, t, r, b, buf.as_mut_ptr(), buf.len() as c_int);
+                let s = from_wide_buf(&buf);
+                let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
+                if !s.is_empty() {
+                    parts.push(s);
+                }
+            }
+            parts.join(" ")
+        })
+        .unwrap_or_default()
     }
 
     /// Pone una nota (un icono con un comentario) con su esquina superior

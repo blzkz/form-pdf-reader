@@ -330,9 +330,7 @@ impl DocView {
                         if let Some(kind) = tool.markup() {
                             let color = self.annot.as_ref().map_or(tool.default_color(), |a| a.color());
                             for (p, start, count) in self.selection_ranges() {
-                                let rects = self.doc.text_rects(p, start, count);
-                                let text = self.doc.text_range(p, start, count);
-                                match self.doc.add_markup(p, kind, &rects, color, text.trim()) {
+                                match self.doc.add_markup_range(p, kind, start, count, color) {
                                     Ok(()) => {
                                         ev.modified = true;
                                         self.invalidate_page(p);
