@@ -48,10 +48,11 @@ rm -rf "$GEN" && mkdir -p "$GEN"
 cargo run -p form-pdf-reader-ffi --features bindgen --bin uniffi-bindgen -- \
   generate --library target/debug/libform_pdf_reader_ffi.so --language kotlin --out-dir "$GEN" --no-format
 
-# 3. The library for Android. It keeps its symbol table (not the debug info):
+# 3. The library for Android, optimised as a whole (fat LTO, one codegen
+# unit: a few MB less). It keeps its symbol table (not the debug info):
 # Gradle strips it from the APK and puts the symbols in the App Bundle, for
 # Google Play's crash and ANR reports.
-CARGO_PROFILE_RELEASE_STRIP=debuginfo PDFIUM_LIB_DIR="$PWD/$PDFIUM/lib" \
+CARGO_PROFILE_RELEASE_STRIP=debuginfo CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 PDFIUM_LIB_DIR="$PWD/$PDFIUM/lib" \
   cargo ndk -t "$ABI" --platform "$API" build --release -p form-pdf-reader-ffi
 
 # 4. Native libraries of the app.

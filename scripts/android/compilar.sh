@@ -6,7 +6,7 @@
 #   scripts/android/compilar.sh bundle     # también el App Bundle (.aab)
 #
 # Usa el SDK de ~/Android/Sdk (o ANDROID_HOME), el NDK más reciente que haya
-# en él (o ANDROID_NDK_HOME) y Java 17 (o JAVA_HOME): Gradle 8.11 no funciona
+# en él (o ANDROID_NDK_HOME) y Java 17 (o JAVA_HOME): Gradle no suele funcionar
 # con versiones de Java más nuevas. Sin la clave de subida (ANDROID_KEYSTORE,
 # ver crear-clave-de-subida.sh) se firma con la clave de depuración.
 set -euo pipefail
