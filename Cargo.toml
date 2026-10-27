@@ -18,6 +18,14 @@ env_logger = "0.11"
 png = "0.18"
 lopdf = { version = "0.45", default-features = false }
 
+# Builds de desarrollo y tests: solo los números de línea (las trazas de los
+# errores siguen diciendo fichero y línea) y nada de depuración en las
+# dependencias. Con la depuración completa, target/ pasaba de 50 GB.
+[profile.dev]
+debug = "line-tables-only"
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 opt-level = 3
 lto = "thin"
