@@ -201,8 +201,14 @@
     <string name="annot_done">Done</string>
     <string name="annot_edit">Edit</string>
     <string name="annot_delete">Delete</string>
-    <string name="annot_hint_select">Tap an annotation to edit or delete it.</string>
+    <string name="annot_hint_select">Tap an annotation to edit or delete it, or to change the colour of a mark.</string>
     <string name="annot_hint_markup">Drag over the text with one finger. Two fingers to scroll.</string>
+    <string name="annot_erase">Eraser</string>
+    <string name="annot_hint_erase">Drag over the text to remove its mark. Two fingers to scroll.</string>
+    <string name="mark_color">Colour</string>
+    <string name="mark_remove_highlight">Remove highlight</string>
+    <string name="mark_remove_underline">Remove underline</string>
+    <string name="mark_remove_strikeout">Remove strike-out</string>
     <string name="annot_hint_note">Tap the page where the note goes.</string>
     <string name="annot_hint_text">Tap the page where the text goes.</string>
     <string name="annot_hint_ink">Draw with one finger. Two fingers to scroll.</string>

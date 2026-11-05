@@ -3,8 +3,8 @@
 //! Ejemplo:
 //!   PDFRE_AUTOTEST="wait:30;click:550,700;type:HOLA;key:Tab;shot:/tmp/a.png;quit"
 //!
-//! Pasos: wait:N (fotogramas), click:X,Y, down:X,Y, up:X,Y (pulsar y soltar
-//! por separado, para arrastrar), move:X,Y, copy, type:TEXTO, key:Nombre
+//! Pasos: wait:N (fotogramas), click:X,Y, rclick:X,Y (botón derecho),
+//! down:X,Y, up:X,Y (pulsar y soltar por separado, para arrastrar), move:X,Y, copy, type:TEXTO, key:Nombre
 //! (Enter, Tab, ArrowDown...), scroll:DY, size:ANCHO,ALTO (tamaño de la
 //! ventana), shot:RUTA.png, quit.
 
@@ -14,8 +14,8 @@ use std::collections::VecDeque;
 enum Step {
     Wait(u32),
     Move(Pos2),
-    Press(Pos2),
-    Release(Pos2),
+    Press(Pos2, PointerButton),
+    Release(Pos2, PointerButton),
     Type(String),
     Copy,
     Key(Key, bool, Modifiers),
@@ -43,18 +43,19 @@ impl AutoTest {
             match cmd {
                 "wait" => steps.push_back(Step::Wait(arg.parse().unwrap_or(1))),
                 "move" => steps.push_back(Step::Move(pos())),
-                "click" => {
+                "click" | "rclick" => {
+                    let b = if cmd == "rclick" { PointerButton::Secondary } else { PointerButton::Primary };
                     steps.push_back(Step::Move(pos()));
-                    steps.push_back(Step::Press(pos()));
-                    steps.push_back(Step::Release(pos()));
+                    steps.push_back(Step::Press(pos(), b));
+                    steps.push_back(Step::Release(pos(), b));
                 }
                 "down" => {
                     steps.push_back(Step::Move(pos()));
-                    steps.push_back(Step::Press(pos()));
+                    steps.push_back(Step::Press(pos(), PointerButton::Primary));
                 }
                 "up" => {
                     steps.push_back(Step::Move(pos()));
-                    steps.push_back(Step::Release(pos()));
+                    steps.push_back(Step::Release(pos(), PointerButton::Primary));
                 }
                 "copy" => steps.push_back(Step::Copy),
                 "type" => steps.push_back(Step::Type(arg.to_string())),
@@ -108,8 +109,8 @@ impl AutoTest {
                 }
             }
             Step::Move(p) => raw.events.push(Event::PointerMoved(p)),
-            Step::Press(p) => raw.events.push(Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }),
-            Step::Release(p) => raw.events.push(Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }),
+            Step::Press(p, button) => raw.events.push(Event::PointerButton { pos: p, button, pressed: true, modifiers: Modifiers::NONE }),
+            Step::Release(p, button) => raw.events.push(Event::PointerButton { pos: p, button, pressed: false, modifiers: Modifiers::NONE }),
             Step::Type(t) => raw.events.push(Event::Text(t)),
             Step::Copy => raw.events.push(Event::Copy),
             Step::Key(k, pressed, m) => {

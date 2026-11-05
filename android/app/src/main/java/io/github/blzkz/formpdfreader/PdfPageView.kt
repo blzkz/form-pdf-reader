@@ -12,6 +12,7 @@ import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -32,7 +33,9 @@ import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import android.widget.LinearLayout
 import android.widget.OverScroller
+import android.widget.PopupWindow
 import android.widget.Toast
 import com.google.android.material.color.MaterialColors
 import java.nio.ByteBuffer
@@ -104,6 +107,13 @@ class PdfPageView(context: Context) : View(context) {
 
     /** Locked by a digital signature: taps and keys do not reach the form. */
     var readOnly = false
+
+    /**
+     * The highlights, underlines and strike-outs can be changed (the document
+     * accepts annotations and is not locked): a long press on one offers to
+     * change its colour or remove it, next to Copy.
+     */
+    var canEditMarks = false
     private var pages: List<PageInfo> = emptyList()
     private var slots: List<Slot> = emptyList()
     private var contentW = 0f
@@ -1127,6 +1137,8 @@ class PdfPageView(context: Context) : View(context) {
     val hasSelection: Boolean get() = selection != null
 
     fun clearSelection() {
+        pressedMark = null
+        markColors?.dismiss()
         selection = null
         selectionRects = emptyList()
         selectionToken++
@@ -1151,17 +1163,23 @@ class PdfPageView(context: Context) : View(context) {
         }
     }
 
-    /** Long press: selects the word under the finger; moving then extends it. */
+    /**
+     * Long press: selects the word under the finger; moving then extends it.
+     * On a mark, the selection's toolbar also offers its colour and removing it.
+     */
     private fun startSelection(x: Float, y: Float) {
         val d = doc ?: return
         val slot = slotAt(x, y) ?: return
         val page = slot.page
+        val p = toPagePoints(page, x, y) ?: return
+        val marks = canEditMarks && !readOnly
         charAt(page, x, y) { c ->
             if (c < 0) return@charAt
-            PdfEngine.run({ d.textWordAt(page.toUInt(), c) }) { r ->
-                val w = r.getOrNull() ?: return@run
+            PdfEngine.run({ d.textWordAt(page.toUInt(), c) to (if (marks) d.markupAt(page.toUInt(), p.x, p.y) else null) }) { r ->
+                val (w, mark) = r.getOrNull() ?: return@run
                 if (d !== doc || w.count <= 0) return@run
                 clearSelection()
+                pressedMark = mark
                 selection = Selection(page, w.start, w.start + w.count - 1)
                 showHandles = true
                 requestSelectionRects()
@@ -1355,6 +1373,15 @@ class PdfPageView(context: Context) : View(context) {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
                 menu.add(Menu.NONE, MENU_COPY, 0, android.R.string.copy)
                 menu.add(Menu.NONE, MENU_SELECT_ALL, 1, android.R.string.selectAll)
+                pressedMark?.let { m ->
+                    menu.add(Menu.NONE, MENU_MARK_COLOR, 2, R.string.mark_color)
+                    val remove = when (m.kind) {
+                        AnnotationKind.UNDERLINE -> R.string.mark_remove_underline
+                        AnnotationKind.STRIKE_OUT -> R.string.mark_remove_strikeout
+                        else -> R.string.mark_remove_highlight
+                    }
+                    menu.add(Menu.NONE, MENU_MARK_REMOVE, 3, remove)
+                }
                 return true
             }
 
@@ -1367,6 +1394,8 @@ class PdfPageView(context: Context) : View(context) {
                         clearSelection()
                     }
                     MENU_SELECT_ALL -> selectAllOnPage()
+                    MENU_MARK_COLOR -> pressedMark?.let { showMarkColors(it) }
+                    MENU_MARK_REMOVE -> pressedMark?.let { removeMark(it) }
                 }
                 return true
             }
@@ -1883,6 +1912,9 @@ class PdfPageView(context: Context) : View(context) {
     var annotColor = 0xFFD600
     var inkWidth = 2f
 
+    /** Marking text with the eraser: dragging removes the mark. */
+    var annotErasing = false
+
     var onAnnotRequest: ((AnnotRequest) -> Unit)? = null
 
     /** An annotation was added or removed (the document changed). */
@@ -1982,6 +2014,101 @@ class PdfPageView(context: Context) : View(context) {
                 }
             }.onFailure { onAnnotError?.invoke(it) }
         }
+    }
+
+    /** Changes the colour of the selected highlight, underline or strike-out. */
+    fun setSelectedMarkupColor(color: Int) {
+        val d = doc ?: return
+        val a = selectedAnnotation ?: return
+        PdfEngine.run({
+            d.setMarkupColor(a.page, a.index, color.toUInt())
+            // It is made again: now the last one of the page.
+            d.annotations(a.page).lastOrNull()
+        }) { r ->
+            r.onSuccess {
+                if (d === doc) {
+                    selectAnnotation(it)
+                    annotChanged()
+                }
+            }.onFailure { onAnnotError?.invoke(it) }
+        }
+    }
+
+    // The mark under a long press (see canEditMarks).
+    private var pressedMark: AnnotationInfo? = null
+    private var markColors: PopupWindow? = null
+
+    /** The colours for the mark of the long press, over the selection. */
+    private fun showMarkColors(mark: AnnotationInfo) {
+        actionMode?.finish()
+        markColors?.dismiss()
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            val pad = (10 * density).toInt()
+            setPadding(pad, pad, pad - (8 * density).toInt(), pad)
+            background = GradientDrawable().apply {
+                cornerRadius = 24 * density
+                setColor(MaterialColors.getColor(this@PdfPageView, com.google.android.material.R.attr.colorSurfaceContainerHigh))
+            }
+            elevation = 6 * density
+        }
+        val ring = MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurface)
+        val popup = PopupWindow(row, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT, true)
+        for (c in AnnotationBar.COLORS) {
+            row.addView(View(context).apply {
+                val size = (32 * density).toInt()
+                layoutParams = LinearLayout.LayoutParams(size, size).apply { marginEnd = (8 * density).toInt() }
+                contentDescription = String.format("#%06X", c)
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(0xFF000000.toInt() or c)
+                    if (c == mark.color.toInt()) setStroke((3 * density).toInt(), ring)
+                }
+                setOnClickListener {
+                    popup.dismiss()
+                    setMarkColor(mark, c)
+                }
+            })
+        }
+        popup.elevation = 6 * density
+        popup.setOnDismissListener {
+            if (markColors === popup) {
+                markColors = null
+                clearSelection()
+            }
+        }
+        markColors = popup
+        // Centred over the selection (under it if there is no room above).
+        val rects = selectionOnScreen()
+        val u = RectF(rects.firstOrNull() ?: RectF(0f, 0f, width.toFloat(), 0f))
+        for (r in rects) u.union(r)
+        row.measure(MeasureSpec.UNSPECIFIED, MeasureSpec.UNSPECIFIED)
+        val loc = IntArray(2)
+        getLocationOnScreen(loc)
+        val w = row.measuredWidth
+        val h = row.measuredHeight
+        val space = 8 * density
+        val x = (loc[0] + u.centerX() - w / 2f).coerceIn(loc[0].toFloat(), (loc[0] + width - w).toFloat().coerceAtLeast(loc[0].toFloat()))
+        val above = loc[1] + u.top - space - h
+        val y = if (above >= loc[1]) above else loc[1] + u.bottom + space
+        popup.showAtLocation(this, android.view.Gravity.NO_GRAVITY, x.roundToInt(), y.roundToInt())
+    }
+
+    private fun setMarkColor(mark: AnnotationInfo, color: Int) {
+        val d = doc ?: return
+        if (color == mark.color.toInt()) return clearSelection()
+        PdfEngine.run({ d.setMarkupColor(mark.page, mark.index, color.toUInt()) }) { r ->
+            r.onSuccess { if (d === doc) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
+        }
+        clearSelection()
+    }
+
+    private fun removeMark(mark: AnnotationInfo) {
+        val d = doc ?: return
+        PdfEngine.run({ d.removeAnnotation(mark.page, mark.index) }) { r ->
+            r.onSuccess { if (d === doc) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
+        }
+        clearSelection()
     }
 
     fun deleteSelectedAnnotation() {
@@ -2109,10 +2236,12 @@ class PdfPageView(context: Context) : View(context) {
             else -> AnnotationKind.STRIKE_OUT
         }
         val color = annotColor
+        val erasing = annotErasing
+        val (page, start, count) = Triple(sel.page.toUInt(), sel.start, sel.end - sel.start + 1)
         // Wait for the character under the finger (the selection may still grow).
-        PdfEngine.run({ d.addMarkup(sel.page.toUInt(), kind, sel.start, sel.end - sel.start + 1, color.toUInt()) }) { r ->
+        PdfEngine.run({ if (erasing) d.removeMarkup(page, kind, start, count) else d.addMarkup(page, kind, start, count, color.toUInt()).let { true } }) { r ->
             if (sel === selection) clearSelection()
-            r.onSuccess { if (d === doc) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
+            r.onSuccess { if (d === doc && it) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
         }
     }
 
@@ -2162,6 +2291,8 @@ class PdfPageView(context: Context) : View(context) {
         private const val MENU_CUT = 3
         private const val MENU_PASTE = 4
         private const val MENU_DELETE = 5
+        private const val MENU_MARK_COLOR = 6
+        private const val MENU_MARK_REMOVE = 7
 
         /** Zoom levels of the zoom in/out buttons, in percent. */
         val ZOOM_STEPS = intArrayOf(10, 25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500, 600, 800)

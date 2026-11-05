@@ -501,6 +501,7 @@ class MainActivity : AppCompatActivity() {
                     PdfEngine.run({ Triple(d.canAnnotate(), d.canEditPages(), d.digitalSignatures().isNotEmpty()) }) { c ->
                         c.getOrNull()?.let { (a, p, s) ->
                             t.canAnnotate = a
+                            t.view.canEditMarks = a
                             t.canEditPages = p
                             t.signed = s
                         }

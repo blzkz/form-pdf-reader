@@ -200,8 +200,14 @@
     <string name="annot_done">Terminé</string>
     <string name="annot_edit">Modifier</string>
     <string name="annot_delete">Supprimer</string>
-    <string name="annot_hint_select">Touchez une annotation pour la modifier ou la supprimer.</string>
+    <string name="annot_hint_select">Touchez une annotation pour la modifier ou la supprimer, ou pour changer la couleur d’une marque.</string>
     <string name="annot_hint_markup">Faites glisser un doigt sur le texte. Deux doigts pour vous déplacer.</string>
+    <string name="annot_erase">Gomme</string>
+    <string name="annot_hint_erase">Faites glisser un doigt sur le texte pour lui retirer la marque. Deux doigts pour vous déplacer.</string>
+    <string name="mark_color">Couleur</string>
+    <string name="mark_remove_highlight">Retirer le surlignage</string>
+    <string name="mark_remove_underline">Retirer le soulignement</string>
+    <string name="mark_remove_strikeout">Retirer le barré</string>
     <string name="annot_hint_note">Touchez la page à l’endroit de la note.</string>
     <string name="annot_hint_text">Touchez la page à l’endroit du texte.</string>
     <string name="annot_hint_ink">Dessinez avec un doigt. Deux doigts pour vous déplacer.</string>

@@ -5,6 +5,7 @@ import android.text.InputType
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -19,8 +20,10 @@ import uniffi.form_pdf_reader_ffi.AnnotationKind
 
 /**
  * The annotation bar of the viewer: the tool (select, highlight, underline,
- * strike out, note, text, draw), its colour, the line width or the text size,
- * and Done. It also asks the text of notes and free texts.
+ * strike out, note, text, draw), its colour (or the eraser, to remove a mark
+ * from the text dragged over), the line width or the text size, and Done.
+ * With Select, the colours change the one of the selected mark. It also asks
+ * the text of notes and free texts.
  *
  * Marking text and drawing take one finger; two fingers scroll and zoom.
  */
@@ -41,6 +44,8 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
 
     private var tool = AnnotTool.HIGHLIGHT
     private val colorOf = AnnotTool.entries.associateWith { defaultColor(it) }.toMutableMap()
+    private var erasing = false
+    private lateinit var eraser: ImageView
     private var inkWidth = 2f
     private var fontSize = 12f
 
@@ -77,13 +82,34 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
                 tag = c
                 contentDescription = String.format("#%06X", c)
                 setOnClickListener {
+                    if (tool == AnnotTool.SELECT) {
+                        view?.setSelectedMarkupColor(c)
+                        return@setOnClickListener
+                    }
                     colorOf[tool] = c
+                    erasing = false
                     view?.annotColor = c
+                    view?.annotErasing = false
                     refresh()
                 }
             }
             colors.addView(chip)
         }
+        eraser = ImageView(activity).apply {
+            val size = (30 * density).toInt()
+            layoutParams = LinearLayout.LayoutParams(size, size).apply { marginStart = (2 * density).toInt() }
+            val pad = (4 * density).toInt()
+            setPadding(pad, pad, pad, pad)
+            setImageResource(R.drawable.ic_eraser)
+            contentDescription = activity.getString(R.string.annot_erase)
+            tooltipText = contentDescription
+            setOnClickListener {
+                erasing = true
+                view?.annotErasing = true
+                refresh()
+            }
+        }
+        colors.addView(eraser)
     }
 
     fun open(v: PdfPageView) {
@@ -111,35 +137,49 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
 
     private fun setTool(t: AnnotTool) {
         tool = t
+        erasing = false
         val v = view ?: return
         v.annotTool = t
         v.annotColor = colorOf.getValue(t)
+        v.annotErasing = false
         v.inkWidth = inkWidth
         refresh()
     }
 
     private fun refresh() {
         val v = view ?: return
+        val markup = tool == AnnotTool.HIGHLIGHT || tool == AnnotTool.UNDERLINE || tool == AnnotTool.STRIKEOUT
+        val sel = v.selectedAnnotation.takeIf { tool == AnnotTool.SELECT }
+        val selMark = sel?.takeIf { it.kind == AnnotationKind.HIGHLIGHT || it.kind == AnnotationKind.UNDERLINE || it.kind == AnnotationKind.STRIKE_OUT }
         hint.setText(
             when (tool) {
                 AnnotTool.SELECT -> R.string.annot_hint_select
-                AnnotTool.HIGHLIGHT, AnnotTool.UNDERLINE, AnnotTool.STRIKEOUT -> R.string.annot_hint_markup
+                AnnotTool.HIGHLIGHT, AnnotTool.UNDERLINE, AnnotTool.STRIKEOUT -> if (erasing) R.string.annot_hint_erase else R.string.annot_hint_markup
                 AnnotTool.NOTE -> R.string.annot_hint_note
                 AnnotTool.TEXT -> R.string.annot_hint_text
                 AnnotTool.INK -> R.string.annot_hint_ink
             },
         )
-        colors.isVisible = tool != AnnotTool.SELECT
-        val current = colorOf.getValue(tool)
+        colors.isVisible = tool != AnnotTool.SELECT || selMark != null
+        val current = when {
+            tool == AnnotTool.SELECT -> selMark?.color?.toInt()
+            erasing -> null
+            else -> colorOf.getValue(tool)
+        }
         val ring = MaterialColors.getColor(bar, com.google.android.material.R.attr.colorOnSurface)
         for (i in 0 until colors.childCount) {
             val chip = colors.getChildAt(i)
-            val c = chip.tag as Int
+            val c = chip.tag as? Int ?: continue
             chip.background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(0xFF000000.toInt() or c)
                 if (c == current) setStroke((3 * density).toInt(), ring)
             }
+        }
+        eraser.isVisible = markup
+        eraser.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            if (erasing) setStroke((3 * density).toInt(), ring)
         }
         option.isVisible = tool == AnnotTool.INK || tool == AnnotTool.TEXT
         option.text = when (tool) {
@@ -153,7 +193,6 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
             AnnotTool.TEXT -> activity.getString(R.string.annot_size, fontSize.toInt())
             else -> ""
         }
-        val sel = v.selectedAnnotation.takeIf { tool == AnnotTool.SELECT }
         delete.isVisible = sel != null
         edit.isVisible = sel != null && (sel.kind == AnnotationKind.NOTE || sel.kind == AnnotationKind.FREE_TEXT)
     }

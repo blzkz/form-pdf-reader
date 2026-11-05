@@ -2,9 +2,9 @@
 
 use crate::chrome::{self, TabAction, TabInfo};
 use crate::theme::{self, icon};
-use crate::viewer::{AnnotRequest, AnnotTool, DocView, PageLayout, Tool};
+use crate::viewer::{ANNOT_COLORS, AnnotRequest, AnnotTool, DocView, PageLayout, Tool};
 use eframe::egui::{self, Align, Color32, Key, KeyboardShortcut, Layout, Modifiers, RichText};
-use form_pdf_reader::pdfium::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FormKind, OpenOptions, PasswordRequired, SignedState};
+use form_pdf_reader::pdfium::{AlertAnswer, AnnotKind, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FormKind, OpenOptions, PasswordRequired, SignedState};
 use form_pdf_reader::t;
 use std::path::{Path, PathBuf};
 
@@ -37,8 +37,6 @@ struct AnnotDialog {
 }
 
 /// Colores para anotar.
-const ANNOT_COLORS: [[u8; 3]; 6] = [[255, 214, 0], [76, 175, 80], [33, 150, 243], [229, 57, 53], [156, 39, 176], [20, 20, 20]];
-
 struct Tab {
     view: DocView,
     dirty: bool,
@@ -1197,23 +1195,45 @@ impl PdfApp {
             }
             separator(ui);
             let Some(a) = v.annot_state() else { return };
-            if t != AnnotTool::Select {
-                // Colores.
-                let cur = a.color();
+            // Colores: los de la herramienta o, al seleccionar, el de la marca
+            // de texto seleccionada.
+            let markup = matches!(t, AnnotTool::Highlight | AnnotTool::Underline | AnnotTool::StrikeOut);
+            let sel_markup = a.selected.as_ref().filter(|s| matches!(s.kind, AnnotKind::Highlight | AnnotKind::Underline | AnnotKind::StrikeOut)).map(|s| s.color);
+            let cur = if t == AnnotTool::Select { sel_markup } else { (!a.erasing).then(|| a.color()) };
+            let mut picked = None;
+            if t != AnnotTool::Select || sel_markup.is_some() {
                 for c in ANNOT_COLORS {
                     let (rect, r) = ui.allocate_exact_size(egui::Vec2::splat(22.0), egui::Sense::click());
                     let col = Color32::from_rgb(c[0], c[1], c[2]);
                     ui.painter().circle_filled(rect.center(), 8.0, col);
-                    if c == cur {
+                    if Some(c) == cur {
                         ui.painter().circle_stroke(rect.center(), 10.5, egui::Stroke::new(2.0, p.accent_text));
                     } else if r.hovered() {
                         ui.painter().circle_stroke(rect.center(), 10.5, egui::Stroke::new(1.0, p.border));
                     }
                     if r.clicked() {
-                        a.set_color(c);
+                        picked = Some(c);
                     }
                 }
             }
+            if markup {
+                // La goma: quita la marca de lo que se arrastra.
+                let r = theme::icon_toggle(ui, a.erasing, icon::ERASER, t!("annot.erase_tip"));
+                if r.clicked() {
+                    a.erasing = !a.erasing;
+                }
+            }
+            if let Some(c) = picked {
+                if t == AnnotTool::Select {
+                    match v.set_selected_markup_color(c) {
+                        Ok(changed) => tab.dirty |= changed,
+                        Err(e) => error = Some(e),
+                    }
+                } else {
+                    a.set_color(c);
+                }
+            }
+            let Some(a) = v.annot_state() else { return };
             match t {
                 AnnotTool::Ink => {
                     separator(ui);
@@ -1250,7 +1270,10 @@ impl PdfApp {
                 }
                 AnnotTool::Select => {
                     if let Some(sel) = a.selected.clone() {
-                        if matches!(sel.kind, form_pdf_reader::pdfium::AnnotKind::Note | form_pdf_reader::pdfium::AnnotKind::FreeText)
+                        if sel_markup.is_some() {
+                            separator(ui);
+                        }
+                        if matches!(sel.kind, AnnotKind::Note | AnnotKind::FreeText)
                             && ui.button(format!("{}  {}", icon::PENCIL_SIMPLE, t!("annot.edit"))).clicked()
                         {
                             edit = Some(sel.clone());
@@ -1293,7 +1316,7 @@ impl PdfApp {
             let title = match &d.req {
                 AnnotRequest::Note { .. } => t!("annot.new_note"),
                 AnnotRequest::FreeText { .. } => t!("annot.new_text"),
-                AnnotRequest::Edit(a) if a.kind == form_pdf_reader::pdfium::AnnotKind::Note => t!("annot.edit_note"),
+                AnnotRequest::Edit(a) if a.kind == AnnotKind::Note => t!("annot.edit_note"),
                 AnnotRequest::Edit(_) => t!("annot.edit_text"),
             };
             ui.heading(title);

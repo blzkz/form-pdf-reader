@@ -139,9 +139,13 @@ made-up data and the public US Form I-9.
 - **Annotations:** highlight, underline or strike out text, notes (an icon
   with a comment), text written anywhere on the page and freehand drawing,
   in six colours (the toolbar's highlighter button on the desktop, ⋮ >
-  Annotate on Android). With *Select*, an annotation can be deleted or its
-  text changed. They are saved as standard PDF annotations, which Adobe
-  Reader and other viewers show. Not on XFA forms.
+  Annotate on Android). Marking text that is already marked in another
+  colour changes only the characters dragged over, and the eraser removes
+  the mark from them. With *Select*, an annotation can be deleted, its text
+  changed or the colour of a mark changed. A right-click on a mark (on the
+  desktop) or a long press on it (on Android, next to Copy) changes its
+  colour or removes it. They are saved as standard PDF annotations, which
+  Adobe Reader and other viewers show. Not on XFA forms.
 - **Organise pages** (☰ > Organise pages… on the desktop, ⋮ on Android):
   thumbnails of every page to select several (Ctrl/Shift on the desktop),
   drag to put them in another order, rotate, delete or extract to a new PDF;
