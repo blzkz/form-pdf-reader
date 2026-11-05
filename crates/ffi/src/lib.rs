@@ -1243,9 +1243,29 @@ impl PdfDocument {
         self.annotations(page).into_iter().find(|a| a.index == index)
     }
 
-    /// Highlights, underlines or strikes out characters [start, start + count).
+    /// The topmost highlight, underline or strike-out at (x, y), in points
+    /// from the top left corner (only where it marks, line by line).
+    pub fn markup_at(&self, page: u32, x: f32, y: f32) -> Option<AnnotationInfo> {
+        let (px, py) = self.point(page, x, y);
+        let index = self.lock().markup_at(usize_page(page), px, py)?.index as u32;
+        self.annotations(page).into_iter().find(|a| a.index == index)
+    }
+
+    /// Highlights, underlines or strikes out characters [start, start + count)
+    /// (what was marked in another colour around them keeps it).
     pub fn add_markup(&self, page: u32, kind: AnnotationKind, start: i32, count: i32, color: u32) -> Result<(), PdfError> {
         self.lock().add_markup_range(usize_page(page), kind.into(), start, count, rgb(color)).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// Removes that kind of mark from characters [start, start + count) only.
+    /// True if there was something to remove.
+    pub fn remove_markup(&self, page: u32, kind: AnnotationKind, start: i32, count: i32) -> Result<bool, PdfError> {
+        self.lock().remove_markup_range(usize_page(page), kind.into(), start, count).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// Changes the colour of a whole highlight, underline or strike-out.
+    pub fn set_markup_color(&self, page: u32, index: u32, color: u32) -> Result<(), PdfError> {
+        self.lock().set_markup_color(usize_page(page), index as usize, rgb(color)).map_err(|e| PdfError::Save(format!("{e:#}")))
     }
 
     /// A note with its top left corner at (x, y), in points from the top left.

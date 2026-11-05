@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 mod annotate;
 mod sign;
-pub use annotate::{AnnotRequest, AnnotTool};
+pub use annotate::{ANNOT_COLORS, AnnotRequest, AnnotTool};
 pub use sign::signature_texture;
 
 /// Puntos tipográficos -> píxeles lógicos al 100 %.
@@ -145,6 +145,8 @@ pub struct DocView {
     wheel_acc: f32,
     /// Anotando (ver `annotate`).
     annot: Option<annotate::AnnotState>,
+    /// Menú abierto de una marca de texto (clic derecho).
+    markup_menu: Option<annotate::MarkupMenu>,
 }
 
 impl DocView {
@@ -190,6 +192,7 @@ impl DocView {
             selection_rects: Vec::new(),
             wheel_acc: 0.0,
             annot: None,
+            markup_menu: None,
         }
     }
 
@@ -1050,6 +1053,9 @@ impl DocView {
             })
             .cloned()
             .collect();
+        // Clic derecho en una marca de texto: su menú (antes que PDFium).
+        let pointer_events = self.open_markup_menu(pointer_events, area_rect);
+        self.markup_menu_ui(&ctx, &mut ev);
         // Firmas manuscritas: colocar, mover, quitar (antes que PDFium).
         let signing = self.handle_signatures(&ctx, &pointer_events, &mut ev, area_rect);
         self.draw_signatures(&ctx, &ui.painter_at(area_rect));

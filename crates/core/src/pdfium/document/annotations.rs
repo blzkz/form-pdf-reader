@@ -90,10 +90,30 @@ impl Annot {
         unsafe { sys::FPDFAnnot_SetRect(self.0, &r) };
     }
 
+    /// Su color. PDFium no lo da si la anotación ya tiene apariencia (la
+    /// genera al dibujarla y se guarda con ella): entonces se lee de la
+    /// apariencia.
     fn color(&self) -> Option<[u8; 3]> {
         let (mut r, mut g, mut b, mut a) = (0, 0, 0, 0);
         let ok = unsafe { sys::FPDFAnnot_GetColor(self.0, sys::FPDFANNOT_COLORTYPE_Color, &mut r, &mut g, &mut b, &mut a) };
-        (ok != 0).then_some([r as u8, g as u8, b as u8])
+        if ok != 0 {
+            return Some([r as u8, g as u8, b as u8]);
+        }
+        appearance_color(&self.appearance())
+    }
+
+    /// El contenido de su apariencia normal.
+    fn appearance(&self) -> String {
+        unsafe {
+            let mode = sys::FPDF_ANNOT_APPEARANCEMODE_NORMAL as sys::FPDF_ANNOT_APPEARANCEMODE;
+            let n = sys::FPDFAnnot_GetAP(self.0, mode, std::ptr::null_mut(), 0) as usize;
+            if n <= 2 {
+                return String::new();
+            }
+            let mut buf = vec![0u16; n / 2];
+            sys::FPDFAnnot_GetAP(self.0, mode, buf.as_mut_ptr(), (buf.len() * 2) as c_ulong);
+            from_wide_buf(&buf)
+        }
     }
 
     fn set_color(&self, [r, g, b]: [u8; 3]) {
@@ -151,6 +171,111 @@ fn merge_lines(mut rects: Vec<[f32; 4]>) -> Vec<[f32; 4]> {
     out
 }
 
+/// Un carácter de la página, para marcarlo.
+#[derive(Clone, Copy)]
+enum CharBox {
+    /// Fin de línea.
+    Break,
+    /// No ocupa sitio.
+    Empty,
+    /// Su caja "holgada" (la altura de la fuente; izquierda, abajo, derecha,
+    /// arriba) y si es un espacio.
+    Char([f32; 4], bool),
+}
+
+impl CharBox {
+    /// Un espacio, un fin de línea o algo que no ocupa: entre dos trozos
+    /// marcados del mismo color no los separa.
+    fn is_gap(&self) -> bool {
+        !matches!(self, CharBox::Char(_, false))
+    }
+}
+
+/// Rectángulos (izquierda, abajo, derecha, arriba) de las líneas de los
+/// caracteres [start, end), sin los espacios de los extremos (salvo los del
+/// final con `keep_end`).
+fn line_rects(boxes: &[CharBox], start: usize, end: usize, keep_end: bool) -> Vec<[f32; 4]> {
+    let mut lines: Vec<[f32; 4]> = Vec::new();
+    // Caracteres de la línea en curso: su caja y si es un espacio.
+    let mut cur: Vec<([f32; 4], bool)> = Vec::new();
+    let flush = |cur: &mut Vec<([f32; 4], bool)>, lines: &mut Vec<[f32; 4]>, keep_end: bool| {
+        let first = cur.iter().position(|c| !c.1);
+        let last = if keep_end && first.is_some() { cur.len().checked_sub(1) } else { cur.iter().rposition(|c| !c.1) };
+        if let (Some(a), Some(b)) = (first, last) {
+            let mut u = cur[a].0;
+            for c in &cur[a..=b] {
+                u = [u[0].min(c.0[0]), u[1].min(c.0[1]), u[2].max(c.0[2]), u[3].max(c.0[3])];
+            }
+            lines.push(u);
+        }
+        cur.clear();
+    };
+    for c in &boxes[start.min(boxes.len())..end.min(boxes.len())] {
+        match *c {
+            CharBox::Break => flush(&mut cur, &mut lines, false),
+            CharBox::Empty => {}
+            CharBox::Char(b, space) => {
+                // Otra línea: no se solapa en vertical con la que se lleva.
+                if let Some(&(prev, _)) = cur.last()
+                    && !same_line(&prev, &b)
+                {
+                    flush(&mut cur, &mut lines, false);
+                }
+                cur.push((b, space));
+            }
+        }
+    }
+    flush(&mut cur, &mut lines, keep_end);
+    lines
+}
+
+/// Los caracteres que cubre una marca: los que tienen el centro dentro de
+/// alguno de sus rectángulos (con algo de margen en vertical, por las marcas
+/// de otros programas, más justas que las cajas holgadas).
+fn covered_chars(boxes: &[CharBox], quads: &[[f32; 4]]) -> Vec<usize> {
+    boxes
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| match c {
+            CharBox::Char([l, b, r, t], _) => {
+                let (x, y) = ((l + r) / 2.0, (b + t) / 2.0);
+                quads
+                    .iter()
+                    .any(|q| {
+                        let m = 0.25 * (q[3] - q[1]);
+                        x >= q[0] && x <= q[2] && y >= q[1] - m && y <= q[3] + m
+                    })
+                    .then_some(i)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Los trozos [inicio, fin) de caracteres seguidos con el mismo color. Los
+/// espacios no cuentan (su color no separa dos trozos del mismo). El último
+/// dato dice si el trozo llega hasta el siguiente (de otro color, en la misma
+/// línea): entonces el espacio entre los dos es del primero, sin hueco.
+fn color_runs(boxes: &[CharBox], colors: &[Option<[u8; 3]>]) -> Vec<(usize, usize, [u8; 3], bool)> {
+    let mut runs: Vec<(usize, usize, [u8; 3], bool)> = Vec::new();
+    for (i, c) in colors.iter().enumerate() {
+        let Some(c) = c.filter(|_| !boxes[i].is_gap()) else { continue };
+        match runs.last_mut() {
+            Some((_, e, rc, _)) if *rc == c && (*e..i).all(|j| boxes[j].is_gap()) => *e = i + 1,
+            _ => runs.push((i, i + 1, c, false)),
+        }
+    }
+    for k in 1..runs.len() {
+        let s = runs[k].0;
+        let prev = &mut runs[k - 1];
+        if (prev.1..s).all(|j| matches!(boxes[j], CharBox::Char(_, true) | CharBox::Empty)) {
+            prev.1 = s;
+            prev.3 = true;
+        }
+    }
+    runs
+}
+
 /// Los rectángulos (izquierda, abajo, derecha, arriba) de los cuadriláteros
 /// de una marca de texto.
 fn quad_rects(a: &Annot) -> Vec<[f32; 4]> {
@@ -167,6 +292,27 @@ fn quad_rects(a: &Annot) -> Vec<[f32; 4]> {
             })
         })
         .collect()
+}
+
+/// El primer color de una apariencia ("1 0.84 0 rg", "0 G", "0 0 0 1 k"…):
+/// el de una marca de texto o un dibujo, que solo pintan con uno.
+fn appearance_color(ap: &str) -> Option<[u8; 3]> {
+    let t: Vec<&str> = ap.split_whitespace().collect();
+    let num = |s: &str| s.parse::<f32>().ok().map(|v| v.clamp(0.0, 1.0));
+    let byte = |v: f32| (v * 255.0).round() as u8;
+    for (i, op) in t.iter().enumerate() {
+        let args = |n: usize| -> Option<Vec<f32>> { (i >= n).then(|| t[i - n..i].iter().map(|s| num(s)).collect::<Option<Vec<f32>>>()).flatten() };
+        let c = match *op {
+            "rg" | "RG" => args(3).map(|c| [byte(c[0]), byte(c[1]), byte(c[2])]),
+            "g" | "G" => args(1).map(|c| [byte(c[0]); 3]),
+            "k" | "K" => args(4).map(|c| [0, 1, 2].map(|j| byte((1.0 - c[j]) * (1.0 - c[3])))),
+            _ => None,
+        };
+        if c.is_some() {
+            return c;
+        }
+    }
+    None
 }
 
 /// Tamaño de letra y color guardados en el `DA` de un texto libre
@@ -238,114 +384,164 @@ impl Document {
         v
     }
 
-    /// La anotación de encima en el punto (coordenadas de página).
+    /// La anotación de encima en el punto (coordenadas de página). En las
+    /// marcas de texto cuenta lo marcado de cada línea, no el rectángulo que
+    /// abarca todas.
     pub fn annotation_at(&self, page: usize, x: f32, y: f32) -> Option<Annotation> {
+        self.annotations(page).into_iter().rev().find(|a| self.annotation_hit(a, x, y))
+    }
+
+    /// La marca de texto (resaltado, subrayado o tachado) de encima en el
+    /// punto.
+    pub fn markup_at(&self, page: usize, x: f32, y: f32) -> Option<Annotation> {
+        self.annotations(page)
+            .into_iter()
+            .rev()
+            .find(|a| matches!(a.kind, AnnotKind::Highlight | AnnotKind::Underline | AnnotKind::StrikeOut) && self.annotation_hit(a, x, y))
+    }
+
+    fn annotation_hit(&self, a: &Annotation, x: f32, y: f32) -> bool {
         const SLACK: f32 = 2.0;
-        self.annotations(page).into_iter().rev().find(|a| {
-            let [l, b, r, t] = a.rect;
-            x >= l - SLACK && x <= r + SLACK && y >= b - SLACK && y <= t + SLACK
-        })
+        let inside = |[l, b, r, t]: [f32; 4]| x >= l - SLACK && x <= r + SLACK && y >= b - SLACK && y <= t + SLACK;
+        if !inside(a.rect) {
+            return false;
+        }
+        if !matches!(a.kind, AnnotKind::Highlight | AnnotKind::Underline | AnnotKind::StrikeOut) {
+            return true;
+        }
+        let quads = self.annot(a.page, a.index).map(|an| quad_rects(&an)).unwrap_or_default();
+        quads.is_empty() || quads.into_iter().any(inside)
     }
 
     /// Resalta, subraya o tacha los caracteres [start, start + count) de la
-    /// página: un rectángulo por línea, con la altura de la letra (no la de
-    /// cada trozo de texto: así el subrayado y el tachado van rectos y el
-    /// resaltado es continuo).
+    /// página con `color`: un rectángulo por línea, con la altura de la letra
+    /// (no la de cada trozo de texto: así el subrayado y el tachado van rectos
+    /// y el resaltado es continuo). Lo que ya estaba marcado de otro color
+    /// fuera de esos caracteres conserva el suyo.
     pub fn add_markup_range(&mut self, page: usize, kind: AnnotKind, start: i32, count: i32, color: [u8; 3]) -> Result<()> {
-        let lines = self.line_rects(page, start, count);
-        self.put_markup(page, kind, lines, color)
+        self.mark_range(page, kind, start, count, Some(color)).map(|_| ())
+    }
+
+    /// Quita la marca de ese tipo de los caracteres [start, start + count)
+    /// (lo de alrededor sigue marcado). true si había algo que quitar.
+    pub fn remove_markup_range(&mut self, page: usize, kind: AnnotKind, start: i32, count: i32) -> Result<bool> {
+        self.mark_range(page, kind, start, count, None)
     }
 
     /// Resalta, subraya o tacha el texto que ocupa `rects` (izquierda,
     /// arriba, derecha, abajo, como los de `text_rects`).
     pub fn add_markup(&mut self, page: usize, kind: AnnotKind, rects: &[[f64; 4]], color: [u8; 3]) -> Result<()> {
-        let lines = rects.iter().map(|&[l, t, r, b]| [l as f32, b.min(t) as f32, r as f32, t.max(b) as f32]).collect();
-        self.put_markup(page, kind, merge_lines(lines), color)
+        let lines: Vec<[f32; 4]> = rects.iter().map(|&[l, t, r, b]| [l as f32, b.min(t) as f32, r as f32, t.max(b) as f32]).collect();
+        let lines = merge_lines(lines);
+        if lines.is_empty() {
+            bail!("no hay texto seleccionado");
+        }
+        self.create_markup(page, kind, &lines, color)
     }
 
-    /// Rectángulos (izquierda, abajo, derecha, arriba) de las líneas de los
-    /// caracteres [start, start + count), con las cajas "holgadas" de cada
-    /// carácter (la altura de la fuente) y sin los espacios de los extremos.
-    fn line_rects(&self, page: usize, start: i32, count: i32) -> Vec<[f32; 4]> {
+    /// Cambia el color de una marca de texto entera.
+    pub fn set_markup_color(&mut self, page: usize, index: usize, color: [u8; 3]) -> Result<()> {
+        let Some(info) = self.annotations(page).into_iter().find(|a| a.index == index) else { bail!("no existe esa anotación") };
+        let Some(a) = self.annot(page, index) else { bail!("no existe esa anotación") };
+        let lines = quad_rects(&a);
+        drop(a);
+        if lines.is_empty() {
+            bail!("no es una marca de texto");
+        }
+        // PDFium no cambia el color de una anotación con apariencia: se hace
+        // de nuevo, en el mismo sitio.
+        self.create_markup(page, info.kind, &lines, color)?;
+        self.remove_annotation(page, index)
+    }
+
+    /// Los caracteres de la página, para marcarlos.
+    fn char_boxes(&self, page: usize) -> Vec<CharBox> {
         self.with_text_page(page, |tp| unsafe {
-            let n = sys::FPDFText_CountChars(tp);
-            let mut lines: Vec<[f32; 4]> = Vec::new();
-            // Caracteres de la línea en curso: su caja y si es un espacio.
-            let mut cur: Vec<([f32; 4], bool)> = Vec::new();
-            let flush = |cur: &mut Vec<([f32; 4], bool)>, lines: &mut Vec<[f32; 4]>| {
-                let first = cur.iter().position(|c| !c.1);
-                let last = cur.iter().rposition(|c| !c.1);
-                if let (Some(a), Some(b)) = (first, last) {
-                    let mut u = cur[a].0;
-                    for c in &cur[a..=b] {
-                        u = [u[0].min(c.0[0]), u[1].min(c.0[1]), u[2].max(c.0[2]), u[3].max(c.0[3])];
+            (0..sys::FPDFText_CountChars(tp))
+                .map(|i| {
+                    let ch = char::from_u32(sys::FPDFText_GetUnicode(tp, i)).unwrap_or(' ');
+                    if ch == '\r' || ch == '\n' {
+                        return CharBox::Break;
                     }
-                    lines.push(u);
-                }
-                cur.clear();
-            };
-            for i in start.max(0)..(start + count).min(n) {
-                let ch = char::from_u32(sys::FPDFText_GetUnicode(tp, i)).unwrap_or(' ');
-                if ch == '\r' || ch == '\n' {
-                    flush(&mut cur, &mut lines);
-                    continue;
-                }
-                let mut r = sys::FS_RECTF { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 };
-                if sys::FPDFText_GetLooseCharBox(tp, i, &mut r) == 0 {
-                    continue;
-                }
-                let b = [r.left.min(r.right), r.bottom.min(r.top), r.left.max(r.right), r.bottom.max(r.top)];
-                if b[3] - b[1] <= 0.1 {
-                    continue;
-                }
-                // Otra línea: no se solapa en vertical con la que se lleva.
-                if let Some(&(prev, _)) = cur.last()
-                    && !same_line(&prev, &b)
-                {
-                    flush(&mut cur, &mut lines);
-                }
-                cur.push((b, ch.is_whitespace()));
-            }
-            flush(&mut cur, &mut lines);
-            lines
+                    let mut r = sys::FS_RECTF { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 };
+                    if sys::FPDFText_GetLooseCharBox(tp, i, &mut r) == 0 {
+                        return CharBox::Empty;
+                    }
+                    let b = [r.left.min(r.right), r.bottom.min(r.top), r.left.max(r.right), r.bottom.max(r.top)];
+                    if b[3] - b[1] <= 0.1 { CharBox::Empty } else { CharBox::Char(b, ch.is_whitespace()) }
+                })
+                .collect()
         })
         .unwrap_or_default()
     }
 
-    /// Las marcas del mismo tipo que tocan las líneas nuevas se juntan con
-    /// ellas en una sola, con el color nuevo (sin sumar colores ni dejar
-    /// huecos).
-    fn put_markup(&mut self, page: usize, kind: AnnotKind, lines: Vec<[f32; 4]>, color: [u8; 3]) -> Result<()> {
+    /// Marca (con `Some`) o desmarca (con `None`) los caracteres [start,
+    /// start + count). Las marcas del mismo tipo que los tocan se rehacen por
+    /// caracteres: cada trozo conserva su color y los trozos seguidos del
+    /// mismo color quedan en una sola marca (sin sumar colores ni dejar
+    /// huecos). true si cambió algo.
+    fn mark_range(&mut self, page: usize, kind: AnnotKind, start: i32, count: i32, color: Option<[u8; 3]>) -> Result<bool> {
+        if !matches!(kind, AnnotKind::Highlight | AnnotKind::Underline | AnnotKind::StrikeOut) {
+            bail!("no es una marca de texto");
+        }
+        let boxes = self.char_boxes(page);
+        let n = boxes.len();
+        let (start, end) = (start.max(0) as usize, (start.max(0) + count.max(0)) as usize);
+        let (start, end) = (start.min(n), end.min(n));
+        if start >= end || line_rects(&boxes, start, end, false).is_empty() {
+            bail!("no hay texto seleccionado");
+        }
+        // Lo más cercano antes y después que no es un espacio: una marca del
+        // mismo color que llega hasta ahí se junta con la nueva.
+        let before = (0..start).rev().find(|&i| !boxes[i].is_gap());
+        let after = (end..n).find(|&i| !boxes[i].is_gap());
+        let mut colors: Vec<Option<[u8; 3]>> = vec![None; n];
+        let mut affected = Vec::new();
+        for a in self.annotations(page).into_iter().filter(|a| a.kind == kind) {
+            let Some(annot) = self.annot(page, a.index) else { continue };
+            let quads = quad_rects(&annot);
+            drop(annot);
+            let chars = covered_chars(&boxes, &quads);
+            let inside = chars.iter().any(|&c| c >= start && c < end);
+            let next_to = color == Some(a.color) && chars.iter().any(|&c| Some(c) == before || Some(c) == after);
+            if inside || next_to {
+                for c in chars {
+                    colors[c] = Some(a.color);
+                }
+                affected.push(a.index);
+            }
+        }
+        if affected.is_empty() && color.is_none() {
+            return Ok(false);
+        }
+        colors[start..end].fill(color);
+        // De atrás adelante: borrar una no cambia el índice de las anteriores.
+        affected.sort_unstable_by(|a, b| b.cmp(a));
+        for i in affected {
+            self.remove_annotation(page, i)?;
+        }
+        for (s, e, c, joined) in color_runs(&boxes, &colors) {
+            let lines = line_rects(&boxes, s, e, joined);
+            if !lines.is_empty() {
+                self.create_markup(page, kind, &lines, c)?;
+            }
+        }
+        Ok(true)
+    }
+
+    /// Una marca de texto nueva con esas líneas (izquierda, abajo, derecha,
+    /// arriba).
+    fn create_markup(&mut self, page: usize, kind: AnnotKind, lines: &[[f32; 4]], color: [u8; 3]) -> Result<()> {
         let subtype = match kind {
             AnnotKind::Highlight => sys::FPDF_ANNOT_HIGHLIGHT,
             AnnotKind::Underline => sys::FPDF_ANNOT_UNDERLINE,
             AnnotKind::StrikeOut => sys::FPDF_ANNOT_STRIKEOUT,
             _ => bail!("no es una marca de texto"),
         };
-        if lines.is_empty() {
-            bail!("no hay texto seleccionado");
-        }
-        let mut all = lines.clone();
-        let mut absorbed = Vec::new();
-        for a in self.annotations(page).into_iter().filter(|a| a.kind == kind) {
-            let Some(annot) = self.annot(page, a.index) else { continue };
-            let quads = quad_rects(&annot);
-            drop(annot);
-            if quads.iter().any(|q| lines.iter().any(|l| touches(q, l))) {
-                all.extend(quads);
-                absorbed.push(a.index);
-            }
-        }
-        // De atrás adelante: borrar una no cambia el índice de las anteriores.
-        absorbed.sort_unstable_by(|a, b| b.cmp(a));
-        for i in absorbed {
-            self.remove_annotation(page, i)?;
-        }
-        let lines = merge_lines(all);
-        let text = self.bounded_text(page, &lines);
+        let text = self.bounded_text(page, lines);
         let a = self.new_annot(page, subtype)?;
         let mut bounds = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
-        for &[l, b, r, t] in &lines {
+        for &[l, b, r, t] in lines {
             let q = sys::FS_QUADPOINTSF { x1: l, y1: t, x2: r, y2: t, x3: l, y3: b, x4: r, y4: b };
             unsafe { sys::FPDFAnnot_AppendAttachmentPoints(a.0, &q) };
             bounds = [bounds[0].min(l), bounds[1].min(b), bounds[2].max(r), bounds[3].max(t)];
@@ -521,7 +717,15 @@ impl Document {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_da;
+    use super::{appearance_color, parse_da};
+
+    #[test]
+    fn color_de_la_apariencia() {
+        assert_eq!(appearance_color("/GS gs 1 0.839216 0 rg 72 700 m 200 700 l f"), Some([255, 214, 0]));
+        assert_eq!(appearance_color("q 0.5 G 1 w 0 0 m 10 0 l S Q"), Some([128, 128, 128]));
+        assert_eq!(appearance_color("0 0 0 1 k"), Some([0, 0, 0]));
+        assert_eq!(appearance_color("72 700 m 200 700 l S"), None);
+    }
 
     #[test]
     fn leer_da() {

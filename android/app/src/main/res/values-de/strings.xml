@@ -200,8 +200,14 @@
     <string name="annot_done">Fertig</string>
     <string name="annot_edit">Bearbeiten</string>
     <string name="annot_delete">Löschen</string>
-    <string name="annot_hint_select">Tippen Sie auf einen Kommentar, um ihn zu bearbeiten oder zu löschen.</string>
+    <string name="annot_hint_select">Tippen Sie auf einen Kommentar, um ihn zu bearbeiten oder zu löschen oder die Farbe einer Markierung zu ändern.</string>
     <string name="annot_hint_markup">Ziehen Sie einen Finger über den Text. Mit zwei Fingern scrollen.</string>
+    <string name="annot_erase">Radiergummi</string>
+    <string name="annot_hint_erase">Ziehen Sie einen Finger über den Text, um die Markierung zu entfernen. Mit zwei Fingern scrollen.</string>
+    <string name="mark_color">Farbe</string>
+    <string name="mark_remove_highlight">Hervorhebung entfernen</string>
+    <string name="mark_remove_underline">Unterstreichung entfernen</string>
+    <string name="mark_remove_strikeout">Durchstreichung entfernen</string>
     <string name="annot_hint_note">Tippen Sie auf die Stelle für die Notiz.</string>
     <string name="annot_hint_text">Tippen Sie auf die Stelle für den Text.</string>
     <string name="annot_hint_ink">Mit einem Finger zeichnen. Mit zwei Fingern scrollen.</string>

@@ -195,22 +195,64 @@ fn anotaciones() {
     // En XFA no.
     assert!(!Document::open(Path::new(XFA)).unwrap().can_annotate());
 
-    // Marcar lo ya marcado: una sola marca continua con el color nuevo (no
-    // se suman los colores); otra clase de marca no se junta.
+    // Marcar lo ya marcado del mismo color: una sola marca continua (no se
+    // suman los colores); otra clase de marca no se junta.
     let mut doc = Document::open(Path::new("tests/fixtures/normal.pdf")).unwrap();
     let n = doc.text_char_count(0);
+    let marks = |doc: &Document, kind| {
+        let mut v: Vec<_> = doc.annotations(0).into_iter().filter(|a| a.kind == kind).collect();
+        v.sort_by(|a, b| b.rect[3].total_cmp(&a.rect[3]).then(a.rect[0].total_cmp(&b.rect[0])));
+        v
+    };
     doc.add_markup_range(0, AnnotKind::Highlight, 0, 120, [255, 214, 0]).unwrap();
     doc.add_markup_range(0, AnnotKind::Highlight, 60, 120, [255, 214, 0]).unwrap();
-    doc.add_markup_range(0, AnnotKind::Highlight, 30, 40, [76, 175, 80]).unwrap();
-    doc.add_markup_range(0, AnnotKind::Underline, 0, 60, [33, 150, 243]).unwrap();
-    let h: Vec<_> = doc.annotations(0).into_iter().filter(|a| a.kind == AnnotKind::Highlight).collect();
+    let h = marks(&doc, AnnotKind::Highlight);
     assert_eq!(h.len(), 1, "se juntan en una");
-    assert_eq!(h[0].color, [76, 175, 80], "con el color nuevo");
     assert!(h[0].contents.starts_with("Documento de prueba"), "{}", h[0].contents);
-    assert_eq!(doc.annotations(0).iter().filter(|a| a.kind == AnnotKind::Underline).count(), 1);
+    let entera = h[0].contents.clone();
+    // Otro color en medio: solo esos caracteres cambian; lo de los lados
+    // sigue amarillo.
+    doc.add_markup_range(0, AnnotKind::Highlight, 30, 40, [76, 175, 80]).unwrap();
+    let h = marks(&doc, AnnotKind::Highlight);
+    assert_eq!(h.len(), 3, "{h:?}");
+    let colores: Vec<_> = h.iter().map(|a| a.color).collect();
+    assert_eq!(colores.iter().filter(|&&c| c == [76, 175, 80]).count(), 1, "{colores:?}");
+    assert_eq!(colores.iter().filter(|&&c| c == [255, 214, 0]).count(), 2, "{colores:?}");
+    let verde = h.iter().find(|a| a.color == [76, 175, 80]).unwrap();
+    assert_eq!(verde.contents, doc.text_range(0, 30, 40).split_whitespace().collect::<Vec<_>>().join(" "));
+    // Volver al amarillo: otra vez una sola marca, con el mismo texto.
+    doc.add_markup_range(0, AnnotKind::Highlight, 30, 40, [255, 214, 0]).unwrap();
+    let h = marks(&doc, AnnotKind::Highlight);
+    assert_eq!(h.len(), 1, "{h:?}");
+    assert_eq!(h[0].contents, entera);
+    // Pegado a una marca del mismo color, aunque haya un espacio: se juntan.
+    let siguiente = (180..n).find(|&i| !doc.text_range(0, i, 1).trim().is_empty()).unwrap();
+    doc.add_markup_range(0, AnnotKind::Highlight, siguiente, 10, [255, 214, 0]).unwrap();
+    assert_eq!(marks(&doc, AnnotKind::Highlight).len(), 1);
+    // Quitar la marca del medio: quedan los dos lados.
+    assert!(doc.remove_markup_range(0, AnnotKind::Highlight, 50, 20).unwrap());
+    assert_eq!(marks(&doc, AnnotKind::Highlight).len(), 2);
+    assert!(!doc.remove_markup_range(0, AnnotKind::Underline, 50, 20).unwrap(), "no había subrayado");
+    // El color de una marca entera.
+    let h = marks(&doc, AnnotKind::Highlight);
+    doc.set_markup_color(0, h[1].index, [229, 57, 53]).unwrap();
+    let h2 = marks(&doc, AnnotKind::Highlight);
+    assert_eq!(h2.len(), 2);
+    assert_eq!(h2[1].color, [229, 57, 53]);
+    assert_eq!((h2[1].rect, &h2[1].contents), (h[1].rect, &h[1].contents), "en el mismo sitio");
+    assert_eq!(h2[0].color, [255, 214, 0]);
+    // Otra clase de marca no se junta ni se toca.
+    doc.add_markup_range(0, AnnotKind::Underline, 0, 60, [33, 150, 243]).unwrap();
+    assert_eq!(marks(&doc, AnnotKind::Underline).len(), 1);
+    assert_eq!(marks(&doc, AnnotKind::Highlight).len(), 2);
     // Una marca en otra zona de la página no se junta.
     doc.add_markup_range(0, AnnotKind::Highlight, n - 20, 15, [255, 214, 0]).unwrap();
-    assert_eq!(doc.annotations(0).iter().filter(|a| a.kind == AnnotKind::Highlight).count(), 2);
+    assert_eq!(marks(&doc, AnnotKind::Highlight).len(), 3);
+    // Lo marcado se guarda y se vuelve a leer igual.
+    let out = tmp("marcas-por-caracteres.pdf");
+    doc.save(&out).unwrap();
+    let doc = Document::open(&out).unwrap();
+    assert_eq!(marks(&doc, AnnotKind::Highlight).iter().map(|a| a.color).collect::<Vec<_>>(), vec![[255, 214, 0], [229, 57, 53], [255, 214, 0]]);
 }
 
 /// Organizar páginas: girar, borrar, mover, insertar y extraer (también

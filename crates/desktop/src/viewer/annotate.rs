@@ -2,14 +2,23 @@
 //! arrastrando sobre él), notas y texto libre (se pulsa donde ponerlos y la
 //! aplicación pide el texto), dibujo a mano (los trazos se juntan en una
 //! anotación al terminar: Intro, otra herramienta o salir) y seleccionar una
-//! anotación para borrarla (Supr) o editar su texto (doble clic).
+//! anotación para borrarla (Supr), editar su texto (doble clic) o cambiar su
+//! color. La goma quita la marca de los caracteres que se arrastran.
+//!
+//! El clic derecho en una marca de texto (anotando o no) abre su menú:
+//! cambiar el color, quitarla o copiar el texto marcado.
 //!
 //! Mientras se anota, el ratón no va al formulario.
 
 use super::{DocView, PT_TO_PX, Selection, ViewEvents};
+use crate::theme::icon;
 use eframe::egui::{self, Color32, CursorIcon, Event, Key, PointerButton, Pos2, Rect, Stroke, StrokeKind};
 use form_pdf_reader::pdfium::{AnnotKind, Annotation};
+use form_pdf_reader::t;
 use std::time::{Duration, Instant};
+
+/// Los colores de las anotaciones.
+pub const ANNOT_COLORS: [[u8; 3]; 6] = [[255, 214, 0], [76, 175, 80], [33, 150, 243], [229, 57, 53], [156, 39, 176], [20, 20, 20]];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum AnnotTool {
@@ -63,6 +72,8 @@ pub struct AnnotState {
     colors: [[u8; 3]; 7],
     pub ink_width: f32,
     pub font_size: f32,
+    /// Resaltar, subrayar o tachar con la goma: arrastrar quita la marca.
+    pub erasing: bool,
     /// Trazos del dibujo en curso (puntos de página) y su página.
     strokes: Vec<Vec<[f32; 2]>>,
     stroke_page: Option<usize>,
@@ -80,6 +91,7 @@ impl AnnotState {
             colors: tools.map(AnnotTool::default_color),
             ink_width: 2.0,
             font_size: 12.0,
+            erasing: false,
             strokes: Vec::new(),
             stroke_page: None,
             drawing: false,
@@ -95,6 +107,7 @@ impl AnnotState {
 
     pub fn set_color(&mut self, c: [u8; 3]) {
         self.colors[self.tool as usize] = c;
+        self.erasing = false;
     }
 
     /// Hay trazos sin terminar.
@@ -151,6 +164,7 @@ impl DocView {
         if let Some(a) = self.annot.as_mut() {
             a.tool = t;
             a.selected = None;
+            a.erasing = false;
         }
         self.selection = None;
         self.selection_rects.clear();
@@ -204,6 +218,19 @@ impl DocView {
         }
         self.invalidate_page(a.page);
         Ok(())
+    }
+
+    /// Cambia el color de la marca de texto seleccionada.
+    pub fn set_selected_markup_color(&mut self, color: [u8; 3]) -> Result<bool, String> {
+        let Some(sel) = self.annot.as_mut().and_then(|a| a.selected.take()) else { return Ok(false) };
+        self.doc.set_markup_color(sel.page, sel.index, color).map_err(|e| format!("{e:#}"))?;
+        self.invalidate_page(sel.page);
+        // Sigue seleccionada (ahora es la última de la página).
+        let again = self.doc.annotations(sel.page).into_iter().rev().find(|a| a.kind == sel.kind && a.rect == sel.rect);
+        if let Some(a) = self.annot.as_mut() {
+            a.selected = again;
+        }
+        Ok(true)
     }
 
     /// Borra la anotación seleccionada. true si había una.
@@ -329,10 +356,12 @@ impl DocView {
                         self.selecting = false;
                         if let Some(kind) = tool.markup() {
                             let color = self.annot.as_ref().map_or(tool.default_color(), |a| a.color());
+                            let erasing = self.annot.as_ref().is_some_and(|a| a.erasing);
                             for (p, start, count) in self.selection_ranges() {
-                                match self.doc.add_markup_range(p, kind, start, count, color) {
-                                    Ok(()) => {
-                                        ev.modified = true;
+                                let r = if erasing { self.doc.remove_markup_range(p, kind, start, count) } else { self.doc.add_markup_range(p, kind, start, count, color).map(|_| true) };
+                                match r {
+                                    Ok(changed) => {
+                                        ev.modified |= changed;
                                         self.invalidate_page(p);
                                     }
                                     Err(e) => ev.annot_error = Some(format!("{e:#}")),
@@ -398,6 +427,107 @@ impl DocView {
             let p0 = self.page_to_screen(sel.page, pr, l as f64, t as f64);
             let p1 = self.page_to_screen(sel.page, pr, r as f64, b as f64);
             painter.rect_stroke(Rect::from_two_pos(p0, p1).expand(3.0), 3.0, Stroke::new(2.0, accent), StrokeKind::Outside);
+        }
+    }
+}
+
+/// El menú de una marca de texto (clic derecho): dónde se abrió y la marca.
+pub(super) struct MarkupMenu {
+    pos: Pos2,
+    mark: Annotation,
+}
+
+/// Lo que se ha elegido en el menú de una marca.
+enum MarkupAction {
+    Color([u8; 3]),
+    Remove,
+    Copy,
+}
+
+impl DocView {
+    /// La marca de texto de encima en la posición de la pantalla.
+    fn markup_at(&self, pos: Pos2) -> Option<Annotation> {
+        let (page, x, y) = self.hit(pos)?;
+        self.doc.markup_at(page, x as f32, y as f32)
+    }
+
+    /// Clic derecho sobre una marca de texto: abre su menú. Devuelve los
+    /// eventos sin los del botón derecho que lo han abierto (no van al
+    /// formulario).
+    pub(super) fn open_markup_menu(&mut self, events: Vec<Event>, area: Rect) -> Vec<Event> {
+        if !self.can_annotate() {
+            return events;
+        }
+        let opened = events.iter().find_map(|e| match e {
+            Event::PointerButton { pos, button: PointerButton::Secondary, pressed: true, .. } if area.contains(*pos) => self.markup_at(*pos).map(|m| (*pos, m)),
+            _ => None,
+        });
+        let Some((pos, mark)) = opened else { return events };
+        self.markup_menu = Some(MarkupMenu { pos, mark });
+        events.into_iter().filter(|e| !matches!(e, Event::PointerButton { button: PointerButton::Secondary, .. })).collect()
+    }
+
+    /// El menú de la marca, si está abierto.
+    pub(super) fn markup_menu_ui(&mut self, ctx: &egui::Context, ev: &mut ViewEvents) {
+        let Some(menu) = self.markup_menu.as_ref() else { return };
+        let mark = menu.mark.clone();
+        let mut action = None;
+        let area = egui::Area::new(self.area_id.with("menu_marca")).order(egui::Order::Foreground).fixed_pos(menu.pos).constrain(true).show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    for c in ANNOT_COLORS {
+                        let (rect, r) = ui.allocate_exact_size(egui::Vec2::splat(22.0), egui::Sense::click());
+                        ui.painter().circle_filled(rect.center(), 8.0, color32(c));
+                        if c == mark.color {
+                            ui.painter().circle_stroke(rect.center(), 10.5, Stroke::new(2.0, ui.visuals().selection.stroke.color));
+                        } else if r.hovered() {
+                            ui.painter().circle_stroke(rect.center(), 10.5, Stroke::new(1.0, ui.visuals().widgets.hovered.bg_stroke.color));
+                        }
+                        if r.clicked() {
+                            action = Some(MarkupAction::Color(c));
+                        }
+                    }
+                });
+                ui.separator();
+                let remove = match mark.kind {
+                    AnnotKind::Underline => t!("annot.remove_underline"),
+                    AnnotKind::StrikeOut => t!("annot.remove_strikeout"),
+                    _ => t!("annot.remove_highlight"),
+                };
+                if ui.add(egui::Button::new(format!("{}  {remove}", icon::TRASH)).frame(false)).clicked() {
+                    action = Some(MarkupAction::Remove);
+                }
+                if !mark.contents.is_empty() && ui.add(egui::Button::new(format!("{}  {}", icon::COPY, t!("annot.copy_text"))).frame(false)).clicked() {
+                    action = Some(MarkupAction::Copy);
+                }
+            });
+        });
+        // Se cierra al elegir, con Esc o al pulsar fuera.
+        let outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.response.rect.contains(p)));
+        if action.is_some() || outside || ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.markup_menu = None;
+        }
+        let r = match action {
+            Some(MarkupAction::Color(c)) if c != mark.color => self.doc.set_markup_color(mark.page, mark.index, c).map(|_| true),
+            Some(MarkupAction::Remove) => self.doc.remove_annotation(mark.page, mark.index).map(|_| true),
+            Some(MarkupAction::Copy) => {
+                ctx.copy_text(mark.contents.clone());
+                Ok(false)
+            }
+            _ => Ok(false),
+        };
+        match r {
+            Ok(true) => {
+                ev.modified = true;
+                self.invalidate_page(mark.page);
+                // La anotación seleccionada ha cambiado de sitio en la lista.
+                if let Some(a) = self.annot.as_mut() {
+                    a.selected = None;
+                }
+            }
+            Ok(false) => {}
+            Err(e) => ev.annot_error = Some(format!("{e:#}")),
         }
     }
 }
