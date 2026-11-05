@@ -1392,6 +1392,11 @@ class PdfPageView(context: Context) : View(context) {
 
     private fun tap(x: Float, y: Float) {
         if (doc == null || slotAt(x, y) == null) return
+        if (readOnly) {
+            // A document that cannot be edited: only its links.
+            sendPointer(x, y, onPageUnder = true, linksOnly = true) { p, w, h, lx, ly -> followLink(p, w, h, lx, ly) }
+            return
+        }
         editAnchor = anchorAt(x, y)
         requestFocus()
         commitComposing()
@@ -1402,17 +1407,19 @@ class PdfPageView(context: Context) : View(context) {
     /**
      * Sends a pointer event at (x, y) of the view, on the page of the field
      * being edited (or, with [onPageUnder], the page under the point), and
-     * remembers where the text field that gets the cursor is.
+     * remembers where the text field that gets the cursor is. Only
+     * [linksOnly] events reach a read-only document.
      */
     private fun sendPointer(
         x: Float,
         y: Float,
         onPageUnder: Boolean = false,
         fromUser: Boolean = true,
+        linksOnly: Boolean = false,
         then: (() -> Unit)? = null,
         event: PdfDocument.(UInt, Double, Double, Double, Double) -> InputResult,
     ) {
-        if (readOnly) return
+        if (readOnly && !linksOnly) return
         val d = doc ?: return
         val page = (if (onPageUnder) slotAt(x, y)?.page else field?.first) ?: return
         val slot = slotOf(page) ?: return
@@ -1462,6 +1469,8 @@ class PdfPageView(context: Context) : View(context) {
             }
             scheduleTimers()
         }
+        // An internal link (or the form's script) asked for another page.
+        r.gotoPage?.let { goToPage(it.toInt()) }
         onInput?.invoke(r)
     }
 

@@ -134,6 +134,9 @@ pub struct DocView {
     content: Vec2,
     /// Herramienta mano: última posición del puntero mientras se arrastra.
     hand_last: Option<Pos2>,
+    /// Herramientas mano y texto: dónde empezó la pulsación, para seguir un
+    /// enlace si se suelta sin arrastrar.
+    tool_press: Option<Pos2>,
     selection: Option<Selection>,
     selecting: bool,
     /// Rectángulos de la selección por página (coordenadas de página).
@@ -181,6 +184,7 @@ impl DocView {
             viewport: Vec2::new(800.0, 600.0),
             content: Vec2::ZERO,
             hand_last: None,
+            tool_press: None,
             selection: None,
             selecting: false,
             selection_rects: Vec::new(),
@@ -624,6 +628,7 @@ impl DocView {
             match e {
                 Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, modifiers } if area_rect.contains(*pos) => {
                     clicked = true;
+                    self.tool_press = Some(*pos);
                     match self.tool {
                         Tool::Hand => self.hand_last = Some(*pos),
                         Tool::Text => {
@@ -640,9 +645,16 @@ impl DocView {
                         Tool::Form => {}
                     }
                 }
-                Event::PointerButton { button: PointerButton::Primary, pressed: false, .. } => {
+                Event::PointerButton { pos, button: PointerButton::Primary, pressed: false, .. } => {
                     self.hand_last = None;
                     self.selecting = false;
+                    // Clic sin arrastrar sobre un enlace: seguirlo (lo abre `pump`).
+                    if self.tool_press.take().is_some_and(|p| p.distance(*pos) < 5.0)
+                        && self.annot.is_none()
+                        && let Some((p, x, y)) = self.hit(*pos)
+                    {
+                        self.doc.follow_link_at(p, x, y);
+                    }
                 }
                 Event::PointerMoved(pos) => match self.tool {
                     Tool::Hand => {
@@ -1092,6 +1104,14 @@ impl DocView {
         // Cursor según la herramienta y el tipo de campo bajo el puntero
         // (con una firma en marcha lo pone sign.rs).
         if self.is_placing() || self.sig_selected.is_some() {
+        } else if self.hand_last.is_none()
+            && !self.selecting
+            && self.annot.is_none()
+            && let Some((i, x, y)) = pointer_pos.filter(|p| area_rect.contains(*p)).and_then(|p| self.hit(p))
+            && (self.tool != Tool::Form || self.doc.field_at(i, x, y) < 0)
+            && self.doc.link_at(i, x, y).is_some()
+        {
+            ctx.set_cursor_icon(CursorIcon::PointingHand);
         } else if self.tool == Tool::Hand && pointer_pos.is_some_and(|p| area_rect.contains(p)) {
             ctx.set_cursor_icon(if self.hand_last.is_some() { CursorIcon::Grabbing } else { CursorIcon::Grab });
         } else if self.tool == Tool::Text && pointer_pos.is_some_and(|p| area_rect.contains(p)) {
