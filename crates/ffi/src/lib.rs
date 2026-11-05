@@ -106,8 +106,10 @@ pub struct InputResult {
     pub text_input: bool,
     /// Attachments the form asked to view (temporary files).
     pub open_files: Vec<String>,
-    /// Links the form asked to open.
+    /// Links to open: the ones the form asked for and the link tapped.
     pub uris: Vec<String>,
+    /// Page to go to (an internal link or the form's script).
+    pub goto_page: Option<u32>,
     /// URL the form tried to submit to (not supported).
     pub submit: Option<String>,
     /// The text field that got the cursor with this tap or press, in pixels
@@ -701,6 +703,7 @@ impl PdfDocument {
             text_input: doc.editing_text() || doc.editing_field() && u.caret.is_some(),
             open_files: u.open_files.into_iter().map(|p| p.display().to_string()).collect(),
             uris: u.uris,
+            goto_page: u.goto_page.and_then(|g| u32::try_from(g).ok()),
             submit: u.submit_requested,
             field: None,
         }
@@ -839,6 +842,14 @@ impl PdfDocument {
     pub fn drag(&self, page: u32, page_w: f64, page_h: f64, x: f64, y: f64) -> InputResult {
         self.pointer(page, page_w, page_h, x, y, |doc, p, px, py| {
             doc.mouse_move(p, px, py, keys::MOD_LBUTTON);
+        })
+    }
+
+    /// Follows the link at (`x`, `y`), if any, without touching the form
+    /// (for documents that cannot be edited). `tap` follows links too.
+    pub fn follow_link(&self, page: u32, page_w: f64, page_h: f64, x: f64, y: f64) -> InputResult {
+        self.pointer(page, page_w, page_h, x, y, |doc, p, px, py| {
+            doc.follow_link_at(p, px, py);
         })
     }
 

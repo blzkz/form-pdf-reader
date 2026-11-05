@@ -21,7 +21,7 @@ pub mod keys;
 pub mod pages;
 
 pub use document::{
-    AnnotKind, Annotation, AlertAnswer, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FlatPdf, FormKind, OpenOptions, PasswordRequired, PlacedSignature, SearchHit, Sheet, SignedState, Updates, parse_page_ranges, render_signature,
+    AnnotKind, Annotation, AlertAnswer, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FlatPdf, FormKind, Link, OpenOptions, PasswordRequired, PlacedSignature, SearchHit, Sheet, SignedState, Updates, parse_page_ranges, render_signature,
     signature_size, write_atomic,
 };
 

@@ -16,10 +16,12 @@ pub use super::host::{AlertAnswer, AlertButtons, AlertIcon, AlertRequest};
 
 mod annotations;
 mod digital;
+mod links;
 mod print;
 mod signatures;
 pub use annotations::{AnnotKind, Annotation};
 pub use digital::{DigitalSignature, SignedState};
+pub use links::Link;
 pub use print::{FlatPdf, Sheet, parse_page_ranges};
 pub use signatures::{PlacedSignature, render_signature, signature_size};
 
@@ -142,6 +144,11 @@ pub struct Document {
     /// Arrastre con el botón pulsado que empezó en un campo de texto XFA
     /// (ver `drag_select`).
     text_drag: Option<TextDrag>,
+    /// Pulsación fuera de los campos (página, x, y): si se suelta en el mismo
+    /// sitio y hay un enlace, se sigue (ver `links`).
+    link_press: Option<(usize, f64, f64)>,
+    /// Direcciones web escritas en el texto, por página (ver `links`).
+    text_links: RefCell<HashMap<usize, Vec<links::TextLink>>>,
     /// Carácter que llegará tras una tecla ya resuelta aquí (el WM_CHAR de
     /// Retroceso cuando se borró la selección): se descarta.
     swallow_char: Option<u32>,
@@ -237,6 +244,8 @@ impl Document {
             button_held: false,
             open_list: None,
             text_drag: None,
+            link_press: None,
+            text_links: RefCell::new(HashMap::new()),
             swallow_char: None,
             tabbed_from_text: false,
             focus_bounds: RefCell::new(None),
@@ -495,6 +504,7 @@ impl Document {
         self.button_held = true;
         self.text_drag = None;
         self.tabbed_from_text = false;
+        self.link_press = (self.field_at(idx, px, py) < 0).then_some((idx, px, py));
         // Lista desplegable abierta y clic fuera de ella: PDFium la cierra mal
         // (sigue dibujando las opciones sin fondo). Se cierra antes con Escape,
         // que sí la cierra bien.
@@ -749,6 +759,15 @@ impl Document {
         if std::mem::take(&mut self.pressed_button) {
             // El click del botón puede haber quitado filas (removeInstance).
             self.run_command("@relayout");
+        }
+        // Clic fuera de los campos y sin arrastrar: el enlace que haya ahí.
+        if let Some((i, x0, y0)) = self.link_press.take()
+            && i == idx
+            && dragged.is_none()
+            && (px - x0).hypot(py - y0) <= links::CLICK_SLOP
+            && self.follow_link_at(idx, px, py)
+        {
+            return true;
         }
         r
     }

@@ -951,11 +951,43 @@ fn firmas_digitales() {
     assert!(Document::open(Path::new(XFA)).unwrap().has_usage_rights());
 }
 
+/// Enlaces: una anotación con dirección web, otra a la página 2 y una
+/// dirección escrita en el texto sin anotación. Un clic los sigue; un
+/// arrastre no.
+fn enlaces() {
+    use form_pdf_reader::pdfium::Link;
+    let mut doc = Document::open(Path::new("tests/fixtures/enlaces.pdf")).unwrap();
+    assert_eq!(doc.link_at(0, 120.0, 705.0), Some(Link::Uri("https://example.com/enlace".into())));
+    assert_eq!(doc.link_at(0, 120.0, 655.0), Some(Link::Page(1)));
+    assert_eq!(doc.link_at(0, 227.7, 604.0), Some(Link::Uri("https://example.org/texto".into())));
+    assert_eq!(doc.link_at(0, 120.0, 554.0), None, "texto normal");
+    assert_eq!(doc.link_at(0, 400.0, 705.0), None, "fuera del enlace");
+
+    click(&mut doc, 120.0, 705.0);
+    assert_eq!(doc.take_updates().uris, ["https://example.com/enlace"]);
+    click(&mut doc, 227.7, 604.0);
+    assert_eq!(doc.take_updates().uris, ["https://example.org/texto"]);
+    click(&mut doc, 120.0, 655.0);
+    assert_eq!(doc.take_updates().goto_page, Some(1));
+
+    // Pulsar en el enlace y soltar lejos (arrastrar) no lo sigue.
+    doc.left_down(0, 100.0, 705.0, 0);
+    doc.left_up(0, 200.0, 760.0, 0);
+    let u = doc.take_updates();
+    assert!(u.uris.is_empty() && u.goto_page.is_none(), "{u:?}");
+
+    // Sin tocar el formulario (documentos bloqueados).
+    assert!(doc.follow_link_at(0, 120.0, 655.0));
+    assert_eq!(doc.take_updates().goto_page, Some(1));
+    assert!(!doc.follow_link_at(0, 120.0, 554.0));
+}
+
 #[test]
 fn pdfium_completo() {
     firmas_digitales();
     firmas_manuscritas();
     normal();
+    enlaces();
     anotaciones();
     paginas();
     escaneo();
