@@ -1263,9 +1263,28 @@ impl PdfDocument {
         self.lock().remove_markup_range(usize_page(page), kind.into(), start, count).map_err(|e| PdfError::Save(format!("{e:#}")))
     }
 
-    /// Changes the colour of a whole highlight, underline or strike-out.
-    pub fn set_markup_color(&self, page: u32, index: u32, color: u32) -> Result<(), PdfError> {
-        self.lock().set_markup_color(usize_page(page), index as usize, rgb(color)).map_err(|e| PdfError::Save(format!("{e:#}")))
+    /// Changes the colour of a whole mark, free text or drawing. The
+    /// annotation is made again: this is how it is now.
+    pub fn set_annotation_color(&self, page: u32, index: u32, color: u32) -> Result<AnnotationInfo, PdfError> {
+        let i = self.lock().set_annotation_color(usize_page(page), index as usize, rgb(color));
+        self.updated_annotation(page, i)
+    }
+
+    /// Changes the letter size of a free text.
+    pub fn set_free_text_size(&self, page: u32, index: u32, size: f32) -> Result<AnnotationInfo, PdfError> {
+        let i = self.lock().set_free_text_size(usize_page(page), index as usize, size);
+        self.updated_annotation(page, i)
+    }
+
+    /// Moves a note, free text or drawing to `rect`, in points from the top
+    /// left corner. With another size, a text changes its letter size and a
+    /// drawing is scaled.
+    pub fn set_annotation_rect(&self, page: u32, index: u32, rect: PageRect) -> Result<AnnotationInfo, PdfError> {
+        let (x0, y0) = self.point(page, rect.left, rect.top);
+        let (x1, y1) = self.point(page, rect.right, rect.bottom);
+        let r = [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)];
+        let i = self.lock().set_annotation_rect(usize_page(page), index as usize, r);
+        self.updated_annotation(page, i)
     }
 
     /// A note with its top left corner at (x, y), in points from the top left.
@@ -1350,6 +1369,12 @@ impl PdfDocument {
 
 impl PdfDocument {
     /// Page coordinates of (x, y) in points from the page's top left corner.
+    /// How an annotation that was made again is now.
+    fn updated_annotation<E: std::fmt::Display>(&self, page: u32, index: Result<usize, E>) -> Result<AnnotationInfo, PdfError> {
+        let index = index.map_err(|e| PdfError::Save(format!("{e:#}")))? as u32;
+        self.annotations(page).into_iter().find(|a| a.index == index).ok_or_else(|| PdfError::Save("annotation not found".into()))
+    }
+
     fn point(&self, page: u32, x: f32, y: f32) -> (f32, f32) {
         let doc = self.lock();
         let p = usize_page(page);

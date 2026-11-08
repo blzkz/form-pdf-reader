@@ -1195,13 +1195,13 @@ impl PdfApp {
             }
             separator(ui);
             let Some(a) = v.annot_state() else { return };
-            // Colores: los de la herramienta o, al seleccionar, el de la marca
-            // de texto seleccionada.
+            // Colores: los de la herramienta o el de la anotación elegida.
             let markup = matches!(t, AnnotTool::Highlight | AnnotTool::Underline | AnnotTool::StrikeOut);
-            let sel_markup = a.selected.as_ref().filter(|s| matches!(s.kind, AnnotKind::Highlight | AnnotKind::Underline | AnnotKind::StrikeOut)).map(|s| s.color);
-            let cur = if t == AnnotTool::Select { sel_markup } else { (!a.erasing).then(|| a.color()) };
+            let editing = a.selected.clone().filter(|s| t == AnnotTool::Select || s.kind == AnnotKind::FreeText);
+            let sel_color = editing.as_ref().filter(|s| s.kind.can_recolor()).map(|s| s.color);
+            let cur = sel_color.or_else(|| (t != AnnotTool::Select && !a.erasing).then(|| a.color()));
             let mut picked = None;
-            if t != AnnotTool::Select || sel_markup.is_some() {
+            if t != AnnotTool::Select || sel_color.is_some() {
                 for c in ANNOT_COLORS {
                     let (rect, r) = ui.allocate_exact_size(egui::Vec2::splat(22.0), egui::Sense::click());
                     let col = Color32::from_rgb(c[0], c[1], c[2]);
@@ -1224,13 +1224,39 @@ impl PdfApp {
                 }
             }
             if let Some(c) = picked {
-                if t == AnnotTool::Select {
-                    match v.set_selected_markup_color(c) {
+                if t != AnnotTool::Select {
+                    a.set_color(c);
+                }
+                if sel_color.is_some() {
+                    match v.set_selected_color(c) {
                         Ok(changed) => tab.dirty |= changed,
                         Err(e) => error = Some(e),
                     }
-                } else {
-                    a.set_color(c);
+                }
+            }
+            // Tamaño de letra: el del texto elegido o el de los nuevos.
+            let text = editing.as_ref().filter(|s| s.kind == AnnotKind::FreeText);
+            if t == AnnotTool::FreeText || text.is_some() {
+                let Some(a) = v.annot_state() else { return };
+                separator(ui);
+                ui.label(RichText::new(t!("annot.size")).color(p.text_weak));
+                let before = text.map_or(a.font_size, |s| s.font_size);
+                let mut size = before;
+                egui::ComboBox::from_id_salt("tamaño_texto").width(60.0).selected_text(format!("{size}")).show_ui(ui, |ui| {
+                    for s in [8.0, 10.0, 12.0, 14.0, 18.0, 24.0, 36.0] {
+                        ui.selectable_value(&mut size, s, format!("{s}"));
+                    }
+                });
+                if size != before {
+                    if t == AnnotTool::FreeText {
+                        a.font_size = size;
+                    }
+                    if text.is_some() {
+                        match v.set_selected_font_size(size) {
+                            Ok(changed) => tab.dirty |= changed,
+                            Err(e) => error = Some(e),
+                        }
+                    }
                 }
             }
             let Some(a) = v.annot_state() else { return };
@@ -1257,20 +1283,9 @@ impl PdfApp {
                         }
                     }
                 }
-                AnnotTool::FreeText => {
-                    separator(ui);
-                    ui.label(RichText::new(t!("annot.size")).color(p.text_weak));
-                    let mut size = a.font_size;
-                    egui::ComboBox::from_id_salt("tamaño_texto").width(60.0).selected_text(format!("{size}")).show_ui(ui, |ui| {
-                        for s in [8.0, 10.0, 12.0, 14.0, 18.0, 24.0, 36.0] {
-                            ui.selectable_value(&mut size, s, format!("{s}"));
-                        }
-                    });
-                    a.font_size = size;
-                }
                 AnnotTool::Select => {
                     if let Some(sel) = a.selected.clone() {
-                        if sel_markup.is_some() {
+                        if sel_color.is_some() {
                             separator(ui);
                         }
                         if matches!(sel.kind, AnnotKind::Note | AnnotKind::FreeText)

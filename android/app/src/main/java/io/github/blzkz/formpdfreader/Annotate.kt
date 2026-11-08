@@ -16,14 +16,17 @@ import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.github.blzkz.formpdfreader.PdfPageView.AnnotRequest
 import io.github.blzkz.formpdfreader.PdfPageView.AnnotTool
+import uniffi.form_pdf_reader_ffi.AnnotationInfo
 import uniffi.form_pdf_reader_ffi.AnnotationKind
+import kotlin.math.roundToInt
 
 /**
  * The annotation bar of the viewer: the tool (select, highlight, underline,
  * strike out, note, text, draw), its colour (or the eraser, to remove a mark
  * from the text dragged over), the line width or the text size, and Done.
- * With Select, the colours change the one of the selected mark. It also asks
- * the text of notes and free texts.
+ * The colours and the size also change the selected annotation (one is
+ * selected with Select, or a text with the text tool). It also asks the text
+ * of notes and free texts.
  *
  * Marking text and drawing take one finger; two fingers scroll and zoom.
  */
@@ -67,10 +70,16 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
         edit.setOnClickListener { view?.selectedAnnotation?.let { askText(AnnotRequest.Edit(it)) } }
         delete.setOnClickListener { view?.deleteSelectedAnnotation() }
         option.setOnClickListener {
-            when (tool) {
-                AnnotTool.INK -> inkWidth = WIDTHS[(WIDTHS.indexOf(inkWidth) + 1) % WIDTHS.size]
-                AnnotTool.TEXT -> fontSize = SIZES[(SIZES.indexOf(fontSize) + 1) % SIZES.size]
-                else -> Unit
+            val text = editing()?.takeIf { it.kind == AnnotationKind.FREE_TEXT }
+            when {
+                text != null -> {
+                    // The next size up (after being resized by hand it may be none of them).
+                    val next = SIZES.firstOrNull { it > text.fontSize } ?: SIZES.first()
+                    if (tool == AnnotTool.TEXT) fontSize = next
+                    view?.setSelectedFontSize(next)
+                }
+                tool == AnnotTool.INK -> inkWidth = WIDTHS[(WIDTHS.indexOf(inkWidth) + 1) % WIDTHS.size]
+                tool == AnnotTool.TEXT -> fontSize = SIZES[(SIZES.indexOf(fontSize) + 1) % SIZES.size]
             }
             view?.inkWidth = inkWidth
             refresh()
@@ -82,10 +91,8 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
                 tag = c
                 contentDescription = String.format("#%06X", c)
                 setOnClickListener {
-                    if (tool == AnnotTool.SELECT) {
-                        view?.setSelectedMarkupColor(c)
-                        return@setOnClickListener
-                    }
+                    if (editing()?.kind?.let { it != AnnotationKind.NOTE } == true) view?.setSelectedColor(c)
+                    if (tool == AnnotTool.SELECT) return@setOnClickListener
                     colorOf[tool] = c
                     erasing = false
                     view?.annotColor = c
@@ -135,6 +142,11 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
         onClosed()
     }
 
+    /** The selected annotation the bar acts on. */
+    private fun editing(): AnnotationInfo? = view?.selectedAnnotation?.takeIf {
+        tool == AnnotTool.SELECT || (tool == AnnotTool.TEXT && it.kind == AnnotationKind.FREE_TEXT) || (tool == AnnotTool.NOTE && it.kind == AnnotationKind.NOTE)
+    }
+
     private fun setTool(t: AnnotTool) {
         tool = t
         erasing = false
@@ -149,8 +161,9 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
     private fun refresh() {
         val v = view ?: return
         val markup = tool == AnnotTool.HIGHLIGHT || tool == AnnotTool.UNDERLINE || tool == AnnotTool.STRIKEOUT
-        val sel = v.selectedAnnotation.takeIf { tool == AnnotTool.SELECT }
-        val selMark = sel?.takeIf { it.kind == AnnotationKind.HIGHLIGHT || it.kind == AnnotationKind.UNDERLINE || it.kind == AnnotationKind.STRIKE_OUT }
+        val sel = editing()
+        val selColor = sel?.takeIf { it.kind != AnnotationKind.NOTE }?.color?.toInt()
+        val selText = sel?.takeIf { it.kind == AnnotationKind.FREE_TEXT }
         hint.setText(
             when (tool) {
                 AnnotTool.SELECT -> R.string.annot_hint_select
@@ -160,9 +173,9 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
                 AnnotTool.INK -> R.string.annot_hint_ink
             },
         )
-        colors.isVisible = tool != AnnotTool.SELECT || selMark != null
+        colors.isVisible = tool != AnnotTool.SELECT || selColor != null
         val current = when {
-            tool == AnnotTool.SELECT -> selMark?.color?.toInt()
+            selColor != null || tool == AnnotTool.SELECT -> selColor
             erasing -> null
             else -> colorOf.getValue(tool)
         }
@@ -181,16 +194,17 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
             shape = GradientDrawable.OVAL
             if (erasing) setStroke((3 * density).toInt(), ring)
         }
-        option.isVisible = tool == AnnotTool.INK || tool == AnnotTool.TEXT
-        option.text = when (tool) {
-            AnnotTool.INK -> activity.getString(
+        option.isVisible = tool == AnnotTool.INK || tool == AnnotTool.TEXT || selText != null
+        option.text = when {
+            selText != null -> activity.getString(R.string.annot_size, selText.fontSize.roundToInt())
+            tool == AnnotTool.INK -> activity.getString(
                 when (inkWidth) {
                     1f -> R.string.annot_thin
                     4f -> R.string.annot_thick
                     else -> R.string.annot_medium
                 },
             )
-            AnnotTool.TEXT -> activity.getString(R.string.annot_size, fontSize.toInt())
+            tool == AnnotTool.TEXT -> activity.getString(R.string.annot_size, fontSize.toInt())
             else -> ""
         }
         delete.isVisible = sel != null

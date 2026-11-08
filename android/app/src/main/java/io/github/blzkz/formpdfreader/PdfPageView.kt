@@ -16,6 +16,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.InputType
 import android.util.LruCache
 import android.view.ActionMode
@@ -1940,6 +1941,7 @@ class PdfPageView(context: Context) : View(context) {
         style = Paint.Style.STROKE
         color = accent
     }
+    private val annotTextPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     val hasInk: Boolean get() = inkStrokes.isNotEmpty()
 
@@ -1999,9 +2001,11 @@ class PdfPageView(context: Context) : View(context) {
     fun addFreeText(page: Int, x: Float, y: Float, text: String, size: Float) {
         val d = doc ?: return
         val color = annotColor
-        PdfEngine.run({ d.addFreeText(page.toUInt(), x, y, text, size, color.toUInt()) }) { r ->
-            r.onSuccess { if (d === doc) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
-        }
+        // It stays selected: it can be placed and adjusted right away.
+        PdfEngine.run({
+            d.addFreeText(page.toUInt(), x, y, text, size, color.toUInt())
+            d.annotations(page.toUInt()).last()
+        }) { r -> annotReplaced(d, r) }
     }
 
     fun setAnnotationText(a: AnnotationInfo, text: String) {
@@ -2016,22 +2020,18 @@ class PdfPageView(context: Context) : View(context) {
         }
     }
 
-    /** Changes the colour of the selected highlight, underline or strike-out. */
-    fun setSelectedMarkupColor(color: Int) {
+    /** Changes the colour of the selected mark, text or drawing. */
+    fun setSelectedColor(color: Int) {
         val d = doc ?: return
         val a = selectedAnnotation ?: return
-        PdfEngine.run({
-            d.setMarkupColor(a.page, a.index, color.toUInt())
-            // It is made again: now the last one of the page.
-            d.annotations(a.page).lastOrNull()
-        }) { r ->
-            r.onSuccess {
-                if (d === doc) {
-                    selectAnnotation(it)
-                    annotChanged()
-                }
-            }.onFailure { onAnnotError?.invoke(it) }
-        }
+        PdfEngine.run({ d.setAnnotationColor(a.page, a.index, color.toUInt()) }) { r -> annotReplaced(d, r) }
+    }
+
+    /** Changes the letter size of the selected text. */
+    fun setSelectedFontSize(size: Float) {
+        val d = doc ?: return
+        val a = selectedAnnotation ?: return
+        PdfEngine.run({ d.setFreeTextSize(a.page, a.index, size) }) { r -> annotReplaced(d, r) }
     }
 
     // The mark under a long press (see canEditMarks).
@@ -2097,7 +2097,7 @@ class PdfPageView(context: Context) : View(context) {
     private fun setMarkColor(mark: AnnotationInfo, color: Int) {
         val d = doc ?: return
         if (color == mark.color.toInt()) return clearSelection()
-        PdfEngine.run({ d.setMarkupColor(mark.page, mark.index, color.toUInt()) }) { r ->
+        PdfEngine.run({ d.setAnnotationColor(mark.page, mark.index, color.toUInt()) }) { r ->
             r.onSuccess { if (d === doc) annotChanged() }.onFailure { onAnnotError?.invoke(it) }
         }
         clearSelection()
@@ -2124,27 +2124,132 @@ class PdfPageView(context: Context) : View(context) {
         }
     }
 
-    /** A tap while annotating: place a note or a text, or select an annotation. */
+    /**
+     * A tap while annotating: select an annotation or, with the note and text
+     * tools, place a new one (a tap on one of theirs selects it).
+     */
     private fun annotTap(x: Float, y: Float, double: Boolean) {
         val tool = annotTool ?: return
         val slot = slotAt(x, y) ?: return selectAnnotation(null)
         val p = toPagePoints(slot.page, x, y) ?: return
-        when (tool) {
-            AnnotTool.NOTE -> onAnnotRequest?.invoke(AnnotRequest.Note(slot.page, p.x, p.y))
-            AnnotTool.TEXT -> onAnnotRequest?.invoke(AnnotRequest.Text(slot.page, p.x, p.y))
-            AnnotTool.SELECT -> {
-                val d = doc ?: return
-                PdfEngine.run({ d.annotationAt(slot.page.toUInt(), p.x, p.y) }) { r ->
-                    if (d !== doc) return@run
-                    val a = r.getOrNull()
-                    selectAnnotation(a)
-                    if (double && a != null && (a.kind == AnnotationKind.NOTE || a.kind == AnnotationKind.FREE_TEXT)) {
-                        onAnnotRequest?.invoke(AnnotRequest.Edit(a))
+        if (tool != AnnotTool.SELECT && tool != AnnotTool.NOTE && tool != AnnotTool.TEXT) return
+        val d = doc ?: return
+        PdfEngine.run({ d.annotationAt(slot.page.toUInt(), p.x, p.y) }) { r ->
+            if (d !== doc) return@run
+            val a = r.getOrNull()?.takeIf {
+                tool == AnnotTool.SELECT || it.kind == (if (tool == AnnotTool.NOTE) AnnotationKind.NOTE else AnnotationKind.FREE_TEXT)
+            }
+            selectAnnotation(a)
+            lastAnnotTap = SystemClock.uptimeMillis()
+            when {
+                a != null -> if (double) editAnnotation(a)
+                tool == AnnotTool.NOTE -> onAnnotRequest?.invoke(AnnotRequest.Note(slot.page, p.x, p.y))
+                tool == AnnotTool.TEXT -> onAnnotRequest?.invoke(AnnotRequest.Text(slot.page, p.x, p.y))
+            }
+        }
+    }
+
+    private fun editAnnotation(a: AnnotationInfo) {
+        if (a.kind == AnnotationKind.NOTE || a.kind == AnnotationKind.FREE_TEXT) onAnnotRequest?.invoke(AnnotRequest.Edit(a))
+    }
+
+    /** The annotation being moved or resized; it is written when released. */
+    private class AnnotDrag(val resize: Boolean, val startX: Float, val startY: Float, val rect0: RectF, var cur: RectF, var moved: Boolean = false)
+
+    private var annotDrag: AnnotDrag? = null
+    private var lastAnnotTap = 0L
+
+    private val AnnotationKind.canMove get() = this == AnnotationKind.NOTE || this == AnnotationKind.FREE_TEXT || this == AnnotationKind.INK
+    private val AnnotationKind.canResize get() = this == AnnotationKind.FREE_TEXT || this == AnnotationKind.INK
+
+    /** Frame of [r] (in points of the page of [a]) on the view. */
+    private fun annotFrame(a: AnnotationInfo, r: RectF): RectF? {
+        val slot = slotOf(a.page.toInt()) ?: return null
+        val l = slot.x - offsetX
+        val t = slot.y - offsetY
+        val m = 4 * density
+        return RectF(l + r.left * scale - m, t + r.top * scale - m, l + r.right * scale + m, t + r.bottom * scale + m)
+    }
+
+    /**
+     * Moving the selected annotation (dragging inside its frame) or resizing
+     * it (the corner). Anywhere else the finger scrolls as usual, so an
+     * annotation is selected with a tap before dragging it. True if the event
+     * was used here.
+     */
+    private fun handleAnnotDrag(e: MotionEvent): Boolean {
+        val drag = annotDrag
+        if (e.pointerCount > 1) {
+            if (drag != null) {
+                annotDrag = null
+                invalidate()
+            }
+            return false
+        }
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val a = selectedAnnotation?.takeIf { it.kind.canMove } ?: return false
+                val r = RectF(a.rect.left, a.rect.top, a.rect.right, a.rect.bottom)
+                val fr = annotFrame(a, r) ?: return false
+                val resize = a.kind.canResize && hypot(e.x - fr.right, e.y - fr.bottom) < handleRadius * 1.6f
+                if (!resize && !fr.contains(e.x, e.y)) return false
+                annotDrag = AnnotDrag(resize, e.x, e.y, r, RectF(r))
+                parent?.requestDisallowInterceptTouchEvent(true)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                drag ?: return false
+                val a = selectedAnnotation ?: return true
+                if (!drag.moved && hypot(e.x - drag.startX, e.y - drag.startY) < touchSlop) return true
+                drag.moved = true
+                val dx = (e.x - drag.startX) / scale
+                val dy = (e.y - drag.startY) / scale
+                val r = drag.rect0
+                val p = pages.getOrNull(a.page.toInt()) ?: return true
+                val c = if (drag.resize) {
+                    // The top left corner stays; the proportion too.
+                    val w = max(r.width() + dx, 20f)
+                    RectF(r.left, r.top, r.left + w, r.top + w * r.height() / r.width())
+                } else {
+                    RectF(r.left + dx, r.top + dy, r.right + dx, r.bottom + dy)
+                }
+                // Inside the page.
+                c.offset(max(-c.left, min(0f, p.widthPt - c.right)), max(-c.top, min(0f, p.heightPt - c.bottom)))
+                drag.cur = c
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                drag ?: return false
+                annotDrag = null
+                val a = selectedAnnotation
+                val d = doc
+                if (a != null && d != null && e.actionMasked == MotionEvent.ACTION_UP) {
+                    if (drag.moved) {
+                        val c = drag.cur
+                        PdfEngine.run({ d.setAnnotationRect(a.page, a.index, PageRect(c.left, c.top, c.right, c.bottom)) }) { r -> annotReplaced(d, r) }
+                    } else {
+                        // A second tap on it edits its text.
+                        val now = SystemClock.uptimeMillis()
+                        if (now - lastAnnotTap < ViewConfiguration.getDoubleTapTimeout() + 100) editAnnotation(a)
+                        lastAnnotTap = now
                     }
                 }
+                invalidate()
+                return true
             }
-            else -> Unit
         }
+        return drag != null
+    }
+
+    /** An annotation was made again (moved, another colour…): it stays selected. */
+    private fun annotReplaced(d: PdfDocument, r: Result<AnnotationInfo>) {
+        r.onSuccess {
+            if (d === doc) {
+                selectAnnotation(it)
+                annotChanged()
+            }
+        }.onFailure { onAnnotError?.invoke(it) }
     }
 
     /**
@@ -2153,6 +2258,7 @@ class PdfPageView(context: Context) : View(context) {
      */
     private fun handleAnnotTouch(e: MotionEvent): Boolean {
         val tool = annotTool ?: return false
+        if (handleAnnotDrag(e)) return true
         val markup = tool == AnnotTool.HIGHLIGHT || tool == AnnotTool.UNDERLINE || tool == AnnotTool.STRIKEOUT
         if (!markup && tool != AnnotTool.INK) return false
         if (e.actionMasked == MotionEvent.ACTION_DOWN) annotMultiTouch = false
@@ -2272,15 +2378,31 @@ class PdfPageView(context: Context) : View(context) {
             }
         }
         val a = selectedAnnotation ?: return
-        val slot = slotOf(a.page.toInt()) ?: return
-        val l = slot.x - offsetX
-        val t = slot.y - offsetY
-        val m = 4 * density
+        val drag = annotDrag?.takeIf { it.moved }
+        val r = drag?.cur ?: RectF(a.rect.left, a.rect.top, a.rect.right, a.rect.bottom)
+        val fr = annotFrame(a, r) ?: return
         annotFramePaint.strokeWidth = 2 * density
-        canvas.drawRoundRect(
-            l + a.rect.left * scale - m, t + a.rect.top * scale - m, l + a.rect.right * scale + m, t + a.rect.bottom * scale + m,
-            3 * density, 3 * density, annotFramePaint,
-        )
+        if (drag != null) {
+            annotFramePaint.style = Paint.Style.FILL
+            annotFramePaint.alpha = 50
+            canvas.drawRoundRect(fr, 3 * density, 3 * density, annotFramePaint)
+            annotFramePaint.style = Paint.Style.STROKE
+            annotFramePaint.alpha = 255
+            // A text is seen while it is dragged (in the font of the interface).
+            if (a.kind == AnnotationKind.FREE_TEXT) {
+                val k = r.width() / drag.rect0.width() * scale
+                annotTextPaint.textSize = a.fontSize * k
+                annotTextPaint.color = 0xFF000000.toInt() or a.color.toInt()
+                val slot = slotOf(a.page.toInt())
+                if (slot != null) {
+                    a.contents.lines().forEachIndexed { i, line ->
+                        canvas.drawText(line, slot.x - offsetX + (r.left + 3 * r.width() / drag.rect0.width()) * scale, fr.top + 4 * density + 3 * k + (i + 1) * a.fontSize * 1.25f * k - 0.25f * a.fontSize * k, annotTextPaint)
+                    }
+                }
+            }
+        }
+        canvas.drawRoundRect(fr, 3 * density, 3 * density, annotFramePaint)
+        if (a.kind.canResize) canvas.drawCircle(fr.right, fr.bottom, handleRadius * 0.75f, sigHandlePaint)
     }
 
     companion object {

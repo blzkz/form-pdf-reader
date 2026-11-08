@@ -35,6 +35,28 @@ pub enum AnnotKind {
     Ink,
 }
 
+impl AnnotKind {
+    /// Resaltado, subrayado o tachado: van unidos al texto.
+    pub fn is_markup(self) -> bool {
+        matches!(self, AnnotKind::Highlight | AnnotKind::Underline | AnnotKind::StrikeOut)
+    }
+
+    /// Se puede cambiar de sitio.
+    pub fn can_move(self) -> bool {
+        !self.is_markup()
+    }
+
+    /// Se puede cambiar de tamaño (una nota es un icono de tamaño fijo).
+    pub fn can_resize(self) -> bool {
+        matches!(self, AnnotKind::FreeText | AnnotKind::Ink)
+    }
+
+    /// Se puede cambiar de color (PDFium pinta las notas siempre igual).
+    pub fn can_recolor(self) -> bool {
+        self != AnnotKind::Note
+    }
+}
+
 /// Una anotación de la página.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Annotation {
@@ -118,6 +140,30 @@ impl Annot {
 
     fn set_color(&self, [r, g, b]: [u8; 3]) {
         unsafe { sys::FPDFAnnot_SetColor(self.0, sys::FPDFANNOT_COLORTYPE_Color, r as u32, g as u32, b as u32, 255) };
+    }
+
+    /// Los trazos de un dibujo.
+    fn ink_strokes(&self) -> Vec<Vec<[f32; 2]>> {
+        unsafe {
+            (0..sys::FPDFAnnot_GetInkListCount(self.0))
+                .map(|i| {
+                    let n = sys::FPDFAnnot_GetInkListPath(self.0, i, std::ptr::null_mut(), 0);
+                    let mut pts = vec![sys::FS_POINTF { x: 0.0, y: 0.0 }; n as usize];
+                    sys::FPDFAnnot_GetInkListPath(self.0, i, pts.as_mut_ptr(), n);
+                    pts.iter().map(|p| [p.x, p.y]).collect()
+                })
+                .collect()
+        }
+    }
+
+    /// El grosor de un dibujo: el de su borde o, en los de otros programas,
+    /// el de su apariencia.
+    fn ink_width(&self) -> f32 {
+        let (mut h, mut v, mut w) = (0.0, 0.0, 0.0);
+        if unsafe { sys::FPDFAnnot_GetBorder(self.0, &mut h, &mut v, &mut w) } != 0 && w > 0.0 {
+            return w;
+        }
+        appearance_width(&self.appearance()).unwrap_or(1.0)
     }
 
     /// Qué es, si es de las que se pueden editar aquí.
@@ -315,6 +361,13 @@ fn appearance_color(ap: &str) -> Option<[u8; 3]> {
     None
 }
 
+/// El primer grosor de línea de una apariencia ("2 w").
+fn appearance_width(ap: &str) -> Option<f32> {
+    let t: Vec<&str> = ap.split_whitespace().collect();
+    let i = t.iter().position(|&w| w == "w").filter(|&i| i > 0)?;
+    t[i - 1].parse().ok().filter(|w: &f32| *w > 0.0)
+}
+
 /// Tamaño de letra y color guardados en el `DA` de un texto libre
 /// ("/Helv 12 Tf 0 0 1 rg").
 fn parse_da(da: &str) -> (Option<f32>, Option<[u8; 3]>) {
@@ -397,7 +450,7 @@ impl Document {
         self.annotations(page)
             .into_iter()
             .rev()
-            .find(|a| matches!(a.kind, AnnotKind::Highlight | AnnotKind::Underline | AnnotKind::StrikeOut) && self.annotation_hit(a, x, y))
+            .find(|a| a.kind.is_markup() && self.annotation_hit(a, x, y))
     }
 
     fn annotation_hit(&self, a: &Annotation, x: f32, y: f32) -> bool {
@@ -406,7 +459,7 @@ impl Document {
         if !inside(a.rect) {
             return false;
         }
-        if !matches!(a.kind, AnnotKind::Highlight | AnnotKind::Underline | AnnotKind::StrikeOut) {
+        if !a.kind.is_markup() {
             return true;
         }
         let quads = self.annot(a.page, a.index).map(|an| quad_rects(&an)).unwrap_or_default();
@@ -439,19 +492,97 @@ impl Document {
         self.create_markup(page, kind, &lines, color)
     }
 
-    /// Cambia el color de una marca de texto entera.
-    pub fn set_markup_color(&mut self, page: usize, index: usize, color: [u8; 3]) -> Result<()> {
-        let Some(info) = self.annotations(page).into_iter().find(|a| a.index == index) else { bail!("no existe esa anotación") };
+    /// Cambia el color de una marca de texto, un texto libre o un dibujo
+    /// enteros. Devuelve su posición nueva en la lista de la página.
+    pub fn set_annotation_color(&mut self, page: usize, index: usize, color: [u8; 3]) -> Result<usize> {
+        let info = self.annotation(page, index)?;
         let Some(a) = self.annot(page, index) else { bail!("no existe esa anotación") };
-        let lines = quad_rects(&a);
-        drop(a);
-        if lines.is_empty() {
-            bail!("no es una marca de texto");
-        }
         // PDFium no cambia el color de una anotación con apariencia: se hace
         // de nuevo, en el mismo sitio.
-        self.create_markup(page, info.kind, &lines, color)?;
-        self.remove_annotation(page, index)
+        match info.kind {
+            AnnotKind::FreeText => {
+                drop(a);
+                let [left, _, _, top] = info.rect;
+                self.add_free_text(page, left, top, &info.contents, info.font_size, color)?;
+            }
+            AnnotKind::Ink => {
+                let (strokes, width) = (a.ink_strokes(), a.ink_width());
+                drop(a);
+                self.add_ink(page, &strokes, width, color)?;
+            }
+            kind if kind.is_markup() => {
+                let lines = quad_rects(&a);
+                drop(a);
+                if lines.is_empty() {
+                    bail!("no es una marca de texto");
+                }
+                self.create_markup(page, kind, &lines, color)?;
+            }
+            _ => bail!("esa anotación no cambia de color"),
+        }
+        self.replace_annotation(page, index)
+    }
+
+    /// Cambia el tamaño de letra de un texto libre. Devuelve su posición
+    /// nueva en la lista de la página.
+    pub fn set_free_text_size(&mut self, page: usize, index: usize, size: f32) -> Result<usize> {
+        let info = self.annotation(page, index)?;
+        if info.kind != AnnotKind::FreeText {
+            bail!("no es un texto");
+        }
+        let [left, _, _, top] = info.rect;
+        self.add_free_text(page, left, top, &info.contents, size, info.color)?;
+        self.replace_annotation(page, index)
+    }
+
+    /// Lleva una nota, un texto libre o un dibujo a `rect` (izquierda, abajo,
+    /// derecha, arriba), dentro de la página. Si cambia el tamaño, el texto
+    /// cambia de letra y el dibujo se escala (una nota solo se mueve).
+    /// Devuelve su posición nueva en la lista de la página.
+    pub fn set_annotation_rect(&mut self, page: usize, index: usize, rect: [f32; 4]) -> Result<usize> {
+        let info = self.annotation(page, index)?;
+        let Some(a) = self.annot(page, index) else { bail!("no existe esa anotación") };
+        let [left, bottom, right, top] = self.clamp_to_page(page, rect);
+        let [l0, b0, r0, t0] = info.rect;
+        let scale = |new: f32, old: f32| if old > 0.0 && (new - old).abs() > 0.01 { new / old } else { 1.0 };
+        let (sx, sy) = (scale(right - left, r0 - l0), scale(top - bottom, t0 - b0));
+        match info.kind {
+            AnnotKind::FreeText => {
+                drop(a);
+                // Con una décima basta: es lo que se ve en la barra.
+                let size = (info.font_size * sx * 10.0).round() / 10.0;
+                self.add_free_text(page, left, top, &info.contents, size, info.color)?;
+            }
+            AnnotKind::Note => {
+                let name = a.string(c"Name");
+                drop(a);
+                self.put_note(page, left, top, &info.contents, info.color, if name.is_empty() { "Comment" } else { &name })?;
+            }
+            AnnotKind::Ink => {
+                let width = a.ink_width() * sx;
+                let strokes: Vec<Vec<[f32; 2]>> =
+                    a.ink_strokes().iter().map(|s| s.iter().map(|&[x, y]| [left + (x - l0) * sx, bottom + (y - b0) * sy]).collect()).collect();
+                drop(a);
+                self.add_ink(page, &strokes, width, info.color)?;
+            }
+            _ => bail!("una marca de texto va unida al texto"),
+        }
+        self.replace_annotation(page, index)
+    }
+
+    fn annotation(&self, page: usize, index: usize) -> Result<Annotation> {
+        match self.annotations(page).into_iter().find(|a| a.index == index) {
+            Some(a) => Ok(a),
+            None => bail!("no existe esa anotación"),
+        }
+    }
+
+    /// Borra la anotación que se acaba de hacer de nuevo y devuelve la
+    /// posición de la nueva (la última de la página).
+    fn replace_annotation(&mut self, page: usize, old: usize) -> Result<usize> {
+        self.remove_annotation(page, old)?;
+        let n = unsafe { sys::FPDFPage_GetAnnotCount(self.page(page)) };
+        Ok((n - 1).max(0) as usize)
     }
 
     /// Los caracteres de la página, para marcarlos.
@@ -481,7 +612,7 @@ impl Document {
     /// mismo color quedan en una sola marca (sin sumar colores ni dejar
     /// huecos). true si cambió algo.
     fn mark_range(&mut self, page: usize, kind: AnnotKind, start: i32, count: i32, color: Option<[u8; 3]>) -> Result<bool> {
-        if !matches!(kind, AnnotKind::Highlight | AnnotKind::Underline | AnnotKind::StrikeOut) {
+        if !kind.is_markup() {
             bail!("no es una marca de texto");
         }
         let boxes = self.char_boxes(page);
@@ -580,13 +711,17 @@ impl Document {
     /// Pone una nota (un icono con un comentario) con su esquina superior
     /// izquierda en (x, y).
     pub fn add_note(&mut self, page: usize, x: f32, y: f32, text: &str, color: [u8; 3]) -> Result<()> {
+        self.put_note(page, x, y, text, color, "Comment")
+    }
+
+    fn put_note(&mut self, page: usize, x: f32, y: f32, text: &str, color: [u8; 3], icon: &str) -> Result<()> {
         const SIZE: f32 = 20.0;
         let rect = self.clamp_to_page(page, [x, y - SIZE, x + SIZE, y]);
         let a = self.new_annot(page, sys::FPDF_ANNOT_TEXT)?;
         a.set_rect(rect);
         a.set_color(color);
         a.set_string(c"Contents", text);
-        a.set_string(c"Name", "Comment");
+        a.set_string(c"Name", icon);
         Ok(())
     }
 
