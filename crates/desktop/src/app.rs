@@ -1337,11 +1337,13 @@ impl PdfApp {
             ui.heading(title);
             ui.add_space(8.0);
             let r = ui.add(egui::TextEdit::multiline(&mut d.text).desired_rows(4).desired_width(f32::INFINITY));
-            // Unos fotogramas: al soltar el clic que abrió la ventana, el
-            // visor pide el foco para sí.
+            // Hasta unos fotogramas después de soltar el clic que abrió la
+            // ventana: al soltarlo, el visor pide el foco para sí.
             if d.focus > 0 {
                 r.request_focus();
-                d.focus -= 1;
+                if !ui.input(|i| i.pointer.any_down()) {
+                    d.focus -= 1;
+                }
             }
             let ok = !d.text.trim().is_empty() || matches!(d.req, AnnotRequest::Note { .. });
             answer = theme::dialog_footer(ui, &[(t!("dialog.ok"), true, ok), (t!("dialog.cancel"), false, true)]);
