@@ -349,6 +349,7 @@ class MainActivity : AppCompatActivity() {
             onFormInput(t, r)
             if (t === current) updateToTop()
         }
+        view.onInlineChanged = { if (t === current) updateToTop() }
         view.onSignaturesChanged = { markModified(t) }
         view.onAnnotChanged = { markModified(t) }
         view.onAnnotError = { e -> showError(getString(R.string.annot_error, e.message ?: "")) }
@@ -1046,7 +1047,7 @@ class MainActivity : AppCompatActivity() {
     /** Phones: the "back to the first page" button, once past the first page. */
     private fun updateToTop() {
         val v = current?.view
-        toTop.isVisible = !isTablet && v != null && v.isVisible && v.currentPage >= 1 && !v.editingField
+        toTop.isVisible = !isTablet && v != null && v.isVisible && v.currentPage >= 1 && !v.editingField && !v.writingInline
     }
 
     private fun askPage() {

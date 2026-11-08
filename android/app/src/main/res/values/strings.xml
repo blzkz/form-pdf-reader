@@ -209,15 +209,13 @@
     <string name="mark_remove_highlight">Remove highlight</string>
     <string name="mark_remove_underline">Remove underline</string>
     <string name="mark_remove_strikeout">Remove strike-out</string>
-    <string name="annot_hint_note">Tap the page to add a note, or a note to move it.</string>
-    <string name="annot_hint_text">Tap the page to write, or a text to move or resize it.</string>
+    <string name="annot_hint_note">Tap the page to write a note, or a note to move it.</string>
+    <string name="annot_hint_text">Drag to mark the area to write in, or tap the page. Tap a text to move or resize it. Two fingers to scroll.</string>
     <string name="annot_hint_ink">Draw with one finger. Two fingers to scroll.</string>
     <string name="annot_thin">Thin</string>
     <string name="annot_medium">Medium</string>
     <string name="annot_thick">Thick</string>
     <string name="annot_size">%1$d pt</string>
-    <string name="annot_edit_note">Edit the note</string>
-    <string name="annot_edit_text">Edit the text</string>
     <string name="annot_error">Could not annotate the document: %1$s</string>
     <string name="pages_rotate_left">Rotate left</string>
     <string name="pages_rotate_right">Rotate right</string>

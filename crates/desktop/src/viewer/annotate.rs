@@ -1,6 +1,6 @@
 //! Anotar el documento: resaltar, subrayar y tachar texto (se marca
-//! arrastrando sobre él), notas y texto libre (se pulsa donde ponerlos y la
-//! aplicación pide el texto), dibujo a mano (los trazos se juntan en una
+//! arrastrando sobre él), notas y texto libre (se pulsa donde ponerlos, o se
+//! arrastra para marcar la zona de un texto, y se escribe ahí mismo), dibujo a mano (los trazos se juntan en una
 //! anotación al terminar: Intro, otra herramienta o salir) y seleccionar una
 //! anotación para borrarla (Supr), editar su texto (doble clic), cambiar su
 //! color, arrastrarla a otro sitio o cambiar su tamaño con el tirador de la
@@ -72,6 +72,14 @@ impl AnnotTool {
 const HANDLE: f32 = 12.0;
 /// Ancho mínimo (en puntos) al cambiar el tamaño de una anotación.
 const MIN_W: f32 = 20.0;
+/// Lo mínimo (en puntos) que hay que arrastrar para marcar una zona; menos es
+/// un clic.
+const MIN_ZONE_W: f32 = 30.0;
+const MIN_ZONE_H: f32 = 8.0;
+/// Margen interior de un texto libre y lado del icono de una nota, en puntos
+/// (los de `Document`).
+const FREE_TEXT_PAD: f32 = 3.0;
+const NOTE_ICON: f32 = 20.0;
 
 /// Una anotación que se está moviendo o cambiando de tamaño. Se escribe al
 /// soltar; hasta entonces se ve su recuadro.
@@ -84,16 +92,32 @@ struct AnnotDrag {
     cur: [f32; 4],
 }
 
-/// Lo que la aplicación tiene que preguntar (el texto de una nota o de un
-/// texto libre).
-#[derive(Clone, Debug, PartialEq)]
-pub enum AnnotRequest {
-    /// Nota nueva con su esquina superior izquierda en (x, y), en puntos de
-    /// página.
-    Note { page: usize, x: f32, y: f32 },
-    FreeText { page: usize, x: f32, y: f32 },
-    /// Cambiar el texto de una nota o de un texto libre.
+/// Una zona que se está marcando para escribir en ella (puntos de página).
+#[derive(Clone, Copy)]
+struct ZoneDrag {
+    page: usize,
+    start: [f32; 2],
+    cur: [f32; 2],
+}
+
+/// Qué se está escribiendo en la página.
+enum InlineKind {
+    /// Texto nuevo; en una zona (ancho y alto) o ajustado a lo escrito.
+    NewText(Option<[f32; 2]>),
+    NewNote,
     Edit(Annotation),
+}
+
+/// El editor que se abre sobre la página. (x, y) es su esquina superior
+/// izquierda, en puntos de página.
+pub(super) struct InlineEdit {
+    page: usize,
+    x: f32,
+    y: f32,
+    kind: InlineKind,
+    text: String,
+    /// Fotogramas en los que pedir el foco tras soltar el botón.
+    focus: u8,
 }
 
 pub struct AnnotState {
@@ -110,7 +134,7 @@ pub struct AnnotState {
     drawing: bool,
     pub selected: Option<Annotation>,
     drag: Option<AnnotDrag>,
-    request: Option<AnnotRequest>,
+    zone: Option<ZoneDrag>,
     last_click: Option<(Instant, Pos2)>,
 }
 
@@ -128,7 +152,7 @@ impl AnnotState {
             drawing: false,
             selected: None,
             drag: None,
-            request: None,
+            zone: None,
             last_click: None,
         }
     }
@@ -176,7 +200,7 @@ impl DocView {
     /// Termina de anotar (escribe el dibujo en curso). true si cambió el
     /// documento.
     pub fn stop_annotating(&mut self) -> Result<bool, String> {
-        let r = self.commit_ink();
+        let r = self.commit_pending();
         self.annot = None;
         self.selection = None;
         self.selection_rects.clear();
@@ -192,11 +216,12 @@ impl DocView {
         if a.tool == t {
             return Ok(false);
         }
-        let r = self.commit_ink();
+        let r = self.commit_pending();
         if let Some(a) = self.annot.as_mut() {
             a.tool = t;
             a.selected = None;
             a.drag = None;
+            a.zone = None;
             a.erasing = false;
         }
         self.selection = None;
@@ -204,9 +229,10 @@ impl DocView {
         r
     }
 
-    /// Lo que hay que preguntar al usuario (ver `AnnotRequest`).
-    pub fn take_annot_request(&mut self) -> Option<AnnotRequest> {
-        self.annot.as_mut().and_then(|a| a.request.take())
+    /// Escribe lo que esté a medias: el texto del editor y el dibujo.
+    fn commit_pending(&mut self) -> Result<bool, String> {
+        let text = self.commit_inline()?;
+        Ok(self.commit_ink()? || text)
     }
 
     /// Escribe los trazos en curso como una anotación. true si había.
@@ -230,32 +256,126 @@ impl DocView {
         }
     }
 
-    pub fn add_note(&mut self, page: usize, x: f32, y: f32, text: &str) -> Result<(), String> {
-        let color = self.annot.as_ref().map_or(AnnotTool::Note.default_color(), |a| a.colors[AnnotTool::Note as usize]);
-        self.doc.add_note(page, x, y, text, color).map_err(|e| format!("{e:#}"))?;
-        self.invalidate_page(page);
-        Ok(())
-    }
-
-    pub fn add_free_text(&mut self, page: usize, x: f32, y: f32, text: &str) -> Result<(), String> {
-        let (size, color) = self.annot.as_ref().map_or((12.0, AnnotTool::FreeText.default_color()), |a| (a.font_size, a.colors[AnnotTool::FreeText as usize]));
-        self.doc.add_free_text(page, x, y, text, size, color).map_err(|e| format!("{e:#}"))?;
-        self.invalidate_page(page);
-        // Queda elegido: se puede colocar y ajustar enseguida.
-        let added = self.doc.annotations(page).pop();
-        if let Some(a) = self.annot.as_mut() {
-            a.selected = added;
-        }
-        Ok(())
-    }
-
-    pub fn set_annotation_text(&mut self, a: &Annotation, text: &str) -> Result<(), String> {
-        self.doc.set_annotation_text(a.page, a.index, text).map_err(|e| format!("{e:#}"))?;
+    /// Abre el editor para cambiar el texto de una nota o de un texto libre.
+    pub fn edit_annotation(&mut self, a: &Annotation) {
+        let [left, _, _, top] = a.rect;
+        self.inline = Some(InlineEdit { page: a.page, x: left, y: top, kind: InlineKind::Edit(a.clone()), text: a.contents.clone(), focus: 3 });
         if let Some(s) = self.annot.as_mut() {
             s.selected = None;
+            s.drag = None;
         }
-        self.invalidate_page(a.page);
-        Ok(())
+    }
+
+    /// Escribe en el documento lo del editor. true si cambió algo.
+    pub(super) fn commit_inline(&mut self) -> Result<bool, String> {
+        let Some(e) = self.inline.take() else { return Ok(false) };
+        let text = e.text.trim_end();
+        let (size, color, note_color) = self.annot.as_ref().map_or((12.0, AnnotTool::FreeText.default_color(), AnnotTool::Note.default_color()), |a| {
+            (a.font_size, a.colors[AnnotTool::FreeText as usize], a.colors[AnnotTool::Note as usize])
+        });
+        let (x, y, page) = (e.x, e.y, e.page);
+        let r = match &e.kind {
+            InlineKind::NewText(_) | InlineKind::NewNote if text.is_empty() => return Ok(false),
+            InlineKind::NewText(None) => self.doc.add_free_text(page, x, y, text, size, color),
+            InlineKind::NewText(Some([w, h])) => self.doc.add_free_text_in(page, [x, y - h, x + w, y], text, size, color),
+            InlineKind::NewNote => self.doc.add_note(page, x, y, text, note_color),
+            InlineKind::Edit(a) if text == a.contents => return Ok(false),
+            InlineKind::Edit(a) if a.kind == AnnotKind::FreeText && text.is_empty() => self.doc.remove_annotation(page, a.index),
+            InlineKind::Edit(a) => self.doc.set_annotation_text(page, a.index, text),
+        };
+        r.map_err(|e| format!("{e:#}"))?;
+        self.invalidate_page(page);
+        // Un texto nuevo queda elegido: se puede colocar y ajustar enseguida.
+        if matches!(e.kind, InlineKind::NewText(_)) {
+            let added = self.doc.annotations(page).pop();
+            if let Some(a) = self.annot.as_mut() {
+                a.selected = added;
+            }
+        }
+        Ok(true)
+    }
+
+    /// El editor sobre la página. Pulsar en el documento fuera de él lo
+    /// escribe (y esa pulsación no hace nada más); Esc lo descarta y
+    /// Ctrl + Intro lo escribe.
+    pub(super) fn inline_editor_ui(&mut self, ctx: &egui::Context, events: Vec<Event>, ev: &mut ViewEvents, area: Rect) -> Vec<Event> {
+        let Some(e) = self.inline.as_ref() else { return events };
+        let Some(p) = self.page_rects.iter().find(|(i, _)| *i == e.page).map(|(_, pr)| (self.page_to_screen(e.page, *pr, e.x as f64, e.y as f64), *pr)) else {
+            // Su página ya no se ve.
+            self.finish_inline(ev);
+            return events;
+        };
+        let (top_left, page_rect) = p;
+        let k = self.zoom * PT_TO_PX;
+        let state = self.annot.as_ref();
+        let (font_size, color, zone, min, note) = match &e.kind {
+            InlineKind::NewText(z) => (state.map_or(12.0, |a| a.font_size), state.map_or(AnnotTool::FreeText.default_color(), |a| a.colors[AnnotTool::FreeText as usize]), *z, None, false),
+            InlineKind::NewNote => (0.0, [0, 0, 0], None, None, true),
+            InlineKind::Edit(a) if a.kind == AnnotKind::Note => (0.0, [0, 0, 0], None, None, true),
+            InlineKind::Edit(a) => (a.font_size, a.color, a.zone.then_some([a.rect[2] - a.rect[0], a.rect[3] - a.rect[1]]), Some([a.rect[2] - a.rect[0], a.rect[3] - a.rect[1]]), false),
+        };
+        // Un texto se ve como quedará; el de una nota va en un recuadro junto
+        // a su icono.
+        let (pos, font, pad, fill, ink) = if note {
+            (top_left + egui::vec2(NOTE_ICON * k + 4.0, 0.0), egui::FontId::proportional(14.0), 6.0, Color32::from_rgb(255, 249, 196), Color32::from_rgb(30, 30, 30))
+        } else {
+            (top_left, egui::FontId::proportional(font_size * k), FREE_TEXT_PAD * k, Color32::WHITE, color32(color))
+        };
+        let room = (page_rect.right() - pos.x - 2.0 * pad).max(60.0);
+        let measured = ctx.fonts_mut(|f| {
+            e.text.lines().map(|l| f.layout_no_wrap(l.to_string(), font.clone(), ink).size().x).fold(0.0_f32, f32::max)
+        });
+        let width = match zone {
+            Some([w, _]) => w * k - 2.0 * pad,
+            None if note => 240.0,
+            None => (measured + font.size).max(min.map_or(120.0, |m| m[0] * k - 2.0 * pad)).min(room),
+        };
+        let min_h = zone.or(min).map_or(0.0, |z| z[1] * k - 2.0 * pad);
+        let id = self.area_id.with("editor_en_linea");
+        let accent = ctx.global_style().visuals.selection.bg_fill;
+        let Some(e) = self.inline.as_mut() else { return events };
+        let shown = egui::Area::new(id).order(egui::Order::Middle).fixed_pos(pos).constrain_to(area).show(ctx, |ui| {
+            egui::Frame::new().fill(fill).stroke(Stroke::new(1.5, accent)).inner_margin(pad).show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut e.text)
+                        .id(id.with("texto"))
+                        .frame(egui::Frame::NONE)
+                        .font(font.clone())
+                        .text_color(ink)
+                        .desired_width(width)
+                        .desired_rows(1)
+                        .min_size(egui::vec2(width, min_h.max(font.size))),
+                )
+            })
+        });
+        let edit = shown.inner.inner;
+        // Hasta unos fotogramas después de soltar el botón: al soltarlo, el
+        // visor pide el foco para sí.
+        if e.focus > 0 {
+            edit.request_focus();
+            if !ctx.input(|i| i.pointer.any_down()) {
+                e.focus -= 1;
+            }
+        }
+        let rect = shown.response.rect;
+        let outside = ctx.input(|i| i.pointer.primary_pressed() && i.pointer.interact_pos().is_some_and(|p| area.contains(p) && !rect.contains(p)));
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.inline = None;
+        } else if outside || ctx.input(|i| i.events.iter().any(|e| matches!(e, Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.command))) {
+            self.finish_inline(ev);
+        }
+        ctx.request_repaint();
+        if outside {
+            return events.into_iter().filter(|e| !matches!(e, Event::PointerButton { button: PointerButton::Primary, pressed: true, .. })).collect();
+        }
+        events
+    }
+
+    fn finish_inline(&mut self, ev: &mut ViewEvents) {
+        match self.commit_inline() {
+            Ok(c) => ev.modified |= c,
+            Err(e) => ev.annot_error = Some(e),
+        }
     }
 
     /// Cambia el color de la anotación seleccionada.
@@ -323,6 +443,28 @@ impl DocView {
             }
         }
         true
+    }
+
+    /// El puntero se mueve marcando una zona. true si se está marcando.
+    fn drag_zone(&mut self, pos: Pos2) -> bool {
+        let Some(z) = self.annot.as_ref().and_then(|a| a.zone) else { return false };
+        if let Some((x, y)) = self.page_point(z.page, pos) {
+            let (w, h) = self.doc.page_size(z.page);
+            if let Some(a) = self.annot.as_mut() {
+                a.zone = Some(ZoneDrag { cur: [(x as f32).clamp(0.0, w), (y as f32).clamp(0.0, h)], ..z });
+            }
+        }
+        true
+    }
+
+    /// Suelta la zona: se escribe en ella o, si era un clic, donde se pulsó.
+    fn drop_zone(&mut self) {
+        let Some(z) = self.annot.as_mut().and_then(|a| a.zone.take()) else { return };
+        let [x0, y0] = z.start;
+        let [x1, y1] = z.cur;
+        let (w, h) = ((x1 - x0).abs(), (y1 - y0).abs());
+        let (x, y, size) = if w >= MIN_ZONE_W && h >= MIN_ZONE_H { (x0.min(x1), y0.max(y1), Some([w, h])) } else { (x0, y0, None) };
+        self.inline = Some(InlineEdit { page: z.page, x, y, kind: InlineKind::NewText(size), text: String::new(), focus: 3 });
     }
 
     /// Suelta la anotación agarrada: la escribe en su sitio nuevo.
@@ -395,7 +537,9 @@ impl DocView {
                             if double
                                 && let Some(f) = found.as_ref().filter(|f| matches!(f.kind, AnnotKind::Note | AnnotKind::FreeText))
                             {
-                                a.request = Some(AnnotRequest::Edit(f.clone()));
+                                let f = f.clone();
+                                self.edit_annotation(&f);
+                                continue;
                             }
                             // Pulsar ya agarra lo elegido: se puede arrastrar sin más.
                             a.drag = found.as_ref().filter(|f| f.kind.can_move() && !double).map(|f| AnnotDrag { resize: false, start, rect0: f.rect, cur: f.rect });
@@ -414,13 +558,14 @@ impl DocView {
                         AnnotTool::Note => {
                             if let Some(a) = self.annot.as_mut() {
                                 a.selected = None;
-                                a.request = Some(AnnotRequest::Note { page, x, y });
                             }
+                            self.inline = Some(InlineEdit { page, x, y, kind: InlineKind::NewNote, text: String::new(), focus: 3 });
                         }
                         AnnotTool::FreeText => {
                             if let Some(a) = self.annot.as_mut() {
                                 a.selected = None;
-                                a.request = Some(AnnotRequest::FreeText { page, x, y });
+                                // Al soltar: un clic o la zona arrastrada.
+                                a.zone = Some(ZoneDrag { page, start: [x, y], cur: [x, y] });
                             }
                         }
                         AnnotTool::Ink => {
@@ -441,6 +586,7 @@ impl DocView {
                     }
                 }
                 Event::PointerMoved(pos) if self.drag_annotation(*pos) => {}
+                Event::PointerMoved(pos) if self.drag_zone(*pos) => {}
                 Event::PointerMoved(pos) => {
                     let selecting = self.selecting;
                     match tool {
@@ -474,6 +620,7 @@ impl DocView {
                 }
                 Event::PointerButton { button: PointerButton::Primary, pressed: false, .. } => {
                     self.drop_annotation(ev);
+                    self.drop_zone();
                     if let Some(a) = self.annot.as_mut() {
                         a.drawing = false;
                     }
@@ -517,6 +664,7 @@ impl DocView {
         }
         // El comentario de una nota al pasar por encima.
         if !took
+            && self.inline.is_none()
             && let Some(p) = hover
             && let Some((pg, x, y)) = self.hit(p)
             && let Some(n) = self.doc.annotation_at(pg, x as f32, y as f32).filter(|a| a.kind == AnnotKind::Note && !a.contents.is_empty())
@@ -544,6 +692,13 @@ impl DocView {
                 } else {
                     painter.add(egui::Shape::line(pts, Stroke::new(w, color)));
                 }
+            }
+        }
+        if let Some(z) = a.zone {
+            let r = [z.start[0].min(z.cur[0]), z.start[1].min(z.cur[1]), z.start[0].max(z.cur[0]), z.start[1].max(z.cur[1])];
+            if let Some(sr) = self.sig_screen_rect(z.page, r) {
+                painter.rect_filled(sr, 2.0, accent.gamma_multiply(0.2));
+                painter.rect_stroke(sr, 2.0, Stroke::new(1.5, accent), StrokeKind::Outside);
             }
         }
         if let Some(sel) = &a.selected {

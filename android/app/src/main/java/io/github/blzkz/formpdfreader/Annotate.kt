@@ -1,10 +1,7 @@
 package io.github.blzkz.formpdfreader
 
 import android.graphics.drawable.GradientDrawable
-import android.text.InputType
 import android.view.View
-import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -13,8 +10,6 @@ import androidx.core.view.isVisible
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.color.MaterialColors
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import io.github.blzkz.formpdfreader.PdfPageView.AnnotRequest
 import io.github.blzkz.formpdfreader.PdfPageView.AnnotTool
 import uniffi.form_pdf_reader_ffi.AnnotationInfo
 import uniffi.form_pdf_reader_ffi.AnnotationKind
@@ -25,8 +20,8 @@ import kotlin.math.roundToInt
  * strike out, note, text, draw), its colour (or the eraser, to remove a mark
  * from the text dragged over), the line width or the text size, and Done.
  * The colours and the size also change the selected annotation (one is
- * selected with Select, or a text with the text tool). It also asks the text
- * of notes and free texts.
+ * selected with Select, or a text with the text tool). Notes and texts are
+ * written on the page itself (see PdfPageView).
  *
  * Marking text and drawing take one finger; two fingers scroll and zoom.
  */
@@ -67,7 +62,7 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
             if (checked) toolIds[id]?.let { setTool(it) }
         }
         bar.findViewById<View>(R.id.annot_done).setOnClickListener { close() }
-        edit.setOnClickListener { view?.selectedAnnotation?.let { askText(AnnotRequest.Edit(it)) } }
+        edit.setOnClickListener { view?.editSelected() }
         delete.setOnClickListener { view?.deleteSelectedAnnotation() }
         option.setOnClickListener {
             val text = editing()?.takeIf { it.kind == AnnotationKind.FREE_TEXT }
@@ -76,11 +71,13 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
                     // The next size up (after being resized by hand it may be none of them).
                     val next = SIZES.firstOrNull { it > text.fontSize } ?: SIZES.first()
                     if (tool == AnnotTool.TEXT) fontSize = next
+                    view?.annotFontSize = fontSize
                     view?.setSelectedFontSize(next)
                 }
                 tool == AnnotTool.INK -> inkWidth = WIDTHS[(WIDTHS.indexOf(inkWidth) + 1) % WIDTHS.size]
                 tool == AnnotTool.TEXT -> fontSize = SIZES[(SIZES.indexOf(fontSize) + 1) % SIZES.size]
             }
+            view?.annotFontSize = fontSize
             view?.inkWidth = inkWidth
             refresh()
         }
@@ -123,7 +120,7 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
         if (view === v) return
         close()
         view = v
-        v.onAnnotRequest = { askText(it) }
+        v.annotFontSize = fontSize
         v.onAnnotSelected = { refresh() }
         bar.isVisible = true
         tools.check(toolIds.entries.first { it.value == tool }.key)
@@ -136,7 +133,6 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
         view = null
         v.commitInk()
         v.annotTool = null
-        v.onAnnotRequest = null
         v.onAnnotSelected = null
         bar.isVisible = false
         onClosed()
@@ -209,42 +205,6 @@ class AnnotationBar(private val activity: AppCompatActivity, private val bar: Vi
         }
         delete.isVisible = sel != null
         edit.isVisible = sel != null && (sel.kind == AnnotationKind.NOTE || sel.kind == AnnotationKind.FREE_TEXT)
-    }
-
-    /** The text of a new note or text, or the new text of one. */
-    private fun askText(req: AnnotRequest) {
-        val v = view ?: return
-        val start = (req as? AnnotRequest.Edit)?.annotation?.contents.orEmpty()
-        val input = EditText(activity).apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            minLines = 3
-            setText(start)
-            setSelection(start.length)
-        }
-        val pad = (20 * density).toInt()
-        val box = FrameLayout(activity).apply {
-            setPadding(pad, 0, pad, 0)
-            addView(input)
-        }
-        val title = when (req) {
-            is AnnotRequest.Note -> R.string.annot_note
-            is AnnotRequest.Text -> R.string.annot_text
-            is AnnotRequest.Edit -> if (req.annotation.kind == AnnotationKind.NOTE) R.string.annot_edit_note else R.string.annot_edit_text
-        }
-        MaterialAlertDialogBuilder(activity)
-            .setTitle(title)
-            .setView(box)
-            .setPositiveButton(R.string.ok) { _, _ ->
-                val text = input.text.toString()
-                when (req) {
-                    is AnnotRequest.Note -> v.addNote(req.page, req.x, req.y, text)
-                    is AnnotRequest.Text -> if (text.isNotBlank()) v.addFreeText(req.page, req.x, req.y, text, fontSize)
-                    is AnnotRequest.Edit -> if (text.isNotBlank() || req.annotation.kind == AnnotationKind.NOTE) v.setAnnotationText(req.annotation, text)
-                }
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-        input.requestFocus()
     }
 
     companion object {

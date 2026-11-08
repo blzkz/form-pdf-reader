@@ -208,15 +208,13 @@
     <string name="mark_remove_highlight">Hervorhebung entfernen</string>
     <string name="mark_remove_underline">Unterstreichung entfernen</string>
     <string name="mark_remove_strikeout">Durchstreichung entfernen</string>
-    <string name="annot_hint_note">Tippen Sie auf die Seite für eine Notiz oder auf eine Notiz, um sie zu verschieben.</string>
-    <string name="annot_hint_text">Tippen Sie auf die Seite, um zu schreiben, oder auf einen Text, um ihn zu verschieben oder seine Größe zu ändern.</string>
+    <string name="annot_hint_note">Tippen Sie auf die Seite, um eine Notiz zu schreiben, oder auf eine Notiz, um sie zu verschieben.</string>
+    <string name="annot_hint_text">Ziehen Sie, um den Schreibbereich zu markieren, oder tippen Sie auf die Seite. Tippen Sie auf einen Text, um ihn zu verschieben oder seine Größe zu ändern. Mit zwei Fingern scrollen.</string>
     <string name="annot_hint_ink">Mit einem Finger zeichnen. Mit zwei Fingern scrollen.</string>
     <string name="annot_thin">Dünn</string>
     <string name="annot_medium">Mittel</string>
     <string name="annot_thick">Dick</string>
     <string name="annot_size">%1$d pt</string>
-    <string name="annot_edit_note">Notiz bearbeiten</string>
-    <string name="annot_edit_text">Text bearbeiten</string>
     <string name="annot_error">Das Dokument konnte nicht kommentiert werden: %1$s</string>
     <string name="pages_rotate_left">Nach links drehen</string>
     <string name="pages_rotate_right">Nach rechts drehen</string>

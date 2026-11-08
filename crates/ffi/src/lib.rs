@@ -373,6 +373,8 @@ pub struct AnnotationInfo {
     /// 0xRRGGBB.
     pub color: u32,
     pub font_size: f32,
+    /// A free text written in a zone: it keeps the width and splits its lines.
+    pub zone: bool,
 }
 
 /// A change to the pages (numbers from 0, as the document is after the
@@ -1231,6 +1233,7 @@ impl PdfDocument {
                     contents: a.contents,
                     color: (a.color[0] as u32) << 16 | (a.color[1] as u32) << 8 | a.color[2] as u32,
                     font_size: a.font_size,
+                    zone: a.zone,
                 }
             })
             .collect()
@@ -1297,6 +1300,15 @@ impl PdfDocument {
     pub fn add_free_text(&self, page: u32, x: f32, y: f32, text: String, size: f32, color: u32) -> Result<(), PdfError> {
         let (px, py) = self.point(page, x, y);
         self.lock().add_free_text(usize_page(page), px, py, &text, size, rgb(color)).map_err(|e| PdfError::Save(format!("{e:#}")))
+    }
+
+    /// Text written in a zone of the page, in points from the top left: the
+    /// lines are split to fit its width and it grows down if they do not fit.
+    pub fn add_free_text_in(&self, page: u32, rect: PageRect, text: String, size: f32, color: u32) -> Result<(), PdfError> {
+        let (x0, y0) = self.point(page, rect.left, rect.top);
+        let (x1, y1) = self.point(page, rect.right, rect.bottom);
+        let r = [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)];
+        self.lock().add_free_text_in(usize_page(page), r, &text, size, rgb(color)).map_err(|e| PdfError::Save(format!("{e:#}")))
     }
 
     /// A drawing: strokes with points in points of the page from its top
