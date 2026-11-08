@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 mod annotate;
 mod sign;
-pub use annotate::{ANNOT_COLORS, AnnotRequest, AnnotTool};
+pub use annotate::{ANNOT_COLORS, AnnotTool};
 pub use sign::signature_texture;
 
 /// Puntos tipográficos -> píxeles lógicos al 100 %.
@@ -147,6 +147,10 @@ pub struct DocView {
     annot: Option<annotate::AnnotState>,
     /// Menú abierto de una marca de texto (clic derecho).
     markup_menu: Option<annotate::MarkupMenu>,
+    /// Editor abierto sobre la página (ver `annotate`).
+    inline: Option<annotate::InlineEdit>,
+    /// El editor se ha escrito fuera de `ui` (al guardar, al cerrar…).
+    inline_written: bool,
 }
 
 impl DocView {
@@ -193,6 +197,8 @@ impl DocView {
             wheel_acc: 0.0,
             annot: None,
             markup_menu: None,
+            inline: None,
+            inline_written: false,
         }
     }
 
@@ -434,6 +440,9 @@ impl DocView {
     /// Envía a PDFium el foco perdido para que confirme el valor del campo
     /// que se está editando (necesario antes de guardar).
     pub fn commit_focus(&mut self) {
+        if let Ok(true) = self.commit_inline() {
+            self.inline_written = true;
+        }
         self.doc.kill_focus();
     }
 
@@ -1056,6 +1065,9 @@ impl DocView {
         // Clic derecho en una marca de texto: su menú (antes que PDFium).
         let pointer_events = self.open_markup_menu(pointer_events, area_rect);
         self.markup_menu_ui(&ctx, &mut ev);
+        // El editor sobre la página (antes que las herramientas de anotar).
+        let pointer_events = self.inline_editor_ui(&ctx, pointer_events, &mut ev, area_rect);
+        ev.modified |= std::mem::take(&mut self.inline_written);
         // Firmas manuscritas: colocar, mover, quitar (antes que PDFium).
         let signing = self.handle_signatures(&ctx, &pointer_events, &mut ev, area_rect);
         self.draw_signatures(&ctx, &ui.painter_at(area_rect));

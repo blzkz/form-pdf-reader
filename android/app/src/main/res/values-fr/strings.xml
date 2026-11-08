@@ -208,15 +208,13 @@
     <string name="mark_remove_highlight">Retirer le surlignage</string>
     <string name="mark_remove_underline">Retirer le soulignement</string>
     <string name="mark_remove_strikeout">Retirer le barré</string>
-    <string name="annot_hint_note">Touchez la page pour ajouter une note, ou une note pour la déplacer.</string>
-    <string name="annot_hint_text">Touchez la page pour écrire, ou un texte pour le déplacer ou le redimensionner.</string>
+    <string name="annot_hint_note">Touchez la page pour écrire une note, ou une note pour la déplacer.</string>
+    <string name="annot_hint_text">Faites glisser pour marquer la zone où écrire, ou touchez la page. Touchez un texte pour le déplacer ou le redimensionner. Deux doigts pour vous déplacer.</string>
     <string name="annot_hint_ink">Dessinez avec un doigt. Deux doigts pour vous déplacer.</string>
     <string name="annot_thin">Fin</string>
     <string name="annot_medium">Moyen</string>
     <string name="annot_thick">Épais</string>
     <string name="annot_size">%1$d pt</string>
-    <string name="annot_edit_note">Modifier la note</string>
-    <string name="annot_edit_text">Modifier le texte</string>
     <string name="annot_error">Impossible d’annoter le document : %1$s</string>
     <string name="pages_rotate_left">Pivoter à gauche</string>
     <string name="pages_rotate_right">Pivoter à droite</string>

@@ -261,6 +261,36 @@ fn anotaciones() {
     assert_eq!(doc.annotations(0).len(), 4);
     assert_eq!(busca(&doc, AnnotKind::FreeText).color, [76, 175, 80]);
 
+    // Un texto escrito en una zona parte las líneas, conserva el ancho de la
+    // zona al editarlo, moverlo o cambiarle el color, y lo recuerda al reabrir.
+    let mut doc = Document::open(Path::new("tests/fixtures/normal.pdf")).unwrap();
+    let largo = "Este texto es bastante largo para que no quepa en una sola linea de la zona";
+    doc.add_free_text_in(0, [100.0, 280.0, 250.0, 320.0], largo, 12.0, [33, 150, 243]).unwrap();
+    let z = busca(&doc, AnnotKind::FreeText);
+    assert!(z.zone);
+    assert_eq!(z.contents, largo, "el texto no lleva los saltos de la zona");
+    assert!((z.rect[2] - z.rect[0] - 150.0).abs() < 0.1, "{:?}", z.rect);
+    assert!(z.rect[3] - z.rect[1] > 40.0, "crece hacia abajo si no cabe: {:?}", z.rect);
+    assert_eq!(z.rect[3], 320.0);
+    doc.save(&out).unwrap();
+    let mut doc = Document::open(&out).unwrap();
+    let z = busca(&doc, AnnotKind::FreeText);
+    assert!(z.zone, "lo recuerda al reabrir");
+    doc.set_annotation_text(0, z.index, "Corto").unwrap();
+    let c = busca(&doc, AnnotKind::FreeText);
+    assert_eq!((c.zone, c.contents.as_str()), (true, "Corto"));
+    assert!((c.rect[2] - c.rect[0] - 150.0).abs() < 0.1, "{:?}", c.rect);
+    assert_eq!(c.rect[3] - c.rect[1], z.rect[3] - z.rect[1], "conserva el alto");
+    let [l, b, r, top] = c.rect;
+    doc.set_annotation_rect(0, c.index, [l + 30.0, b, r + 30.0, top]).unwrap();
+    let m = busca(&doc, AnnotKind::FreeText);
+    assert!(m.zone && (m.rect[2] - m.rect[0] - 150.0).abs() < 0.1, "{:?}", m.rect);
+    // Uno sin zona se ajusta a su texto, como antes.
+    let mut doc = Document::open(Path::new("tests/fixtures/normal.pdf")).unwrap();
+    doc.add_free_text(0, 100.0, 300.0, largo, 12.0, [33, 150, 243]).unwrap();
+    let s = busca(&doc, AnnotKind::FreeText);
+    assert!(!s.zone && s.rect[2] - s.rect[0] > 300.0, "{:?}", s.rect);
+
     // Marcar lo ya marcado del mismo color: una sola marca continua (no se
     // suman los colores); otra clase de marca no se junta.
     let mut doc = Document::open(Path::new("tests/fixtures/normal.pdf")).unwrap();

@@ -28,12 +28,17 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.OverScroller
 import android.widget.PopupWindow
@@ -390,6 +395,7 @@ class PdfPageView(context: Context) : View(context) {
         // After a rotation, the line at the top stays at the top.
         val a = if (oldw > 0) anchorAt(oldw / 2f, 0f, w / 2f, 0f) else null
         relayout(a)
+        revealInline()
         // The keyboard has opened over the field being edited: bring it up.
         val e = editAnchor
         if (e != null && h < oldh) {
@@ -949,6 +955,16 @@ class PdfPageView(context: Context) : View(context) {
     private var fingerDown = false
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // A touch outside the editor writes it, and does nothing else.
+        if (inline != null && event.actionMasked == MotionEvent.ACTION_DOWN) {
+            commitInline()
+            swallowGesture = true
+            return true
+        }
+        if (swallowGesture) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) swallowGesture = false
+            return true
+        }
         if (handleSignatureTouch(event)) return true
         if (handleAnnotTouch(event)) return true
         if (event.isFromSource(InputDevice.SOURCE_MOUSE) && !isTouchpadGesture(event)) return onMouseEvent(event)
@@ -1890,18 +1906,11 @@ class PdfPageView(context: Context) : View(context) {
     /** What annotating does with the finger. */
     enum class AnnotTool { SELECT, HIGHLIGHT, UNDERLINE, STRIKEOUT, NOTE, TEXT, INK }
 
-    /** What the app has to ask (the text of a note or a free text). */
-    sealed class AnnotRequest {
-        /** A new note or text with its top left corner at (x, y), in points of the page. */
-        data class Note(val page: Int, val x: Float, val y: Float) : AnnotRequest()
-        data class Text(val page: Int, val x: Float, val y: Float) : AnnotRequest()
-        data class Edit(val annotation: AnnotationInfo) : AnnotRequest()
-    }
-
     /** Annotating with this tool (null: not annotating). */
     var annotTool: AnnotTool? = null
         set(value) {
             if (field == value) return
+            commitInline()
             if (field == AnnotTool.INK) commitInk()
             field = value
             clearSelection()
@@ -1916,7 +1925,8 @@ class PdfPageView(context: Context) : View(context) {
     /** Marking text with the eraser: dragging removes the mark. */
     var annotErasing = false
 
-    var onAnnotRequest: ((AnnotRequest) -> Unit)? = null
+    /** Letter size of the new texts, in points. */
+    var annotFontSize = 12f
 
     /** An annotation was added or removed (the document changed). */
     var onAnnotChanged: (() -> Unit)? = null
@@ -1998,12 +2008,19 @@ class PdfPageView(context: Context) : View(context) {
         }
     }
 
-    fun addFreeText(page: Int, x: Float, y: Float, text: String, size: Float) {
+    private fun addFreeText(page: Int, e: InlineEdit, text: String) {
         val d = doc ?: return
         val color = annotColor
+        val size = annotFontSize
+        val (x, y) = e.x to e.y
+        val zone = e.zoneW > 0f
         // It stays selected: it can be placed and adjusted right away.
         PdfEngine.run({
-            d.addFreeText(page.toUInt(), x, y, text, size, color.toUInt())
+            if (zone) {
+                d.addFreeTextIn(page.toUInt(), PageRect(x, y, x + e.zoneW, y + e.zoneH), text, size, color.toUInt())
+            } else {
+                d.addFreeText(page.toUInt(), x, y, text, size, color.toUInt())
+            }
             d.annotations(page.toUInt()).last()
         }) { r -> annotReplaced(d, r) }
     }
@@ -2091,7 +2108,7 @@ class PdfPageView(context: Context) : View(context) {
         val x = (loc[0] + u.centerX() - w / 2f).coerceIn(loc[0].toFloat(), (loc[0] + width - w).toFloat().coerceAtLeast(loc[0].toFloat()))
         val above = loc[1] + u.top - space - h
         val y = if (above >= loc[1]) above else loc[1] + u.bottom + space
-        popup.showAtLocation(this, android.view.Gravity.NO_GRAVITY, x.roundToInt(), y.roundToInt())
+        popup.showAtLocation(this, Gravity.NO_GRAVITY, x.roundToInt(), y.roundToInt())
     }
 
     private fun setMarkColor(mark: AnnotationInfo, color: Int) {
@@ -2143,14 +2160,217 @@ class PdfPageView(context: Context) : View(context) {
             lastAnnotTap = SystemClock.uptimeMillis()
             when {
                 a != null -> if (double) editAnnotation(a)
-                tool == AnnotTool.NOTE -> onAnnotRequest?.invoke(AnnotRequest.Note(slot.page, p.x, p.y))
-                tool == AnnotTool.TEXT -> onAnnotRequest?.invoke(AnnotRequest.Text(slot.page, p.x, p.y))
+                tool == AnnotTool.NOTE -> startInline(InlineEdit(slot.page, p.x, p.y, InlineKind.NOTE))
+                tool == AnnotTool.TEXT -> startInline(InlineEdit(slot.page, p.x, p.y, InlineKind.TEXT))
             }
         }
     }
 
     private fun editAnnotation(a: AnnotationInfo) {
-        if (a.kind == AnnotationKind.NOTE || a.kind == AnnotationKind.FREE_TEXT) onAnnotRequest?.invoke(AnnotRequest.Edit(a))
+        if (a.kind != AnnotationKind.NOTE && a.kind != AnnotationKind.FREE_TEXT) return
+        val kind = if (a.kind == AnnotationKind.NOTE) InlineKind.NOTE else InlineKind.TEXT
+        startInline(InlineEdit(a.page.toInt(), a.rect.left, a.rect.top, kind, edit = a))
+    }
+
+    /** Opens the editor on the selected note or text. */
+    fun editSelected() {
+        selectedAnnotation?.let { editAnnotation(it) }
+    }
+
+    // -----------------------------------------------------------------------
+    // Writing on the page
+    // -----------------------------------------------------------------------
+
+    private enum class InlineKind { TEXT, NOTE }
+
+    /**
+     * What is being written on the page: (x, y) is its top left corner in
+     * points; [zoneW] and [zoneH], the zone marked for a new text.
+     */
+    private class InlineEdit(val page: Int, val x: Float, val y: Float, val kind: InlineKind, val zoneW: Float = 0f, val zoneH: Float = 0f, val edit: AnnotationInfo? = null)
+
+    private var inline: InlineEdit? = null
+    private var inlineView: EditText? = null
+    private var inlineScale = 0f
+
+    /** The editor on the page is open. */
+    val writingInline: Boolean get() = inline != null
+    var onInlineChanged: (() -> Unit)? = null
+
+    /** A touch on the page closed the editor: the rest of that gesture does nothing. */
+    private var swallowGesture = false
+
+    private fun startInline(e: InlineEdit) {
+        commitInline()
+        val host = parent as? ViewGroup ?: return
+        inline = e
+        selectAnnotation(null)
+        val note = e.kind == InlineKind.NOTE
+        val input = EditText(context).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_FULLSCREEN
+            isSingleLine = false
+            gravity = Gravity.TOP or Gravity.START
+            includeFontPadding = false
+            setText(e.edit?.contents.orEmpty())
+            setSelection(text.length)
+            background = GradientDrawable().apply {
+                setColor(if (note) 0xFFFFF9C4.toInt() else Color.WHITE)
+                setStroke((1.5f * density).toInt(), accent)
+            }
+            if (note) {
+                setTextColor(Color.rgb(30, 30, 30))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                val pad = (8 * density).toInt()
+                setPadding(pad, pad, pad, pad)
+            } else {
+                setTextColor(0xFF000000.toInt() or (e.edit?.color?.toInt() ?: annotColor))
+            }
+        }
+        inlineView = input
+        inlineScale = 0f
+        host.addView(input, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        placeInline()
+        input.requestFocus()
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        input.post { imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT) }
+        input.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> revealInline() }
+        onInlineChanged?.invoke()
+    }
+
+    /** Puts the editor over its place on the page, at the size of the page. */
+    private fun placeInline() {
+        val e = inline ?: return
+        val input = inlineView ?: return
+        val slot = slotOf(e.page) ?: return
+        val px = slot.x - offsetX + e.x * scale
+        val py = slot.y - offsetY + e.y * scale
+        if (e.kind == InlineKind.NOTE) {
+            val x = px + NOTE_ICON * scale + 4 * density
+            val w = min((260 * density).roundToInt(), width)
+            if (input.layoutParams.width != w) input.layoutParams = input.layoutParams.apply { width = w }
+            input.translationX = min(x, (width - w).toFloat()).coerceAtLeast(0f)
+            input.translationY = py
+            return
+        }
+        if (scale != inlineScale) {
+            inlineScale = scale
+            val size = e.edit?.fontSize ?: annotFontSize
+            input.setTextSize(TypedValue.COMPLEX_UNIT_PX, size * scale)
+            val pad = (FREE_TEXT_PAD * scale).roundToInt()
+            input.setPadding(pad, pad, pad, pad)
+            val zoned = e.zoneW > 0f || e.edit?.zone == true
+            val w = if (e.zoneW > 0f) e.zoneW else e.edit?.takeIf { it.zone }?.let { it.rect.right - it.rect.left } ?: 0f
+            val minH = if (e.zoneH > 0f) e.zoneH else e.edit?.let { it.rect.bottom - it.rect.top } ?: 0f
+            val lp = input.layoutParams
+            lp.width = if (zoned) (w * scale).roundToInt() else FrameLayout.LayoutParams.WRAP_CONTENT
+            input.layoutParams = lp
+            input.minimumHeight = (minH * scale).roundToInt()
+            input.minHeight = (minH * scale).roundToInt()
+            // Without a zone it grows with the text, up to the edge of the page.
+            input.maxWidth = ((slot.w - e.x * scale).coerceAtLeast(60 * density)).roundToInt()
+            input.minWidth = (min(120f * density, slot.w - e.x * scale)).roundToInt()
+        }
+        input.translationX = px
+        input.translationY = py
+    }
+
+    /** The editor stays above the keyboard and inside the view. */
+    private fun revealInline() {
+        val e = inline ?: return
+        val input = inlineView ?: return
+        val slot = slotOf(e.page) ?: return
+        val top = slot.y + e.y * scale
+        val bottom = top + input.height
+        val margin = 12 * density
+        val want = when {
+            bottom - offsetY > height - margin -> min(top - margin, bottom - height + margin)
+            top - offsetY < margin -> top - margin
+            else -> return
+        }
+        offsetY = want
+        clampOffsets()
+        invalidate()
+    }
+
+    /** Writes what is in the editor in the document and closes it. */
+    fun commitInline() {
+        val e = inline ?: return
+        val text = inlineView?.text?.toString().orEmpty().trimEnd()
+        closeInline()
+        val page = e.page
+        val edit = e.edit
+        when {
+            edit != null && edit.kind == AnnotationKind.FREE_TEXT && text.isEmpty() -> {
+                selectAnnotation(edit)
+                deleteSelectedAnnotation()
+            }
+            edit != null -> if (text != edit.contents) setAnnotationText(edit, text)
+            text.isEmpty() -> Unit
+            e.kind == InlineKind.NOTE -> addNote(page, e.x, e.y, text)
+            else -> addFreeText(page, e, text)
+        }
+    }
+
+    private fun closeInline() {
+        val input = inlineView
+        inline = null
+        inlineView = null
+        if (input != null) {
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(input.windowToken, 0)
+            (input.parent as? ViewGroup)?.removeView(input)
+            onInlineChanged?.invoke()
+        }
+    }
+
+    /** The zone being marked with the finger, in points of [zonePage] (x0, y0, x1, y1). */
+    private var zonePage = -1
+    private var zoneRect: FloatArray? = null
+    private var zoneDownX = 0f
+    private var zoneDownY = 0f
+    private var zoneMoved = false
+
+    /** With the text tool, one finger marks the zone to write in; a tap selects or writes there. */
+    private fun handleZoneTouch(e: MotionEvent) {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val slot = slotAt(e.x, e.y)
+                zonePage = slot?.page ?: -1
+                val p = slot?.let { toPagePoints(it.page, e.x, e.y) }
+                zoneRect = p?.let { floatArrayOf(it.x, it.y, it.x, it.y) }
+                zoneDownX = e.x
+                zoneDownY = e.y
+                zoneMoved = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val z = zoneRect ?: return
+                if (!zoneMoved && hypot(e.x - zoneDownX, e.y - zoneDownY) < touchSlop) return
+                zoneMoved = true
+                val p = toPagePoints(zonePage, e.x, e.y) ?: return
+                val info = pages.getOrNull(zonePage) ?: return
+                z[2] = p.x.coerceIn(0f, info.widthPt)
+                z[3] = p.y.coerceIn(0f, info.heightPt)
+                invalidate()
+            }
+            MotionEvent.ACTION_UP -> {
+                val z = zoneRect
+                zoneRect = null
+                invalidate()
+                if (z == null) return
+                val w = abs(z[2] - z[0])
+                val h = abs(z[3] - z[1])
+                if (zoneMoved && w >= MIN_ZONE_W && h >= MIN_ZONE_H) {
+                    startInline(InlineEdit(zonePage, min(z[0], z[2]), min(z[1], z[3]), InlineKind.TEXT, w, h))
+                } else if (!zoneMoved) {
+                    annotTap(e.x, e.y, false)
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                zoneRect = null
+                invalidate()
+            }
+        }
     }
 
     /** The annotation being moved or resized; it is written when released. */
@@ -2259,8 +2479,9 @@ class PdfPageView(context: Context) : View(context) {
     private fun handleAnnotTouch(e: MotionEvent): Boolean {
         val tool = annotTool ?: return false
         if (handleAnnotDrag(e)) return true
+        val zones = tool == AnnotTool.TEXT
         val markup = tool == AnnotTool.HIGHLIGHT || tool == AnnotTool.UNDERLINE || tool == AnnotTool.STRIKEOUT
-        if (!markup && tool != AnnotTool.INK) return false
+        if (!markup && !zones && tool != AnnotTool.INK) return false
         if (e.actionMasked == MotionEvent.ACTION_DOWN) annotMultiTouch = false
         if (e.pointerCount > 1 || annotMultiTouch) {
             // Two fingers: scroll and zoom; what the first one started is dropped.
@@ -2271,9 +2492,14 @@ class PdfPageView(context: Context) : View(context) {
                     inkStrokes.removeLastOrNull()
                 }
                 markupStart = null
+                zoneRect = null
                 clearSelection()
             }
             scaleGestures.onTouchEvent(e)
+            return true
+        }
+        if (zones) {
+            handleZoneTouch(e)
             return true
         }
         when (e.actionMasked) {
@@ -2353,7 +2579,22 @@ class PdfPageView(context: Context) : View(context) {
 
     /** The drawing in progress and the frame of the selected annotation. */
     private fun drawAnnotOverlay(canvas: Canvas) {
+        placeInline()
         if (annotTool == null) return
+        zoneRect?.let { z ->
+            slotOf(zonePage)?.let { slot ->
+                val l = slot.x - offsetX
+                val t = slot.y - offsetY
+                val r = RectF(l + min(z[0], z[2]) * scale, t + min(z[1], z[3]) * scale, l + max(z[0], z[2]) * scale, t + max(z[1], z[3]) * scale)
+                annotFramePaint.strokeWidth = 1.5f * density
+                annotFramePaint.style = Paint.Style.FILL
+                annotFramePaint.alpha = 40
+                canvas.drawRect(r, annotFramePaint)
+                annotFramePaint.style = Paint.Style.STROKE
+                annotFramePaint.alpha = 255
+                canvas.drawRect(r, annotFramePaint)
+            }
+        }
         if (inkStrokes.isNotEmpty()) {
             val slot = slotOf(inkPage)
             if (slot != null) {
@@ -2413,6 +2654,14 @@ class PdfPageView(context: Context) : View(context) {
         private const val MENU_CUT = 3
         private const val MENU_PASTE = 4
         private const val MENU_DELETE = 5
+
+        /** Inner margin of a free text and side of a note's icon, in points (those of the core). */
+        private const val FREE_TEXT_PAD = 3f
+        private const val NOTE_ICON = 20f
+
+        /** The least to drag to mark a zone, in points. */
+        private const val MIN_ZONE_W = 30f
+        private const val MIN_ZONE_H = 8f
         private const val MENU_MARK_COLOR = 6
         private const val MENU_MARK_REMOVE = 7
 

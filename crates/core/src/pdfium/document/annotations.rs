@@ -16,6 +16,9 @@ use std::ffi::{c_int, c_ulong};
 
 /// Prefijo del `NM` de los textos libres (sellos con texto).
 const FREE_TEXT_NM: &str = "pdfre-texto-";
+/// Prefijo del `NM` de los textos libres escritos en una zona: su ancho es el
+/// de la zona y las líneas se parten para caber (empieza como `FREE_TEXT_NM`).
+const FREE_TEXT_ZONE_NM: &str = "pdfre-texto-zona-";
 /// Margen interior del texto libre, en puntos.
 const FREE_TEXT_PAD: f32 = 3.0;
 /// Alto de línea del texto libre, en veces el tamaño de letra.
@@ -72,6 +75,8 @@ pub struct Annotation {
     pub color: [u8; 3],
     /// Tamaño de letra del texto libre.
     pub font_size: f32,
+    /// Texto libre escrito en una zona: conserva su ancho y parte las líneas.
+    pub zone: bool,
 }
 
 /// Una anotación abierta de PDFium, que se cierra al soltarla.
@@ -361,6 +366,38 @@ fn appearance_color(ap: &str) -> Option<[u8; 3]> {
     None
 }
 
+/// Ancho y alto de la zona de un texto libre, si está escrito en una.
+fn zone_of(a: &Annotation) -> Option<[f32; 2]> {
+    a.zone.then_some([a.rect[2] - a.rect[0], a.rect[3] - a.rect[1]])
+}
+
+/// Parte una línea para que quepa en `width`: por los espacios y, si una
+/// palabra no cabe sola, dentro de ella.
+fn wrap_line(line: &str, width: f32, measure: &impl Fn(&str) -> f32) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for word in line.split(' ') {
+        let joined = if cur.is_empty() { word.to_string() } else { format!("{cur} {word}") };
+        if measure(&joined) <= width || joined.is_empty() {
+            cur = joined;
+            continue;
+        }
+        if !cur.is_empty() {
+            out.push(std::mem::take(&mut cur));
+        }
+        for c in word.chars() {
+            let longer = format!("{cur}{c}");
+            if measure(&longer) > width && !cur.is_empty() {
+                out.push(std::mem::replace(&mut cur, c.to_string()));
+            } else {
+                cur = longer;
+            }
+        }
+    }
+    out.push(cur);
+    out
+}
+
 /// El primer grosor de línea de una apariencia ("2 w").
 fn appearance_width(ap: &str) -> Option<f32> {
     let t: Vec<&str> = ap.split_whitespace().collect();
@@ -432,6 +469,7 @@ impl Document {
                 contents: a.string(c"Contents"),
                 color: da_color.or_else(|| a.color()).unwrap_or([255, 210, 0]),
                 font_size: size.unwrap_or(12.0),
+                zone: kind == AnnotKind::FreeText && a.string(c"NM").starts_with(FREE_TEXT_ZONE_NM),
             });
         }
         v
@@ -503,7 +541,7 @@ impl Document {
             AnnotKind::FreeText => {
                 drop(a);
                 let [left, _, _, top] = info.rect;
-                self.add_free_text(page, left, top, &info.contents, info.font_size, color)?;
+                self.put_free_text(page, left, top, &info.contents, info.font_size, color, zone_of(&info))?;
             }
             AnnotKind::Ink => {
                 let (strokes, width) = (a.ink_strokes(), a.ink_width());
@@ -531,7 +569,9 @@ impl Document {
             bail!("no es un texto");
         }
         let [left, _, _, top] = info.rect;
-        self.add_free_text(page, left, top, &info.contents, size, info.color)?;
+        // La zona crece con la letra: las líneas quedan igual.
+        let zone = zone_of(&info).map(|z| z.map(|v| v * size / info.font_size));
+        self.put_free_text(page, left, top, &info.contents, size, info.color, zone)?;
         self.replace_annotation(page, index)
     }
 
@@ -551,7 +591,8 @@ impl Document {
                 drop(a);
                 // Con una décima basta: es lo que se ve en la barra.
                 let size = (info.font_size * sx * 10.0).round() / 10.0;
-                self.add_free_text(page, left, top, &info.contents, size, info.color)?;
+                let zone = info.zone.then_some([right - left, top - bottom]);
+                self.put_free_text(page, left, top, &info.contents, size, info.color, zone)?;
             }
             AnnotKind::Note => {
                 let name = a.string(c"Name");
@@ -728,6 +769,20 @@ impl Document {
     /// Escribe `text` en la página, con su esquina superior izquierda en
     /// (x, y). Cada línea del texto es una línea en la página.
     pub fn add_free_text(&mut self, page: usize, x: f32, y: f32, text: &str, size: f32, color: [u8; 3]) -> Result<()> {
+        self.put_free_text(page, x, y, text, size, color, None)
+    }
+
+    /// Escribe `text` en una zona de la página (izquierda, abajo, derecha,
+    /// arriba): las líneas se parten para caber en su ancho y, si no caben en
+    /// su alto, la zona crece hacia abajo.
+    pub fn add_free_text_in(&mut self, page: usize, rect: [f32; 4], text: &str, size: f32, color: [u8; 3]) -> Result<()> {
+        let [left, bottom, right, top] = rect;
+        self.put_free_text(page, left, top, text, size, color, Some([right - left, top - bottom]))
+    }
+
+    /// Un texto libre; con `zone` (ancho y alto), dentro de esa zona.
+    #[allow(clippy::too_many_arguments)]
+    fn put_free_text(&mut self, page: usize, x: f32, y: f32, text: &str, size: f32, color: [u8; 3], zone: Option<[f32; 2]>) -> Result<()> {
         let text = text.trim_end();
         if text.is_empty() {
             bail!("el texto está vacío");
@@ -738,10 +793,24 @@ impl Document {
         if font.is_null() {
             bail!("PDFium no pudo cargar la fuente");
         }
+        // Ancho de una línea escrita con esta letra.
+        let measure = |line: &str| unsafe {
+            let obj = sys::FPDFPageObj_CreateTextObj(doc, font, size);
+            let w = to_wide(line);
+            sys::FPDFText_SetText(obj, w.as_ptr());
+            let (mut l, mut b, mut r, mut t) = (0.0, 0.0, 0.0, 0.0);
+            sys::FPDFPageObj_GetBounds(obj, &mut l, &mut b, &mut r, &mut t);
+            sys::FPDFPageObj_Destroy(obj);
+            r - l
+        };
+        let lines: Vec<String> = match zone {
+            Some([w, _]) => text.lines().flat_map(|l| wrap_line(l, w - 2.0 * FREE_TEXT_PAD, &measure)).collect(),
+            None => text.lines().map(str::to_string).collect(),
+        };
         // Las líneas, medidas antes de colocarlas.
         let mut objs = Vec::new();
         let mut width: f32 = 0.0;
-        for (i, line) in text.lines().enumerate() {
+        for (i, line) in lines.iter().enumerate() {
             if line.trim().is_empty() {
                 continue;
             }
@@ -757,11 +826,15 @@ impl Document {
             }
         }
         unsafe { sys::FPDFFont_Close(font) };
-        let lines = text.lines().count() as f32;
-        let w = width + 2.0 * FREE_TEXT_PAD;
-        let h = lines * size * LINE_HEIGHT + 2.0 * FREE_TEXT_PAD;
+        let lines = lines.len() as f32;
+        let w = zone.map_or(width + 2.0 * FREE_TEXT_PAD, |z| z[0]);
+        let h = (lines * size * LINE_HEIGHT + 2.0 * FREE_TEXT_PAD).max(zone.map_or(0.0, |z| z[1]));
         let [left, bottom, right, top] = self.clamp_to_page(page, [x, y - h, x + w, y]);
         let a = self.new_annot(page, sys::FPDF_ANNOT_STAMP)?;
+        if zone.is_some() {
+            let nm = a.string(c"NM").replacen(FREE_TEXT_NM, FREE_TEXT_ZONE_NM, 1);
+            a.set_string(c"NM", &nm);
+        }
         a.set_rect([left, bottom, right, top]);
         for (i, obj) in objs {
             // Línea base: un poco por encima del borde inferior de la línea.
@@ -815,7 +888,7 @@ impl Document {
             AnnotKind::FreeText => {
                 // Se vuelve a escribir en el mismo sitio, con la misma letra.
                 let [left, _, _, top] = info.rect;
-                self.add_free_text(page, left, top, text, info.font_size, info.color)?;
+                self.put_free_text(page, left, top, text, info.font_size, info.color, zone_of(&info))?;
                 self.remove_annotation(page, index)
             }
             _ => {
@@ -852,7 +925,7 @@ impl Document {
 
 #[cfg(test)]
 mod tests {
-    use super::{appearance_color, parse_da};
+    use super::{appearance_color, parse_da, wrap_line};
 
     #[test]
     fn color_de_la_apariencia() {
@@ -860,6 +933,14 @@ mod tests {
         assert_eq!(appearance_color("q 0.5 G 1 w 0 0 m 10 0 l S Q"), Some([128, 128, 128]));
         assert_eq!(appearance_color("0 0 0 1 k"), Some([0, 0, 0]));
         assert_eq!(appearance_color("72 700 m 200 700 l S"), None);
+    }
+
+    #[test]
+    fn partir_lineas() {
+        let ancho = |s: &str| s.chars().count() as f32;
+        assert_eq!(wrap_line("uno dos tres", 7.0, &ancho), ["uno dos", "tres"]);
+        assert_eq!(wrap_line("palabrota x", 4.0, &ancho), ["pala", "brot", "a x"]);
+        assert_eq!(wrap_line("", 4.0, &ancho), [""]);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 use crate::chrome::{self, TabAction, TabInfo};
 use crate::theme::{self, icon};
-use crate::viewer::{ANNOT_COLORS, AnnotRequest, AnnotTool, DocView, PageLayout, Tool};
+use crate::viewer::{ANNOT_COLORS, AnnotTool, DocView, PageLayout, Tool};
 use eframe::egui::{self, Align, Color32, Key, KeyboardShortcut, Layout, Modifiers, RichText};
 use form_pdf_reader::pdfium::{AlertAnswer, AnnotKind, AlertButtons, AlertIcon, AlertRequest, DigitalSignature, Document, FormKind, OpenOptions, PasswordRequired, SignedState};
 use form_pdf_reader::t;
@@ -26,14 +26,6 @@ struct PasswordPrompt {
     /// La contraseña anterior no era correcta.
     wrong: bool,
     focus: bool,
-}
-
-/// El texto de una nota o de un texto libre, nuevo o para cambiarlo.
-struct AnnotDialog {
-    req: AnnotRequest,
-    text: String,
-    /// Fotogramas en los que dar el foco al campo de texto.
-    focus: u8,
 }
 
 /// Colores para anotar.
@@ -93,7 +85,6 @@ pub struct PdfApp {
     /// Firma digital esperando a que se elija el sitio en la página.
     digital_pending: Option<Box<crate::digital_sign::SignPlan>>,
     update_dialog: Option<crate::update::UpdateDialog>,
-    annot_dialog: Option<AnnotDialog>,
     pages_dialog: Option<crate::pages::PagesDialog>,
     /// La búsqueda de versiones nuevas al abrir el programa.
     update_check: Option<std::sync::mpsc::Receiver<anyhow::Result<Option<crate::update::Release>>>>,
@@ -134,7 +125,6 @@ impl PdfApp {
             digital_requested: false,
             digital_pending: None,
             update_dialog: None,
-            annot_dialog: None,
             pages_dialog: None,
             update_check: None,
             ask_pdf_default: false,
@@ -899,7 +889,6 @@ impl PdfApp {
             }
         }
         self.password_window(ctx);
-        self.annot_window(ctx);
         self.pages_window(ctx);
         if self.show_about {
             theme::modal(ctx, "acerca").show(ctx, |ui| {
@@ -1314,57 +1303,11 @@ impl PdfApp {
                 }
             });
         });
-        if let Some(a) = edit {
-            self.annot_dialog = Some(AnnotDialog { text: a.contents.clone(), req: AnnotRequest::Edit(a), focus: 4 });
+        if let (Some(a), Some(tab)) = (edit, self.tabs.get_mut(self.active)) {
+            tab.view.edit_annotation(&a);
         }
         if let Some(e) = error {
             self.error = Some(t!("annot.error", e));
-        }
-    }
-
-    /// El texto de una nota o de un texto libre.
-    fn annot_window(&mut self, ctx: &egui::Context) {
-        let Some(d) = self.annot_dialog.as_mut() else { return };
-        let mut answer = None;
-        theme::modal(ctx, "anotacion").show(ctx, |ui| {
-            ui.set_width(380.0);
-            let title = match &d.req {
-                AnnotRequest::Note { .. } => t!("annot.new_note"),
-                AnnotRequest::FreeText { .. } => t!("annot.new_text"),
-                AnnotRequest::Edit(a) if a.kind == AnnotKind::Note => t!("annot.edit_note"),
-                AnnotRequest::Edit(_) => t!("annot.edit_text"),
-            };
-            ui.heading(title);
-            ui.add_space(8.0);
-            let r = ui.add(egui::TextEdit::multiline(&mut d.text).desired_rows(4).desired_width(f32::INFINITY));
-            // Hasta unos fotogramas después de soltar el clic que abrió la
-            // ventana: al soltarlo, el visor pide el foco para sí.
-            if d.focus > 0 {
-                r.request_focus();
-                if !ui.input(|i| i.pointer.any_down()) {
-                    d.focus -= 1;
-                }
-            }
-            let ok = !d.text.trim().is_empty() || matches!(d.req, AnnotRequest::Note { .. });
-            answer = theme::dialog_footer(ui, &[(t!("dialog.ok"), true, ok), (t!("dialog.cancel"), false, true)]);
-            if ui.input(|i| i.key_pressed(Key::Escape)) {
-                answer = Some(1);
-            }
-        });
-        let Some(answer) = answer else { return };
-        let d = self.annot_dialog.take().expect("diálogo abierto");
-        if answer != 0 {
-            return;
-        }
-        let Some(tab) = self.tabs.get_mut(self.active) else { return };
-        let r = match &d.req {
-            AnnotRequest::Note { page, x, y } => tab.view.add_note(*page, *x, *y, &d.text),
-            AnnotRequest::FreeText { page, x, y } => tab.view.add_free_text(*page, *x, *y, &d.text),
-            AnnotRequest::Edit(a) => tab.view.set_annotation_text(a, &d.text),
-        };
-        match r {
-            Ok(()) => tab.dirty = true,
-            Err(e) => self.error = Some(t!("annot.error", e)),
         }
     }
 
@@ -1806,12 +1749,6 @@ impl PdfApp {
             }
         }
         // Lo que pide la herramienta de anotar (el texto de una nota...).
-        if self.annot_dialog.is_none()
-            && let Some(req) = self.view_mut().and_then(|v| v.take_annot_request())
-        {
-            let text = if let AnnotRequest::Edit(a) = &req { a.contents.clone() } else { String::new() };
-            self.annot_dialog = Some(AnnotDialog { req, text, focus: 4 });
-        }
         if let Some(v) = self.view_mut() {
             v.trim_cache();
         }

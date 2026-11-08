@@ -139,7 +139,9 @@ made-up data and the public US Form I-9.
 - **Annotations:** highlight, underline or strike out text, notes (an icon
   with a comment), text written anywhere on the page and freehand drawing,
   in six colours (the toolbar's highlighter button on the desktop, ⋮ >
-  Annotate on Android). Marking text that is already marked in another
+  Annotate on Android). Texts and notes are typed and edited right on the
+  page, with no dialog; dragging with the text tool marks an area to write
+  in, and the text wraps to its width. Marking text that is already marked in another
   colour changes only the characters dragged over, and the eraser removes
   the mark from them. With *Select*, an annotation can be dragged to another place, resized by
   its corner (texts and drawings), deleted, or its text, colour or letter
