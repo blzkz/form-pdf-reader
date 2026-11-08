@@ -141,8 +141,9 @@ made-up data and the public US Form I-9.
   in six colours (the toolbar's highlighter button on the desktop, ⋮ >
   Annotate on Android). Marking text that is already marked in another
   colour changes only the characters dragged over, and the eraser removes
-  the mark from them. With *Select*, an annotation can be deleted, its text
-  changed or the colour of a mark changed. A right-click on a mark (on the
+  the mark from them. With *Select*, an annotation can be dragged to another place, resized by
+  its corner (texts and drawings), deleted, or its text, colour or letter
+  size changed; the text and note tools also pick the ones already placed. A right-click on a mark (on the
   desktop) or a long press on it (on Android, next to Copy) changes its
   colour or removes it. They are saved as standard PDF annotations, which
   Adobe Reader and other viewers show. Not on XFA forms.

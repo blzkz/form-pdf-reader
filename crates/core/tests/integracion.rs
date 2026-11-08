@@ -195,6 +195,72 @@ fn anotaciones() {
     // En XFA no.
     assert!(!Document::open(Path::new(XFA)).unwrap().can_annotate());
 
+    // Mover, cambiar el tamaño y el color de lo ya puesto, también después
+    // de guardar y volver a abrir (con la apariencia ya generada).
+    let mut doc = Document::open(Path::new("tests/fixtures/normal.pdf")).unwrap();
+    doc.add_free_text(0, 100.0, 300.0, "Dos\nlineas", 12.0, [33, 150, 243]).unwrap();
+    doc.add_note(0, 300.0, 300.0, "Comentario", [255, 214, 0]).unwrap();
+    doc.add_ink(0, &[vec![[100.0, 200.0], [150.0, 240.0]], vec![[160.0, 200.0]]], 3.0, [229, 57, 53]).unwrap();
+    let out = tmp("mover-anotaciones.pdf");
+    doc.save(&out).unwrap();
+    let mut doc = Document::open(&out).unwrap();
+    let busca = |doc: &Document, kind| doc.annotations(0).into_iter().find(|a| a.kind == kind).unwrap();
+    let centro = |r: [f32; 4]| ((r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0);
+    // El texto: se mueve con la misma letra.
+    let t = busca(&doc, AnnotKind::FreeText);
+    let [l, b, r, top] = t.rect;
+    let i = doc.set_annotation_rect(0, t.index, [l + 50.0, b + 80.0, r + 50.0, top + 80.0]).unwrap();
+    let m = busca(&doc, AnnotKind::FreeText);
+    assert_eq!(m.index, i);
+    assert_eq!((m.font_size, m.color, m.contents.as_str()), (12.0, [33, 150, 243], "Dos\nlineas"));
+    assert!((m.rect[0] - (l + 50.0)).abs() < 0.1 && (m.rect[3] - (top + 80.0)).abs() < 0.1, "{:?}", m.rect);
+    let (cx, cy) = centro(m.rect);
+    assert_eq!(doc.annotation_at(0, cx, cy).map(|a| a.index), Some(i));
+    assert!(doc.annotation_at(0, l + 1.0, b + 1.0).is_none_or(|a| a.kind != AnnotKind::FreeText), "ya no está donde estaba");
+    // Al doble de tamaño: el doble de letra y la misma esquina.
+    let [l, b, r, top] = m.rect;
+    let i = doc.set_annotation_rect(0, i, [l, top - 2.0 * (top - b), l + 2.0 * (r - l), top]).unwrap();
+    let g = busca(&doc, AnnotKind::FreeText);
+    assert_eq!((g.index, g.font_size), (i, 24.0));
+    assert!((g.rect[0] - l).abs() < 0.1 && (g.rect[3] - top).abs() < 0.1, "{:?}", g.rect);
+    let i = doc.set_free_text_size(0, i, 10.0).unwrap();
+    let i = doc.set_annotation_color(0, i, [76, 175, 80]).unwrap();
+    let g = busca(&doc, AnnotKind::FreeText);
+    assert_eq!((g.index, g.font_size, g.color), (i, 10.0, [76, 175, 80]));
+    // La nota solo se mueve, con su comentario; no cambia de tamaño.
+    let n = busca(&doc, AnnotKind::Note);
+    let [l, b, r, top] = n.rect;
+    doc.set_annotation_rect(0, n.index, [l - 40.0, b + 10.0, r - 40.0, top + 10.0]).unwrap();
+    let n2 = busca(&doc, AnnotKind::Note);
+    assert_eq!(n2.contents, "Comentario");
+    assert!((n2.rect[0] - (l - 40.0)).abs() < 0.1 && (n2.rect[3] - (top + 10.0)).abs() < 0.1, "{:?}", n2.rect);
+    // El dibujo: se mueve y se escala, y conserva el color.
+    let d = busca(&doc, AnnotKind::Ink);
+    assert_eq!(d.color, [229, 57, 53]);
+    let [l, b, r, top] = d.rect;
+    let i = doc.set_annotation_rect(0, d.index, [l + 100.0, b + 100.0, r + 100.0, top + 100.0]).unwrap();
+    let m = busca(&doc, AnnotKind::Ink);
+    assert_eq!((m.index, m.color), (i, [229, 57, 53]));
+    // (PDFium agranda el rectángulo de un dibujo al generar su apariencia.)
+    assert!((m.rect[0] - (l + 100.0)).abs() < 2.5 && (m.rect[1] - (b + 100.0)).abs() < 2.5, "{:?}", m.rect);
+    let [l, b, r, top] = m.rect;
+    doc.set_annotation_rect(0, i, [l, top - 2.0 * (top - b), l + 2.0 * (r - l), top]).unwrap();
+    let g = busca(&doc, AnnotKind::Ink);
+    assert!(((g.rect[2] - g.rect[0]) / (r - l) - 2.0).abs() < 0.1, "{:?} {:?}", g.rect, m.rect);
+    // Fuera de la página: se queda dentro. Y una marca no se mueve.
+    let t = busca(&doc, AnnotKind::FreeText);
+    let [l, b, r, top] = t.rect;
+    doc.set_annotation_rect(0, t.index, [l - 2000.0, b, r - 2000.0, top]).unwrap();
+    assert!(busca(&doc, AnnotKind::FreeText).rect[0] >= 0.0);
+    doc.add_markup_range(0, AnnotKind::Highlight, 0, 10, [255, 214, 0]).unwrap();
+    let h = busca(&doc, AnnotKind::Highlight);
+    assert!(doc.set_annotation_rect(0, h.index, [0.0, 0.0, 10.0, 10.0]).is_err());
+    // Todo sigue ahí al guardar y volver a abrir.
+    doc.save(&out).unwrap();
+    let doc = Document::open(&out).unwrap();
+    assert_eq!(doc.annotations(0).len(), 4);
+    assert_eq!(busca(&doc, AnnotKind::FreeText).color, [76, 175, 80]);
+
     // Marcar lo ya marcado del mismo color: una sola marca continua (no se
     // suman los colores); otra clase de marca no se junta.
     let mut doc = Document::open(Path::new("tests/fixtures/normal.pdf")).unwrap();
@@ -235,7 +301,7 @@ fn anotaciones() {
     assert!(!doc.remove_markup_range(0, AnnotKind::Underline, 50, 20).unwrap(), "no había subrayado");
     // El color de una marca entera.
     let h = marks(&doc, AnnotKind::Highlight);
-    doc.set_markup_color(0, h[1].index, [229, 57, 53]).unwrap();
+    doc.set_annotation_color(0, h[1].index, [229, 57, 53]).unwrap();
     let h2 = marks(&doc, AnnotKind::Highlight);
     assert_eq!(h2.len(), 2);
     assert_eq!(h2[1].color, [229, 57, 53]);

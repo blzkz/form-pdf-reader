@@ -200,7 +200,7 @@
     <string name="annot_done">Concluído</string>
     <string name="annot_edit">Editar</string>
     <string name="annot_delete">Eliminar</string>
-    <string name="annot_hint_select">Toque numa anotação para a editar ou eliminar, ou para mudar a cor de uma marca.</string>
+    <string name="annot_hint_select">Toque numa anotação para a selecionar; depois arraste-a para a mover ou use o canto para mudar o tamanho.</string>
     <string name="annot_hint_markup">Arraste um dedo sobre o texto. Dois dedos para se deslocar.</string>
     <string name="annot_erase">Borracha</string>
     <string name="annot_hint_erase">Arraste um dedo sobre o texto para lhe tirar a marca. Dois dedos para se deslocar.</string>
@@ -208,8 +208,8 @@
     <string name="mark_remove_highlight">Remover realce</string>
     <string name="mark_remove_underline">Remover sublinhado</string>
     <string name="mark_remove_strikeout">Remover rasurado</string>
-    <string name="annot_hint_note">Toque na página onde fica a nota.</string>
-    <string name="annot_hint_text">Toque na página onde fica o texto.</string>
+    <string name="annot_hint_note">Toque na página para pôr uma nota, ou numa nota para a mover.</string>
+    <string name="annot_hint_text">Toque na página para escrever, ou num texto para o mover ou redimensionar.</string>
     <string name="annot_hint_ink">Desenhe com um dedo. Dois dedos para se deslocar.</string>
     <string name="annot_thin">Fino</string>
     <string name="annot_medium">Médio</string>

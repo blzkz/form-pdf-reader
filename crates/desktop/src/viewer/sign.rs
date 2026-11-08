@@ -59,20 +59,20 @@ impl DocView {
     }
 
     /// Rectángulo en pantalla de un rectángulo de página.
-    fn sig_screen_rect(&self, page: usize, r: [f32; 4]) -> Option<Rect> {
+    pub(super) fn sig_screen_rect(&self, page: usize, r: [f32; 4]) -> Option<Rect> {
         let (_, pr) = self.page_rects.iter().find(|(i, _)| *i == page)?;
         let a = self.page_to_screen(page, *pr, r[0] as f64, r[3] as f64);
         let b = self.page_to_screen(page, *pr, r[2] as f64, r[1] as f64);
         Some(Rect::from_two_pos(a, b))
     }
 
-    fn page_point(&self, page: usize, pos: Pos2) -> Option<(f64, f64)> {
+    pub(super) fn page_point(&self, page: usize, pos: Pos2) -> Option<(f64, f64)> {
         let (_, pr) = self.page_rects.iter().find(|(i, _)| *i == page)?;
         self.to_page_coords(page, *pr, pos)
     }
 
     /// Mantiene `r` dentro de la página.
-    fn clamp_to_page(&self, page: usize, mut r: [f32; 4]) -> [f32; 4] {
+    pub(super) fn clamp_to_page(&self, page: usize, mut r: [f32; 4]) -> [f32; 4] {
         let (pw, ph) = self.doc.page_size(page);
         let (w, h) = (r[2] - r[0], r[3] - r[1]);
         let dx = (-r[0]).max(0.0) - (r[2] - pw).max(0.0);

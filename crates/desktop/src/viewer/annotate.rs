@@ -2,8 +2,11 @@
 //! arrastrando sobre él), notas y texto libre (se pulsa donde ponerlos y la
 //! aplicación pide el texto), dibujo a mano (los trazos se juntan en una
 //! anotación al terminar: Intro, otra herramienta o salir) y seleccionar una
-//! anotación para borrarla (Supr), editar su texto (doble clic) o cambiar su
-//! color. La goma quita la marca de los caracteres que se arrastran.
+//! anotación para borrarla (Supr), editar su texto (doble clic), cambiar su
+//! color, arrastrarla a otro sitio o cambiar su tamaño con el tirador de la
+//! esquina (texto y dibujo). Las herramientas de texto y de nota también
+//! eligen los textos y las notas ya puestos. La goma quita la marca de los
+//! caracteres que se arrastran.
 //!
 //! El clic derecho en una marca de texto (anotando o no) abre su menú:
 //! cambiar el color, quitarla o copiar el texto marcado.
@@ -42,6 +45,17 @@ impl AnnotTool {
         }
     }
 
+    /// Elige las anotaciones de ese tipo al pulsar sobre ellas (en vez de
+    /// poner una nueva).
+    fn picks(self, kind: AnnotKind) -> bool {
+        match self {
+            AnnotTool::Select => true,
+            AnnotTool::Note => kind == AnnotKind::Note,
+            AnnotTool::FreeText => kind == AnnotKind::FreeText,
+            _ => false,
+        }
+    }
+
     /// Color por omisión de cada herramienta.
     pub fn default_color(self) -> [u8; 3] {
         match self {
@@ -52,6 +66,22 @@ impl AnnotTool {
             AnnotTool::Ink => [21, 101, 192],
         }
     }
+}
+
+/// Lado del tirador de tamaño de la anotación seleccionada, en la pantalla.
+const HANDLE: f32 = 12.0;
+/// Ancho mínimo (en puntos) al cambiar el tamaño de una anotación.
+const MIN_W: f32 = 20.0;
+
+/// Una anotación que se está moviendo o cambiando de tamaño. Se escribe al
+/// soltar; hasta entonces se ve su recuadro.
+#[derive(Clone, Copy)]
+struct AnnotDrag {
+    resize: bool,
+    /// Punto de página donde empezó.
+    start: (f64, f64),
+    rect0: [f32; 4],
+    cur: [f32; 4],
 }
 
 /// Lo que la aplicación tiene que preguntar (el texto de una nota o de un
@@ -79,6 +109,7 @@ pub struct AnnotState {
     stroke_page: Option<usize>,
     drawing: bool,
     pub selected: Option<Annotation>,
+    drag: Option<AnnotDrag>,
     request: Option<AnnotRequest>,
     last_click: Option<(Instant, Pos2)>,
 }
@@ -96,6 +127,7 @@ impl AnnotState {
             stroke_page: None,
             drawing: false,
             selected: None,
+            drag: None,
             request: None,
             last_click: None,
         }
@@ -164,6 +196,7 @@ impl DocView {
         if let Some(a) = self.annot.as_mut() {
             a.tool = t;
             a.selected = None;
+            a.drag = None;
             a.erasing = false;
         }
         self.selection = None;
@@ -208,6 +241,11 @@ impl DocView {
         let (size, color) = self.annot.as_ref().map_or((12.0, AnnotTool::FreeText.default_color()), |a| (a.font_size, a.colors[AnnotTool::FreeText as usize]));
         self.doc.add_free_text(page, x, y, text, size, color).map_err(|e| format!("{e:#}"))?;
         self.invalidate_page(page);
+        // Queda elegido: se puede colocar y ajustar enseguida.
+        let added = self.doc.annotations(page).pop();
+        if let Some(a) = self.annot.as_mut() {
+            a.selected = added;
+        }
         Ok(())
     }
 
@@ -220,17 +258,88 @@ impl DocView {
         Ok(())
     }
 
-    /// Cambia el color de la marca de texto seleccionada.
-    pub fn set_selected_markup_color(&mut self, color: [u8; 3]) -> Result<bool, String> {
-        let Some(sel) = self.annot.as_mut().and_then(|a| a.selected.take()) else { return Ok(false) };
-        self.doc.set_markup_color(sel.page, sel.index, color).map_err(|e| format!("{e:#}"))?;
-        self.invalidate_page(sel.page);
-        // Sigue seleccionada (ahora es la última de la página).
-        let again = self.doc.annotations(sel.page).into_iter().rev().find(|a| a.kind == sel.kind && a.rect == sel.rect);
+    /// Cambia el color de la anotación seleccionada.
+    pub fn set_selected_color(&mut self, color: [u8; 3]) -> Result<bool, String> {
+        let Some(sel) = self.annot.as_ref().and_then(|a| a.selected.clone()) else { return Ok(false) };
+        let i = self.doc.set_annotation_color(sel.page, sel.index, color).map_err(|e| format!("{e:#}"))?;
+        self.reselect(sel.page, i);
+        Ok(true)
+    }
+
+    /// Cambia el tamaño de letra del texto libre seleccionado.
+    pub fn set_selected_font_size(&mut self, size: f32) -> Result<bool, String> {
+        let Some(sel) = self.annot.as_ref().and_then(|a| a.selected.clone()) else { return Ok(false) };
+        let i = self.doc.set_free_text_size(sel.page, sel.index, size).map_err(|e| format!("{e:#}"))?;
+        self.reselect(sel.page, i);
+        Ok(true)
+    }
+
+    /// Repinta la página y elige la anotación que se acaba de rehacer.
+    fn reselect(&mut self, page: usize, index: usize) {
+        self.invalidate_page(page);
+        let again = self.doc.annotations(page).into_iter().find(|a| a.index == index);
         if let Some(a) = self.annot.as_mut() {
             a.selected = again;
         }
-        Ok(true)
+    }
+
+    /// Tirador de tamaño de la anotación seleccionada, en la pantalla.
+    fn annot_handle(&self, sel: &Annotation, r: [f32; 4]) -> Option<Rect> {
+        let sr = self.sig_screen_rect(sel.page, r)?;
+        sel.kind.can_resize().then(|| Rect::from_center_size(sr.expand(3.0).right_bottom(), egui::Vec2::splat(HANDLE)))
+    }
+
+    /// Pulsar en el tirador de la anotación seleccionada. true si se ha
+    /// pulsado ahí.
+    fn press_annot_handle(&mut self, pos: Pos2) -> bool {
+        let Some(sel) = self.annot.as_ref().and_then(|a| a.selected.clone()) else { return false };
+        let on_handle = self.annot_handle(&sel, sel.rect).is_some_and(|h| h.expand(4.0).contains(pos));
+        if on_handle
+            && let Some(start) = self.page_point(sel.page, pos)
+            && let Some(a) = self.annot.as_mut()
+        {
+            a.drag = Some(AnnotDrag { resize: true, start, rect0: sel.rect, cur: sel.rect });
+        }
+        on_handle
+    }
+
+    /// El puntero se mueve con una anotación agarrada. true si había una.
+    fn drag_annotation(&mut self, pos: Pos2) -> bool {
+        let Some(a) = self.annot.as_ref() else { return false };
+        let (Some(d), Some(page)) = (a.drag, a.selected.as_ref().map(|s| s.page)) else { return false };
+        if let Some((x, y)) = self.page_point(page, pos) {
+            let r = d.rect0;
+            let cur = if d.resize {
+                // La esquina de arriba a la izquierda queda fija, y la proporción.
+                let w = (x as f32 - r[0]).max(MIN_W);
+                [r[0], r[3] - w * (r[3] - r[1]) / (r[2] - r[0]), r[0] + w, r[3]]
+            } else {
+                let (dx, dy) = ((x - d.start.0) as f32, (y - d.start.1) as f32);
+                [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy]
+            };
+            let cur = self.clamp_to_page(page, cur);
+            if let Some(a) = self.annot.as_mut() {
+                a.drag = Some(AnnotDrag { cur, ..d });
+            }
+        }
+        true
+    }
+
+    /// Suelta la anotación agarrada: la escribe en su sitio nuevo.
+    fn drop_annotation(&mut self, ev: &mut ViewEvents) {
+        let Some(a) = self.annot.as_mut() else { return };
+        let Some(d) = a.drag.take() else { return };
+        let Some(sel) = a.selected.clone() else { return };
+        if d.cur == d.rect0 {
+            return;
+        }
+        match self.doc.set_annotation_rect(sel.page, sel.index, d.cur) {
+            Ok(i) => {
+                ev.modified = true;
+                self.reselect(sel.page, i);
+            }
+            Err(e) => ev.annot_error = Some(format!("{e:#}")),
+        }
     }
 
     /// Borra la anotación seleccionada. true si había una.
@@ -247,13 +356,17 @@ impl DocView {
         let Some(tool) = self.annot.as_ref().map(|a| a.tool) else { return false };
         let hover = ctx.input(|i| i.pointer.hover_pos()).filter(|p| area.contains(*p));
         if let Some(p) = hover.filter(|_| self.hit(hover.unwrap_or_default()).is_some()) {
+            let (pg, x, y) = self.hit(p).unwrap_or_default();
+            let over = self.doc.annotation_at(pg, x as f32, y as f32).filter(|f| tool.picks(f.kind));
+            let selected = self.annot.as_ref().and_then(|a| a.selected.clone());
+            let on_handle = selected.as_ref().and_then(|s| self.annot_handle(s, s.rect)).is_some_and(|h| h.expand(4.0).contains(p));
             ctx.set_cursor_icon(match tool {
+                _ if on_handle => CursorIcon::ResizeNwSe,
+                _ if over.as_ref().is_some_and(|f| f.kind.can_move()) => CursorIcon::Move,
+                AnnotTool::Select if over.is_some() => CursorIcon::PointingHand,
+                AnnotTool::Select => CursorIcon::Default,
                 AnnotTool::Highlight | AnnotTool::Underline | AnnotTool::StrikeOut => CursorIcon::Text,
                 AnnotTool::Note | AnnotTool::FreeText | AnnotTool::Ink => CursorIcon::Crosshair,
-                AnnotTool::Select => {
-                    let over = self.hit(p).and_then(|(pg, x, y)| self.doc.annotation_at(pg, x as f32, y as f32));
-                    if over.is_some() { CursorIcon::PointingHand } else { CursorIcon::Default }
-                }
             });
         }
         let mut took = false;
@@ -261,6 +374,9 @@ impl DocView {
             match e {
                 Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, modifiers } if area.contains(*pos) => {
                     took = true;
+                    if self.press_annot_handle(*pos) {
+                        continue;
+                    }
                     let Some((page, x, y)) = self.hit(*pos) else {
                         if let Some(a) = self.annot.as_mut() {
                             a.selected = None;
@@ -268,7 +384,23 @@ impl DocView {
                         continue;
                     };
                     let (x, y) = (x as f32, y as f32);
+                    let found = self.doc.annotation_at(page, x, y).filter(|f| tool.picks(f.kind));
                     match tool {
+                        AnnotTool::Select | AnnotTool::Note | AnnotTool::FreeText if tool == AnnotTool::Select || found.is_some() => {
+                            let now = Instant::now();
+                            let start = (x as f64, y as f64);
+                            let Some(a) = self.annot.as_mut() else { continue };
+                            let double = a.last_click.is_some_and(|(t, q)| now.duration_since(t) < Duration::from_millis(400) && q.distance(*pos) < 5.0);
+                            a.last_click = Some((now, *pos));
+                            if double
+                                && let Some(f) = found.as_ref().filter(|f| matches!(f.kind, AnnotKind::Note | AnnotKind::FreeText))
+                            {
+                                a.request = Some(AnnotRequest::Edit(f.clone()));
+                            }
+                            // Pulsar ya agarra lo elegido: se puede arrastrar sin más.
+                            a.drag = found.as_ref().filter(|f| f.kind.can_move() && !double).map(|f| AnnotDrag { resize: false, start, rect0: f.rect, cur: f.rect });
+                            a.selected = found;
+                        }
                         AnnotTool::Highlight | AnnotTool::Underline | AnnotTool::StrikeOut => {
                             self.selecting = true;
                             let hit = self.doc.text_char_at(page, x as f64, y as f64).map(|c| (page, c));
@@ -281,11 +413,13 @@ impl DocView {
                         }
                         AnnotTool::Note => {
                             if let Some(a) = self.annot.as_mut() {
+                                a.selected = None;
                                 a.request = Some(AnnotRequest::Note { page, x, y });
                             }
                         }
                         AnnotTool::FreeText => {
                             if let Some(a) = self.annot.as_mut() {
+                                a.selected = None;
                                 a.request = Some(AnnotRequest::FreeText { page, x, y });
                             }
                         }
@@ -302,21 +436,11 @@ impl DocView {
                                 a.drawing = true;
                             }
                         }
-                        AnnotTool::Select => {
-                            let found = self.doc.annotation_at(page, x, y);
-                            let now = Instant::now();
-                            let Some(a) = self.annot.as_mut() else { continue };
-                            let double = a.last_click.is_some_and(|(t, q)| now.duration_since(t) < Duration::from_millis(400) && q.distance(*pos) < 5.0);
-                            a.last_click = Some((now, *pos));
-                            if double
-                                && let Some(f) = found.as_ref().filter(|f| matches!(f.kind, AnnotKind::Note | AnnotKind::FreeText))
-                            {
-                                a.request = Some(AnnotRequest::Edit(f.clone()));
-                            }
-                            a.selected = found;
-                        }
+                        // (Atendida arriba.)
+                        AnnotTool::Select => {}
                     }
                 }
+                Event::PointerMoved(pos) if self.drag_annotation(*pos) => {}
                 Event::PointerMoved(pos) => {
                     let selecting = self.selecting;
                     match tool {
@@ -349,6 +473,7 @@ impl DocView {
                     }
                 }
                 Event::PointerButton { button: PointerButton::Primary, pressed: false, .. } => {
+                    self.drop_annotation(ev);
                     if let Some(a) = self.annot.as_mut() {
                         a.drawing = false;
                     }
@@ -384,6 +509,7 @@ impl DocView {
                     self.discard_ink();
                     if let Some(a) = self.annot.as_mut() {
                         a.selected = None;
+                        a.drag = None;
                     }
                 }
                 _ => {}
@@ -420,13 +546,22 @@ impl DocView {
                 }
             }
         }
-        if let Some(sel) = &a.selected
-            && let Some((_, pr)) = self.page_rects.iter().find(|(i, _)| *i == sel.page).copied()
-        {
-            let [l, b, r, t] = sel.rect;
-            let p0 = self.page_to_screen(sel.page, pr, l as f64, t as f64);
-            let p1 = self.page_to_screen(sel.page, pr, r as f64, b as f64);
-            painter.rect_stroke(Rect::from_two_pos(p0, p1).expand(3.0), 3.0, Stroke::new(2.0, accent), StrokeKind::Outside);
+        if let Some(sel) = &a.selected {
+            let r = a.drag.map_or(sel.rect, |d| d.cur);
+            let Some(sr) = self.sig_screen_rect(sel.page, r) else { return };
+            if let Some(d) = a.drag.filter(|d| d.cur != d.rect0) {
+                painter.rect_filled(sr.expand(3.0), 3.0, accent.gamma_multiply(0.25));
+                // Un texto se ve mientras se arrastra (con la letra de la interfaz).
+                if sel.kind == AnnotKind::FreeText {
+                    let scale = (d.cur[2] - d.cur[0]) / (d.rect0[2] - d.rect0[0]);
+                    let px = sel.font_size * scale * self.zoom * PT_TO_PX;
+                    painter.text(sr.left_top() + egui::Vec2::splat(3.0 * scale * self.zoom * PT_TO_PX), egui::Align2::LEFT_TOP, &sel.contents, egui::FontId::proportional(px), color32(sel.color));
+                }
+            }
+            painter.rect_stroke(sr.expand(3.0), 3.0, Stroke::new(2.0, accent), StrokeKind::Outside);
+            if let Some(h) = self.annot_handle(sel, r) {
+                painter.rect(h, 2.0, Color32::WHITE, Stroke::new(1.5, accent), StrokeKind::Inside);
+            }
         }
     }
 }
@@ -509,7 +644,7 @@ impl DocView {
             self.markup_menu = None;
         }
         let r = match action {
-            Some(MarkupAction::Color(c)) if c != mark.color => self.doc.set_markup_color(mark.page, mark.index, c).map(|_| true),
+            Some(MarkupAction::Color(c)) if c != mark.color => self.doc.set_annotation_color(mark.page, mark.index, c).map(|_| true),
             Some(MarkupAction::Remove) => self.doc.remove_annotation(mark.page, mark.index).map(|_| true),
             Some(MarkupAction::Copy) => {
                 ctx.copy_text(mark.contents.clone());
